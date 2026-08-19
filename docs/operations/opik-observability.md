@@ -84,6 +84,32 @@ owned test interview and feedback result, then confirm Opik shows:
 - content only when the explicit content switch is true;
 - no identity, room, provider-request, exception-body, or secret fields.
 
+When validating the adaptive-interviewer semantic subtree, use synthetic data
+and confirm:
+
+- `interviewer_observability_session` and `interviewer_semantic_event` are
+  children of the existing LiveKit trace, not a separate vendor trace;
+- metadata-only events expose only the closed `meelni.interviewer.*` contract;
+- setting `OPIK_CAPTURE_CONTENT=true` may populate approved existing
+  conversation spans but does not add content, identity, provider/model, or
+  hidden-reasoning fields to semantic spans;
+- measured user-turn latency uses `stopped_speaking_at` to the next
+  `started_speaking_at`, and an interrupted scheduled response records recovery
+  only on later non-interrupted audio; and
+- a telemetry exporter failure leaves synthetic speech, transcript settlement,
+  close, and feedback results unchanged.
+
+`MEELNI_INTERVIEW_RUNTIME_VERSION` may select only the closed server-owned
+analysis versions `current-prompt.v1`, `director-shadow.v1`, or
+`adaptive-canary.v1`. Invalid or omitted values fall back to the version
+derived from the existing rollout flags. Room metadata cannot select the label
+or cohort.
+
+Build current/shadow/canary aggregate reports offline from validated semantic
+events with explicit sample and regression thresholds. Treat `pass`, `hold`,
+and `rollback` as evidence for owner review, never as permission to change a
+flag or deployment.
+
 The worker logs one content-free startup line showing whether Opik tracing and
 content capture initialized. Use that line to distinguish disabled or invalid
 configuration from a provider-side display problem; it never includes an API
@@ -104,6 +130,12 @@ both voice agents after changing their environments.
 Run `npm run env:pull:preview` to refresh local Vercel configuration. The pull
 preserves a usable local `OPIK_API_KEY` when Vercel returns the encrypted value
 as blank.
+
+Preview semantic verification is an owner/operator action: enable the existing
+metadata-only Opik gate in isolated Preview, keep adaptive influence disabled,
+run synthetic interviews, inspect the sanitized subtree, then disable the gate
+or leave it scoped to Preview. This repository change does not perform that
+provider mutation.
 
 ## Production Guardrails
 

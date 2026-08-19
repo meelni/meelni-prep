@@ -27,6 +27,8 @@ _SAFE_SPAN_NAMES = {
     "drain_agent_activity",
     "eou_detection",
     "function_tool",
+    "interviewer_observability_session",
+    "interviewer_semantic_event",
     "job_entrypoint",
     "judge_evaluation",
     "llm_fallback_adapter",
@@ -41,6 +43,20 @@ _SAFE_SPAN_NAMES = {
     "tts_stream_adapter",
     "user_speaking",
     "user_turn",
+}
+
+_CONTENT_FREE_SPAN_NAMES = {
+    "interviewer_observability_session",
+    "interviewer_semantic_event",
+}
+
+_INTERVIEWER_SEMANTIC_PREFIX = "meelni.interviewer."
+_NULLABLE_INTERVIEWER_EVENT_FIELDS = {
+    "turn_correlation_id",
+    "probe_target_id",
+    "ready_latency_ms",
+    "recommendation_age_ms",
+    "recovery_latency_ms",
 }
 
 _SAFE_ATTRIBUTES = {
@@ -64,6 +80,37 @@ _SAFE_ATTRIBUTES = {
     "meelni.interview.policy_contract_version",
     "meelni.interview.prompt_contract_version",
     "meelni.interview.round_pack_contract_version",
+    "meelni.interviewer.contract_version",
+    "meelni.interviewer.event_kind",
+    "meelni.interviewer.runtime_correlation_id",
+    "meelni.interviewer.turn_correlation_id",
+    "meelni.interviewer.runtime_version",
+    "meelni.interviewer.rollout_cohort",
+    "meelni.interviewer.emitted_at",
+    "meelni.interviewer.phase",
+    "meelni.interviewer.move_contract_version",
+    "meelni.interviewer.move_stage",
+    "meelni.interviewer.move_type",
+    "meelni.interviewer.probe_target_id",
+    "meelni.interviewer.tool_contract_version",
+    "meelni.interviewer.tool_name",
+    "meelni.interviewer.tool_outcome",
+    "meelni.interviewer.latency_ms",
+    "meelni.interviewer.recommendation_contract_version",
+    "meelni.interviewer.recommendation_outcome",
+    "meelni.interviewer.recommendation_freshness",
+    "meelni.interviewer.ready_latency_ms",
+    "meelni.interviewer.recommendation_age_ms",
+    "meelni.interviewer.latency_kind",
+    "meelni.interviewer.interruption_stage",
+    "meelni.interviewer.delivery_observation",
+    "meelni.interviewer.recovery_latency_ms",
+    "meelni.interviewer.fallback_reason",
+    "meelni.interviewer.fallback_source",
+    "meelni.interviewer.close_reason",
+    "meelni.interviewer.close_outcome",
+    "meelni.interviewer.completion_status",
+    "meelni.interviewer.completion_authority",
 }
 
 _CONTENT_ATTRIBUTES = {
@@ -188,6 +235,8 @@ class ContentControlledSpanExporter:
         sanitized_spans = []
         for span in spans:
             sanitized_span = sanitize_livekit_span(span, self._capture_content)
+            if sanitized_span is None:
+                continue
             trace_id = livekit_trace_id(span)
             content = (
                 trace_content.get((trace_id, span.name))
@@ -396,17 +445,37 @@ def read_opik_tracing_config(
 
 def sanitize_livekit_span(
     span: Any, capture_content: bool
-) -> Any:
-    allowed_attributes = set(_SAFE_ATTRIBUTES)
-    if capture_content:
+) -> Any | None:
+    allowed_attributes = (
+        {
+            key
+            for key in _SAFE_ATTRIBUTES
+            if key.startswith("meelni.interviewer.")
+        }
+        if span.name in _CONTENT_FREE_SPAN_NAMES
+        else {
+            key
+            for key in _SAFE_ATTRIBUTES
+            if not key.startswith(_INTERVIEWER_SEMANTIC_PREFIX)
+        }
+    )
+    content_allowed = (
+        capture_content and span.name not in _CONTENT_FREE_SPAN_NAMES
+    )
+    if content_allowed:
         allowed_attributes.update(_CONTENT_ATTRIBUTES)
 
-    attributes = {
-        key: value
-        for key, value in span.attributes.items()
-        if key in allowed_attributes
-    }
-    if capture_content:
+    if span.name in _CONTENT_FREE_SPAN_NAMES:
+        attributes = sanitize_interviewer_semantic_attributes(span)
+        if attributes is None:
+            return None
+    else:
+        attributes = {
+            key: value
+            for key, value in span.attributes.items()
+            if key in allowed_attributes
+        }
+    if content_allowed:
         attributes = project_opik_content(attributes)
     resource = type(span.resource)(
         {
@@ -418,7 +487,7 @@ def sanitize_livekit_span(
     events = tuple(
         sanitize_content_event(event)
         for event in span.events
-        if capture_content and event.name in _CONTENT_EVENT_NAMES
+        if content_allowed and event.name in _CONTENT_EVENT_NAMES
     )
 
     return type(span)(
@@ -435,6 +504,47 @@ def sanitize_livekit_span(
         end_time=span.end_time,
         instrumentation_scope=span.instrumentation_scope,
     )
+
+
+def sanitize_interviewer_semantic_attributes(
+    span: Any,
+) -> dict[str, str | float] | None:
+    """Reconstruct one exact semantic envelope or reject the whole span."""
+    from shared.interviewer_observability import (
+        is_interviewer_observability_event,
+        is_interviewer_observability_session,
+        semantic_event_attributes,
+    )
+
+    envelope = {
+        key.removeprefix(_INTERVIEWER_SEMANTIC_PREFIX): value
+        for key, value in span.attributes.items()
+        if key.startswith(_INTERVIEWER_SEMANTIC_PREFIX)
+    }
+    if span.name == "interviewer_observability_session":
+        if not is_interviewer_observability_session(envelope):
+            return None
+        return {
+            f"{_INTERVIEWER_SEMANTIC_PREFIX}{key}": value
+            for key, value in envelope.items()
+            if isinstance(value, str)
+        }
+    if span.name != "interviewer_semantic_event":
+        return None
+
+    event_kind = envelope.get("event_kind")
+    nullable_fields = {"turn_correlation_id"}
+    if event_kind == "move":
+        nullable_fields.add("probe_target_id")
+    elif event_kind == "director":
+        nullable_fields.update({"ready_latency_ms", "recommendation_age_ms"})
+    elif event_kind == "interruption":
+        nullable_fields.add("recovery_latency_ms")
+    for field in nullable_fields & _NULLABLE_INTERVIEWER_EVENT_FIELDS:
+        envelope.setdefault(field, None)
+    if not is_interviewer_observability_event(envelope):
+        return None
+    return semantic_event_attributes(envelope)
 
 
 def project_opik_content(attributes: Mapping[str, Any]) -> dict[str, Any]:

@@ -38,6 +38,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
 from shared.dispatch import resolve_cli_dispatch_name
+from shared.interviewer_observability import (
+    InterviewerTurnLatencyTracker,
+    create_interviewer_observability,
+    drain_transcript_before_observability_close,
+)
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
     set_interview_contract_trace_attributes,
@@ -190,7 +195,36 @@ async def entrypoint(ctx: JobContext):
     deadline_at = parse_deadline_at(metadata["deadline_at"])
     room_name = ctx.room.name
 
+    semantic_observability = create_interviewer_observability(os.environ)
+    turn_observability = InterviewerTurnLatencyTracker(semantic_observability)
+    runtime_close_reason = "runtime_closed"
+
+    def close_interviewer_observability() -> None:
+        turn_observability.mark_unrecovered()
+        semantic_observability.record_phase("closed")
+        semantic_observability.record_close(
+            reason=runtime_close_reason,
+            outcome="observed",
+            completion_status="unknown",
+            authority="runtime_observed",
+        )
+        semantic_observability.close()
+
+    async def no_transcript_shutdown_drain() -> None:
+        return None
+
+    transcript_shutdown_drain = no_transcript_shutdown_drain
+
+    async def shutdown_interview_runtime() -> None:
+        await drain_transcript_before_observability_close(
+            drain=transcript_shutdown_drain,
+            close=close_interviewer_observability,
+        )
+
+    ctx.add_shutdown_callback(shutdown_interview_runtime)
+
     if deadline_at is not None and is_deadline_reached(deadline_at):
+        runtime_close_reason = "time_limit"
         logger.warning(
             "Rejecting interview runtime because its hard deadline has already passed"
         )
@@ -222,6 +256,9 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info(f"Generated prompt for {round_type} interview (difficulty: {config['difficulty']})")
     except ValueError as error:
+        semantic_observability.record_fallback(
+            "prompt_build_failure", source="runtime"
+        )
         log_exception_class(
             logger,
             logging.ERROR,
@@ -277,6 +314,10 @@ async def entrypoint(ctx: JobContext):
             timeout=5.0,
         )
     except (asyncio.TimeoutError, TranscriptIngestError) as error:
+        runtime_close_reason = "provider_failure"
+        semantic_observability.record_fallback(
+            "provider_failure", source="runtime"
+        )
         log_exception_class(
             logger,
             logging.ERROR,
@@ -413,6 +454,11 @@ async def entrypoint(ctx: JobContext):
         active_session: AgentSession | None,
         shutdown_reason: str,
     ) -> bool:
+        nonlocal runtime_close_reason
+        runtime_close_reason = "provider_failure"
+        semantic_observability.record_fallback(
+            "provider_failure", source="runtime"
+        )
         try:
             persisted = await stop_provider_runtime_then_report(
                 disable_input=(
@@ -657,7 +703,7 @@ async def entrypoint(ctx: JobContext):
                 },
             )
 
-    ctx.add_shutdown_callback(drain_transcript_queue)
+    transcript_shutdown_drain = drain_transcript_queue
 
     async def persist_runtime_settlement(
         state: str,
@@ -1070,8 +1116,10 @@ async def entrypoint(ctx: JobContext):
 
     @ctx.room.on("participant_disconnected")
     def on_candidate_disconnected(participant) -> None:
+        nonlocal runtime_close_reason
         if candidate_identity is None or participant.identity != candidate_identity:
             return
+        runtime_close_reason = "disconnect"
         schedule_runtime_settlement_discovery()
 
     def queue_integrity_marker(
@@ -1198,6 +1246,21 @@ async def entrypoint(ctx: JobContext):
                 transcript_data,
                 measured_ended_at=measured_ended_at,
             )
+            schedule_transcript_flush()
+            if item.role == "user":
+                turn_observability.observe_user_speech_end(
+                    message_id,
+                    measured_ended_at,
+                )
+            elif item.role == "assistant" and message_id:
+                turn_observability.observe_interviewer_audio(
+                    message_id,
+                    (
+                        item.metrics.get("started_speaking_at")
+                        if isinstance(item.metrics, dict)
+                        else None
+                    ),
+                )
             logger.info(
                 "Transcript turn queued",
                 extra={
@@ -1206,7 +1269,6 @@ async def entrypoint(ctx: JobContext):
                     "delivery_state": transcript_data["delivery_state"],
                 },
             )
-            schedule_transcript_flush()
         except TranscriptIngestAfterCutoff:
             transcript_integrity_unavailable = True
             logger.warning(
@@ -1252,6 +1314,7 @@ async def entrypoint(ctx: JobContext):
         runtime_settlement_evidence_gate.track_speech(handle.id)
 
         def on_speech_done(done_handle) -> None:
+            interruption_observed_at = time.time()
             marker_allowed, marker_occurred_at = (
                 runtime_settlement_evidence_gate.consume_speech_marker(
                     done_handle.id
@@ -1264,20 +1327,32 @@ async def entrypoint(ctx: JobContext):
                 and bool(item.text_content.strip())
                 for item in done_handle.chat_items
             )
-            if not should_record_unconfirmed_interruption(
+            should_record_marker = should_record_unconfirmed_interruption(
                 scheduled=done_handle.scheduled,
                 interrupted=done_handle.interrupted,
                 has_confirmed_prefix=has_confirmed_prefix,
-            ):
-                return
-            if not marker_allowed:
-                return
-            queue_integrity_marker(
-                event_id=f"{transcript_writer_id}:{done_handle.id}:unavailable",
-                speaker="interviewer",
-                reason="no_provider_confirmed_prefix",
-                occurred_at=marker_occurred_at,
             )
+            if should_record_marker and marker_allowed:
+                queue_integrity_marker(
+                    event_id=(
+                        f"{transcript_writer_id}:{done_handle.id}:unavailable"
+                    ),
+                    speaker="interviewer",
+                    reason="no_provider_confirmed_prefix",
+                    occurred_at=marker_occurred_at,
+                )
+            if done_handle.scheduled and done_handle.interrupted:
+                turn_observability.observe_interruption(
+                    occurred_at=interruption_observed_at,
+                    confirmed_message_ids=tuple(
+                        item.id
+                        for item in done_handle.chat_items
+                        if isinstance(item, ChatMessage)
+                        and item.role == "assistant"
+                        and isinstance(item.id, str)
+                    ),
+                    has_confirmed_prefix=has_confirmed_prefix,
+                )
 
         handle.add_done_callback(on_speech_done)
 
@@ -1294,6 +1369,7 @@ async def entrypoint(ctx: JobContext):
     logger.info("Transcript event handlers registered successfully")
 
     if deadline_at is not None and is_deadline_reached(deadline_at):
+        runtime_close_reason = "time_limit"
         transcript_queue.set_evidence_cutoff(deadline_at.timestamp())
         try:
             try:
@@ -1344,6 +1420,8 @@ async def entrypoint(ctx: JobContext):
         await terminate_livekit_room(ctx, room_name)
 
     async def close_session_at_deadline() -> None:
+        nonlocal runtime_close_reason
+        runtime_close_reason = "time_limit"
         result = await settle_runtime(deadline_at.timestamp())
         if not result["settled"]:
             logger.error("Runtime transcript settlement could not be persisted")
@@ -1400,6 +1478,7 @@ async def entrypoint(ctx: JobContext):
         deadline_task=deadline_task,
     )
     if candidate is None:
+        runtime_close_reason = "disconnect"
         return
     if deadline_enforcer.enforcement_started:
         if deadline_task is not None:
@@ -1413,8 +1492,10 @@ async def entrypoint(ctx: JobContext):
 
     # AgentSession waits for user input, so the runtime owns one deterministic
     # first turn and adds it to chat context before model-generated follow-ups.
+    semantic_observability.record_phase("opening")
     try:
         await speak_mock_interview_opening(session, round_type, question)
+        semantic_observability.record_phase("primary_question")
         logger.info("Initial mock interview opening sent")
     except Exception as error:
         log_exception_class(
