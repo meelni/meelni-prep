@@ -3,6 +3,9 @@
 For generated feedback UI inspection, use the build-excluded
 [Local Feedback Lab](./feedback-lab.md).
 
+For provider-free, fixed-seed evaluation of full-session interviewer quality,
+use the [interviewer benchmark](./interviewer-benchmark.md).
+
 ## Local Setup
 
 Meelni local and calibration tooling requires the exact Node version recorded
