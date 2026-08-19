@@ -217,6 +217,46 @@ class OpikTracingTests(unittest.TestCase):
         self.assertNotIn("input", exported_root.attributes)
         self.assertNotIn("output", exported_root.attributes)
 
+    def test_metadata_only_semantic_span_keeps_only_closed_safe_attributes(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=False)
+
+        exporter.export([private_interviewer_semantic_span()])
+
+        exported = delegate.spans[0]
+        self.assertEqual(exported.name, "interviewer_semantic_event")
+        self.assertEqual(
+            exported.attributes["meelni.interviewer.event_kind"], "tool"
+        )
+        self.assertEqual(
+            exported.attributes["meelni.interviewer.tool_outcome"], "timeout"
+        )
+        self.assertNotIn("transcript", exported.attributes)
+        self.assertNotIn("tool_payload", exported.attributes)
+        self.assertNotIn("candidate_identity", exported.attributes)
+        self.assertNotIn("provider_identity", exported.attributes)
+        self.assertNotIn("gen_ai.provider.name", exported.attributes)
+        self.assertNotIn("gen_ai.request.model", exported.attributes)
+        self.assertNotIn("hidden_reasoning", exported.attributes)
+
+    def test_content_mode_never_adds_content_to_semantic_spans(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=True)
+
+        exporter.export(
+            [private_agent_turn_span(), private_interviewer_semantic_span()]
+        )
+
+        exported_turn, exported_semantic = delegate.spans
+        self.assertEqual(exported_turn.attributes["input"], "candidate answer")
+        self.assertEqual(
+            exported_turn.attributes["output"], "interviewer follow-up"
+        )
+        self.assertNotIn("input", exported_semantic.attributes)
+        self.assertNotIn("output", exported_semantic.attributes)
+        self.assertNotIn("lk.user_input", exported_semantic.attributes)
+        self.assertNotIn("lk.response.text", exported_semantic.attributes)
+
     def test_content_export_projects_conversation_onto_root_trace(self):
         delegate = CapturingExporter()
         exporter = ContentControlledSpanExporter(delegate, capture_content=True)
@@ -428,6 +468,43 @@ def private_job_entrypoint_span(*, context=None) -> FakeReadableSpan:
         attributes={
             "lk.job_id": "private-job",
             "lk.room_name": "private-room",
+        },
+        status=FakeStatus("unset"),
+    )
+
+
+def private_interviewer_semantic_span() -> FakeReadableSpan:
+    return FakeReadableSpan(
+        name="interviewer_semantic_event",
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes={
+            "meelni.interviewer.contract_version": (
+                "interviewer-observability.v1"
+            ),
+            "meelni.interviewer.event_kind": "tool",
+            "meelni.interviewer.runtime_correlation_id": "run:synthetic",
+            "meelni.interviewer.turn_correlation_id": "turn:synthetic",
+            "meelni.interviewer.runtime_version": "director-shadow.v1",
+            "meelni.interviewer.rollout_cohort": "shadow",
+            "meelni.interviewer.emitted_at": "2026-08-19T01:20:00.000Z",
+            "meelni.interviewer.tool_contract_version": "interviewer-tools.v1",
+            "meelni.interviewer.tool_name": "read_interview_state",
+            "meelni.interviewer.tool_outcome": "timeout",
+            "meelni.interviewer.latency_ms": 100,
+            "transcript": "synthetic candidate answer",
+            "tool_payload": "synthetic tool result",
+            "candidate_identity": "candidate@example.test",
+            "provider_identity": "provider-request-123",
+            "gen_ai.provider.name": "synthetic-provider",
+            "gen_ai.request.model": "synthetic-model",
+            "hidden_reasoning": "private plan",
+            "lk.user_input": "synthetic candidate answer",
+            "lk.response.text": "synthetic interviewer response",
         },
         status=FakeStatus("unset"),
     )
