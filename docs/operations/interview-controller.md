@@ -62,6 +62,17 @@ the session cap disables controller authority before accepting another
 identity and restores the existing interviewer path; replay history is not
 evicted while controller authority remains active.
 
+An accepted `speech_created` event returns an opaque per-instance completion
+acceptance captured by that event's done-callback closure. `speech_finished`
+must receive the exact same object before it removes any created/authorized
+record or mutates controller state and evidence correlations. Rejected duplicate
+events receive no acceptance; their callbacks remain controller no-ops even if
+they finish before the accepted original with the same handle ID. The original
+acceptance remains usable exactly once, while an evicted acceptance cannot
+address a missing or newer record. This guard is controller-local only: the
+generic interruption marker, observability, and settlement callbacks still run
+for rejected events.
+
 ## Flag and fallback
 
 The flag is `MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED`. Only the exact string

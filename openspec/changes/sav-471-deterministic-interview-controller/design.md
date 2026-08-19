@@ -43,6 +43,14 @@
    an old identity admissible again. At capacity, the adapter disables itself
    before accepting another identity and returns generation to the existing
    interviewer path.
+   Each accepted public speech creation also returns a non-serialized opaque
+   completion acceptance captured by that exact event callback. Completion
+   requires object-identity agreement with the created or authorized record
+   before any record removal, lifecycle transition, or evidence correlation. A
+   rejected duplicate gets no acceptance and cannot steal the accepted
+   original's completion even when callbacks run out of order. Generic runtime
+   interruption and settlement callback work remains independent of this
+   controller-local guard.
    Speech events then advance only lifecycle evidence. The move joins committed
    probe history only after a successful canonical transcript write positively
    correlated through the move, speech handle, assistant item, and event ID.

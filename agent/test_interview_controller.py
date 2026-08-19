@@ -49,7 +49,9 @@ from shared.transcript_ingest import (  # noqa: E402
     TranscriptIngestQueue,
     create_interruption_marker,
     create_runtime_settlement,
+    should_record_unconfirmed_interruption,
 )
+from shared.transcript_settlement import RuntimeSettlementEvidenceGate  # noqa: E402
 
 
 class InterviewControllerTests(unittest.TestCase):
@@ -916,11 +918,15 @@ class InterviewControllerTests(unittest.TestCase):
         move_id = directive.move_id
         self.assertEqual(adapter.state.move_ledger[-1].stage, "admitted")
 
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         self.assertEqual(adapter.state.move_ledger[-1].stage, "generated")
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1090,7 +1096,7 @@ class InterviewControllerTests(unittest.TestCase):
         adapter = self.make_adapter()
         gate = ReplySuppressionGate()
 
-        adapter.speech_created(
+        stale_acceptance = adapter.speech_created(
             handle_id="speech-stale",
             source="generate_reply",
             monotonic_ms=1_000,
@@ -1104,13 +1110,13 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         admitted = adapter.state
-        adapter.speech_created(
+        intended_acceptance = adapter.speech_created(
             handle_id="speech-intended",
             source="generate_reply",
             monotonic_ms=1_002,
         )
         intended_context = copy_context()
-        adapter.speech_created(
+        same_epoch_acceptance = adapter.speech_created(
             handle_id="speech-same-epoch",
             source="generate_reply",
             monotonic_ms=1_003,
@@ -1155,6 +1161,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(len(adapter._generation_capabilities), 1)
         adapter.speech_finished(
             handle_id="speech-same-epoch",
+            completion_acceptance=same_epoch_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1169,6 +1176,7 @@ class InterviewControllerTests(unittest.TestCase):
 
         adapter.speech_finished(
             handle_id="speech-stale",
+            completion_acceptance=stale_acceptance,
             scheduled=False,
             interrupted=True,
             has_confirmed_prefix=False,
@@ -1216,7 +1224,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         admitted = adapter.state
-        adapter.speech_created(
+        intended_acceptance = adapter.speech_created(
             handle_id="speech-intended",
             source="generate_reply",
             monotonic_ms=1_002,
@@ -1291,7 +1299,7 @@ class InterviewControllerTests(unittest.TestCase):
             MAX_SESSION_GENERATION_CAPABILITIES,
         )
 
-        adapter.speech_created(
+        intended_acceptance = adapter.speech_created(
             handle_id="speech-intended",
             source="generate_reply",
             monotonic_ms=1_002,
@@ -1340,7 +1348,7 @@ class InterviewControllerTests(unittest.TestCase):
         )
         self.assertEqual(len(adapter._generation_capabilities), 0)
 
-        adapter.speech_created(
+        stolen_acceptance = adapter.speech_created(
             handle_id="speech-stolen-capability",
             source="generate_reply",
             monotonic_ms=1_005,
@@ -1363,6 +1371,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertIs(adapter.state, generated)
         adapter.speech_finished(
             handle_id="speech-stolen-capability",
+            completion_acceptance=stolen_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1377,6 +1386,7 @@ class InterviewControllerTests(unittest.TestCase):
 
         adapter.speech_finished(
             handle_id="speech-intended",
+            completion_acceptance=intended_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1440,7 +1450,7 @@ class InterviewControllerTests(unittest.TestCase):
                 handle_id = f"speech-denied-{case['name']}"
                 assistant_id = f"assistant-denied-{case['name']}"
 
-                adapter.speech_created(
+                completion_acceptance = adapter.speech_created(
                     handle_id=handle_id,
                     source="generate_reply",
                     monotonic_ms=1_002,
@@ -1469,6 +1479,7 @@ class InterviewControllerTests(unittest.TestCase):
 
                 adapter.speech_finished(
                     handle_id=handle_id,
+                    completion_acceptance=completion_acceptance,
                     scheduled=case["scheduled"],
                     interrupted=case["interrupted"],
                     has_confirmed_prefix=case["has_confirmed_prefix"],
@@ -1511,6 +1522,293 @@ class InterviewControllerTests(unittest.TestCase):
                 self.assertEqual(adapter.state.pending_move_id, directive.move_id)
                 self.assertTrue(adapter.enabled)
 
+    def test_rejected_duplicate_completion_cannot_steal_original(self):
+        duplicate_cases = (
+            {
+                "name": "aborted",
+                "scheduled": False,
+                "interrupted": True,
+                "has_confirmed_prefix": False,
+            },
+            {
+                "name": "falsely_spoken",
+                "scheduled": True,
+                "interrupted": False,
+                "has_confirmed_prefix": True,
+            },
+        )
+
+        for case in duplicate_cases:
+            with self.subTest(case=case["name"]):
+                adapter = self.make_adapter()
+                directive = adapter.complete_user_turn(
+                    message_id="turn-finalized",
+                    transcript_revision="writer-1:turn-finalized",
+                    text="I would prioritize the highest-impact user need.",
+                    duration_ms=8_000,
+                    monotonic_ms=1_001,
+                )
+                original_acceptance = adapter.speech_created(
+                    handle_id="speech-reused",
+                    source="generate_reply",
+                    monotonic_ms=1_002,
+                )
+                original_context = copy_context()
+                self.assertTrue(
+                    original_context.run(
+                        lambda: allow_controller_generation(
+                            adapter,
+                            ReplySuppressionGate(),
+                            [
+                                SimpleNamespace(
+                                    role="user",
+                                    id="turn-finalized",
+                                ),
+                                SimpleNamespace(
+                                    role="system",
+                                    id=directive.generation_context_id,
+                                ),
+                            ],
+                            monotonic_ms=1_003,
+                        )
+                    )
+                )
+                generated = adapter.state
+
+                duplicate_acceptance = adapter.speech_created(
+                    handle_id="speech-reused",
+                    source="generate_reply",
+                    monotonic_ms=1_004,
+                )
+                self.assertIsNone(duplicate_acceptance)
+                adapter.speech_finished(
+                    handle_id="speech-reused",
+                    completion_acceptance=duplicate_acceptance,
+                    scheduled=case["scheduled"],
+                    interrupted=case["interrupted"],
+                    has_confirmed_prefix=case["has_confirmed_prefix"],
+                    assistant_message_ids=("assistant-duplicate",),
+                    monotonic_ms=1_005,
+                )
+                self.assertIs(adapter.state, generated)
+                self.assertIn(
+                    "speech-reused",
+                    adapter._authorized_speech_handles,
+                )
+                self.assertNotIn(
+                    "writer-1:assistant-duplicate",
+                    adapter._transcript_move_ids,
+                )
+                self.assertNotIn(
+                    "writer-1:speech-reused:unavailable",
+                    adapter._interruption_move_ids,
+                )
+
+                adapter.speech_finished(
+                    handle_id="speech-reused",
+                    completion_acceptance=original_acceptance,
+                    scheduled=True,
+                    interrupted=False,
+                    has_confirmed_prefix=True,
+                    assistant_message_ids=("assistant-original",),
+                    monotonic_ms=1_006,
+                )
+                self.assertEqual(adapter.state.move_ledger[-1].stage, "spoken")
+                self.assertNotIn(
+                    "writer-1:assistant-duplicate",
+                    adapter._transcript_move_ids,
+                )
+                adapter.persisted_transcript(
+                    {
+                        "speaker": "interviewer",
+                        "event_id": "writer-1:assistant-original",
+                        "writer_id": "writer-1",
+                        "writer_generation": 1,
+                        "sequence": 2,
+                        "delivery_state": "delivered",
+                    },
+                    monotonic_ms=1_007,
+                )
+                self.assertEqual(
+                    adapter.state.move_ledger[-1].stage,
+                    "canonically_delivered",
+                )
+
+    def test_original_completion_precedes_rejected_duplicate_state_stably(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        original_acceptance = adapter.speech_created(
+            handle_id="speech-reused",
+            source="generate_reply",
+            monotonic_ms=1_002,
+        )
+        original_context = copy_context()
+        self.assertTrue(
+            original_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    [
+                        SimpleNamespace(role="user", id="turn-finalized"),
+                        SimpleNamespace(
+                            role="system",
+                            id=directive.generation_context_id,
+                        ),
+                    ],
+                    monotonic_ms=1_003,
+                )
+            )
+        )
+        duplicate_acceptance = adapter.speech_created(
+            handle_id="speech-reused",
+            source="generate_reply",
+            monotonic_ms=1_004,
+        )
+        self.assertIsNone(duplicate_acceptance)
+
+        adapter.speech_finished(
+            handle_id="speech-reused",
+            completion_acceptance=original_acceptance,
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-original",),
+            monotonic_ms=1_005,
+        )
+        spoken = adapter.state
+        adapter.speech_finished(
+            handle_id="speech-reused",
+            completion_acceptance=duplicate_acceptance,
+            scheduled=False,
+            interrupted=True,
+            has_confirmed_prefix=False,
+            assistant_message_ids=("assistant-duplicate",),
+            monotonic_ms=1_006,
+        )
+        self.assertIs(adapter.state, spoken)
+        self.assertNotIn(
+            "writer-1:assistant-duplicate",
+            adapter._transcript_move_ids,
+        )
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-original",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 2,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_007,
+        )
+        delivered = adapter.state
+        adapter.speech_finished(
+            handle_id="speech-reused",
+            completion_acceptance=duplicate_acceptance,
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-duplicate",),
+            monotonic_ms=1_008,
+        )
+        self.assertIs(adapter.state, delivered)
+        self.assertEqual(
+            adapter.state.move_ledger[-1].delivery_evidence.event_id,
+            "writer-1:assistant-original",
+        )
+
+    def test_rejected_duplicate_keeps_generic_interruption_marker_path(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        settlement_gate = RuntimeSettlementEvidenceGate()
+        settlement_gate.track_speech("speech-reused")
+        original_acceptance = adapter.speech_created(
+            handle_id="speech-reused",
+            source="generate_reply",
+            monotonic_ms=1_002,
+        )
+        original_context = copy_context()
+        self.assertTrue(
+            original_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    [
+                        SimpleNamespace(role="user", id="turn-finalized"),
+                        SimpleNamespace(
+                            role="system",
+                            id=directive.generation_context_id,
+                        ),
+                    ],
+                    monotonic_ms=1_003,
+                )
+            )
+        )
+        generated = adapter.state
+
+        settlement_gate.track_speech("speech-reused")
+        duplicate_acceptance = adapter.speech_created(
+            handle_id="speech-reused",
+            source="generate_reply",
+            monotonic_ms=1_004,
+        )
+        marker_allowed, marker_occurred_at = (
+            settlement_gate.consume_speech_marker("speech-reused")
+        )
+        should_record_marker = should_record_unconfirmed_interruption(
+            scheduled=True,
+            interrupted=True,
+            has_confirmed_prefix=False,
+        )
+        adapter.speech_finished(
+            handle_id="speech-reused",
+            completion_acceptance=duplicate_acceptance,
+            scheduled=True,
+            interrupted=True,
+            has_confirmed_prefix=False,
+            monotonic_ms=1_005,
+        )
+        queued_markers = []
+        if marker_allowed and should_record_marker:
+            queued_markers.append(
+                (
+                    "writer-1:speech-reused:unavailable",
+                    marker_occurred_at,
+                )
+            )
+        self.assertEqual(
+            queued_markers,
+            [("writer-1:speech-reused:unavailable", None)],
+        )
+        self.assertIs(adapter.state, generated)
+        self.assertNotIn(
+            "writer-1:speech-reused:unavailable",
+            adapter._interruption_move_ids,
+        )
+
+        adapter.speech_finished(
+            handle_id="speech-reused",
+            completion_acceptance=original_acceptance,
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-original",),
+            monotonic_ms=1_006,
+        )
+        self.assertEqual(adapter.state.move_ledger[-1].stage, "spoken")
+
     def test_replayed_handle_cannot_consume_authorized_handle_evidence(self):
         adapter = self.make_adapter()
         directive = adapter.complete_user_turn(
@@ -1528,7 +1826,7 @@ class InterviewControllerTests(unittest.TestCase):
             ),
         ]
 
-        adapter.speech_created(
+        intended_acceptance = adapter.speech_created(
             handle_id="speech-intended",
             source="generate_reply",
             monotonic_ms=1_002,
@@ -1546,7 +1844,7 @@ class InterviewControllerTests(unittest.TestCase):
         )
         generated = adapter.state
 
-        adapter.speech_created(
+        replay_acceptance = adapter.speech_created(
             handle_id="speech-replay",
             source="generate_reply",
             monotonic_ms=1_004,
@@ -1564,6 +1862,7 @@ class InterviewControllerTests(unittest.TestCase):
         )
         adapter.speech_finished(
             handle_id="speech-replay",
+            completion_acceptance=replay_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1578,6 +1877,7 @@ class InterviewControllerTests(unittest.TestCase):
 
         adapter.speech_finished(
             handle_id="speech-intended",
+            completion_acceptance=intended_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1612,9 +1912,10 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         admitted = adapter.state
+        completion_acceptances = {}
 
         for index in range(MAX_PENDING_CORRELATIONS + 3):
-            adapter.speech_created(
+            completion_acceptances[index] = adapter.speech_created(
                 handle_id=f"speech-{index}",
                 source="generate_reply",
                 monotonic_ms=1_002 + index,
@@ -1623,7 +1924,7 @@ class InterviewControllerTests(unittest.TestCase):
             len(adapter._created_speech_handles),
             MAX_PENDING_CORRELATIONS,
         )
-        self.assertEqual(len(adapter._speech_move_ids), 0)
+        self.assertEqual(len(adapter._authorized_speech_handles), 0)
         self.assertEqual(
             tuple(adapter._created_speech_handles),
             tuple(
@@ -1635,6 +1936,7 @@ class InterviewControllerTests(unittest.TestCase):
         for index in range(MAX_PENDING_CORRELATIONS + 3):
             adapter.speech_finished(
                 handle_id=f"speech-{index}",
+                completion_acceptance=completion_acceptances[index],
                 scheduled=bool(index % 2),
                 interrupted=not bool(index % 2),
                 has_confirmed_prefix=bool(index % 2),
@@ -1643,7 +1945,7 @@ class InterviewControllerTests(unittest.TestCase):
             )
         self.assertIs(adapter.state, admitted)
         self.assertEqual(len(adapter._created_speech_handles), 0)
-        self.assertEqual(len(adapter._speech_move_ids), 0)
+        self.assertEqual(len(adapter._authorized_speech_handles), 0)
         self.assertLessEqual(
             len(adapter._retired_speech_handles),
             MAX_PENDING_CORRELATIONS,
@@ -1673,13 +1975,17 @@ class InterviewControllerTests(unittest.TestCase):
 
     def test_evicted_speech_identity_cannot_replay_through_delivery(self):
         adapter = self.make_adapter()
-        for index in range(MAX_PENDING_CORRELATIONS + 1):
-            adapter.speech_created(
+        evicted_acceptance = None
+        for index in range((MAX_PENDING_CORRELATIONS * 2) + 1):
+            completion_acceptance = adapter.speech_created(
                 handle_id=f"speech-{index}",
                 source="generate_reply",
                 monotonic_ms=1_000 + index,
             )
+            if index == 0:
+                evicted_acceptance = completion_acceptance
         self.assertNotIn("speech-0", adapter._created_speech_handles)
+        self.assertNotIn("speech-0", adapter._retired_speech_handles)
         self.assertIn("speech-0", adapter._seen_speech_handles)
 
         directive = adapter.complete_user_turn(
@@ -1692,11 +1998,12 @@ class InterviewControllerTests(unittest.TestCase):
         admitted = adapter.state
         context_id = directive.generation_context_id
 
-        adapter.speech_created(
+        replay_acceptance = adapter.speech_created(
             handle_id="speech-0",
             source="generate_reply",
             monotonic_ms=1_011,
         )
+        self.assertIsNone(replay_acceptance)
         replay_context = copy_context()
         self.assertFalse(
             replay_context.run(
@@ -1713,10 +2020,20 @@ class InterviewControllerTests(unittest.TestCase):
         )
         adapter.speech_finished(
             handle_id="speech-0",
+            completion_acceptance=replay_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
             assistant_message_ids=("assistant-replay",),
+            monotonic_ms=1_013,
+        )
+        adapter.speech_finished(
+            handle_id="speech-0",
+            completion_acceptance=evicted_acceptance,
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-evicted-token",),
             monotonic_ms=1_013,
         )
         adapter.persisted_transcript(
@@ -1732,8 +2049,12 @@ class InterviewControllerTests(unittest.TestCase):
         )
         self.assertIs(adapter.state, admitted)
         self.assertNotIn("writer-1:assistant-replay", adapter._transcript_move_ids)
+        self.assertNotIn(
+            "writer-1:assistant-evicted-token",
+            adapter._transcript_move_ids,
+        )
 
-        adapter.speech_created(
+        intended_acceptance = adapter.speech_created(
             handle_id="speech-intended",
             source="generate_reply",
             monotonic_ms=1_015,
@@ -1751,6 +2072,7 @@ class InterviewControllerTests(unittest.TestCase):
         )
         adapter.speech_finished(
             handle_id="speech-intended",
+            completion_acceptance=intended_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -1890,7 +2212,10 @@ class InterviewControllerTests(unittest.TestCase):
             duration_ms=1_000,
             monotonic_ms=1_001,
         )
-        adapter.speech_created(handle_id="speech-close", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-close",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(
             allow_controller_generation(
                 adapter,
@@ -1907,6 +2232,7 @@ class InterviewControllerTests(unittest.TestCase):
         )
         adapter.speech_finished(
             handle_id="speech-close",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -2009,10 +2335,14 @@ class InterviewControllerTests(unittest.TestCase):
             duration_ms=8_000,
             monotonic_ms=1_001,
         )
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -2045,10 +2375,14 @@ class InterviewControllerTests(unittest.TestCase):
             duration_ms=8_000,
             monotonic_ms=1_001,
         )
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=True,
             has_confirmed_prefix=False,
@@ -2095,10 +2429,14 @@ class InterviewControllerTests(unittest.TestCase):
         )
         self.assertEqual(adapter.state.move_ledger[-1].move_type, "close")
         self.assertFalse(directive.suppress_reply)
-        adapter.speech_created(handle_id="speech-close", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-close",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-close",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -2167,10 +2505,14 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.move_ledger[-1].stage, "admitted")
         self.assertEqual(adapter.state.pending_move_id, directive.move_id)
 
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_003)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_003,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_003))
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -2200,10 +2542,14 @@ class InterviewControllerTests(unittest.TestCase):
             duration_ms=8_000,
             monotonic_ms=1_001,
         )
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=False,
             has_confirmed_prefix=True,
@@ -2266,10 +2612,14 @@ class InterviewControllerTests(unittest.TestCase):
             duration_ms=8_000,
             monotonic_ms=1_001,
         )
-        adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        completion_acceptance = adapter.speech_created(
+            handle_id="speech-1",
+            monotonic_ms=1_002,
+        )
         self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
+            completion_acceptance=completion_acceptance,
             scheduled=True,
             interrupted=True,
             has_confirmed_prefix=False,

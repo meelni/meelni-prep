@@ -240,6 +240,17 @@ even if handed the exact new chat context. Denied or replayed authorization is
 state-stable, and denied, evicted, duplicate, and replayed handles remain
 operational no-ops.
 
+Every accepted public speech creation also receives an opaque, identity-only
+completion acceptance that is captured by that event instance's done callback.
+Controller completion must present that exact object before it can remove a
+created or authorized correlation, advance lifecycle, or correlate transcript
+or interruption evidence. A duplicate creation with a reused handle ID receives
+no acceptance, so its callback cannot consume or impersonate the still-live
+original even when the duplicate callback runs first. The acceptance is
+bounded with the in-flight record, never serialized, and cannot readdress an
+evicted record. Generic runtime interruption and settlement processing remains
+outside this controller check and still runs for every public done callback.
+
 The nonce exists only in the temporary controller system-message ID. Pinned
 LiveKit serializes that temporary context to the pre-node `ATTR_CHAT_CTX` SDK
 trace before invoking `llm_node`; the nonce may therefore appear in that trace.

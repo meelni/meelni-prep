@@ -67,6 +67,21 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 - **AND** a denied shallow context copy cannot mutate or strip the intended
   pipeline's shared controller item
 
+#### Scenario: A duplicate speech instance completes under a live handle ID
+
+- **WHEN** a duplicate public speech event reuses the handle ID of an accepted
+  created or authorized instance
+- **THEN** the duplicate receives no controller completion acceptance
+- **AND** its callback cannot remove the original correlation, change move
+  lifecycle, or add transcript/interruption evidence, regardless of callback
+  order or claimed scheduled/interrupted state
+- **AND** the accepted original may still complete once and become canonically
+  delivered through its own authoritative transcript event
+- **AND** generic runtime interruption and settlement callback behavior still
+  runs for the rejected duplicate
+- **AND** an evicted completion acceptance cannot readdress a missing or newer
+  in-flight record
+
 #### Scenario: A retired speech identity is reused or capacity is exhausted
 
 - **WHEN** a speech-handle identity reappears after any in-flight eviction
