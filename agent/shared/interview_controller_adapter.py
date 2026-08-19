@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import time
@@ -13,15 +14,20 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Mapping
 
 from shared.interview_controller import (
+    CandidateTurnPrepared,
     CandidateTurnCompleted,
     ClockObserved,
     ControllerError,
     ControllerState,
     DeliveryEvidence,
+    InterviewerMoveAdmitted,
+    LifecycleSnapshotRefreshed,
     MoveStageAdvanced,
     PersistedTranscriptEvidence,
     SpeechInterrupted,
     create_controller_state,
+    list_probe_candidates,
+    project_controller_state,
     reduce_controller,
 )
 from shared.session_deadline import parse_deadline_at, serialize_deadline_at
@@ -35,6 +41,8 @@ MAX_EXIT_INTENT_WORDS = 12
 MAX_RUNTIME_TRANSCRIPT_CORRELATIONS = 1_000
 MAX_SESSION_SPEECH_IDENTITIES = 1_000
 MAX_SESSION_GENERATION_CAPABILITIES = 1_000
+MAX_TOOL_CALLS_PER_TURN = 3
+MAX_SAME_HANDLE_CONTINUATIONS = 3
 
 _GENERATION_CAPABILITY_SEPARATOR = ":capability:"
 _GENERATION_CAPABILITY_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
@@ -80,6 +88,7 @@ class TurnDirective:
     suppress_reply: bool
     move_id: str | None
     generation_context_id: str | None
+    tool_mode: bool = False
 
 
 @dataclass(frozen=True)
@@ -103,7 +112,12 @@ class CreatedSpeechHandleRecord:
 
 @dataclass(frozen=True)
 class AuthorizedSpeechHandleRecord:
-    move_id: str
+    finalized_turn_id: str
+    move_id: str | None
+    tool_mode: bool
+    generation_started: bool
+    continuation_steps: int
+    fallback_generation_granted: bool
     completion_acceptance: SpeechCompletionAcceptance
 
 
@@ -201,6 +215,11 @@ class InterviewControllerAdapter:
         self._interruption_move_ids: dict[str, str] = {}
         self._persisted_interviewer_events: dict[str, Mapping[str, object]] = {}
         self._admitted_candidate_revisions: dict[str, str] = {}
+        self._active_tool_handles: set[str] = set()
+        self._tool_calls_by_handle: dict[str, int] = {}
+        self._tool_names_by_handle: dict[str, set[str]] = {}
+        self._tool_budget_exhausted_handles: set[str] = set()
+        self._tool_fallback_pending_handles: set[str] = set()
 
     @property
     def enabled(self) -> bool:
@@ -274,6 +293,102 @@ class InterviewControllerAdapter:
                 suppress_reply=False,
                 move_id=move_id,
                 generation_context_id=generation_context_id,
+            )
+        except Exception as error:
+            self._disable(error)
+            return None
+
+    def prepare_user_turn_for_tools(
+        self,
+        *,
+        message_id: str,
+        transcript_revision: str,
+        text: str,
+        duration_ms: int,
+        monotonic_ms: int | None = None,
+    ) -> TurnDirective | None:
+        """Finalize one turn while leaving intent admission to bounded tools."""
+        state = self._state
+        if not self.enabled or state is None:
+            return None
+        current_ms = _monotonic_ms(monotonic_ms)
+        try:
+            projected = project_controller_state(state, monotonic_ms=current_ms)
+            if _requests_exit(text) or projected.clock.band in ("closing", "elapsed"):
+                return self.complete_user_turn(
+                    message_id=message_id,
+                    transcript_revision=transcript_revision,
+                    text=text,
+                    duration_ms=duration_ms,
+                    monotonic_ms=current_ms,
+                )
+            expected_revision = f"{state.writer_id}:{message_id}"
+            if transcript_revision != expected_revision:
+                raise ControllerError("candidate_revision_mismatch")
+            transition = reduce_controller(
+                state,
+                CandidateTurnPrepared(
+                    expected_state_revision=state.state_revision,
+                    turn_id=message_id,
+                    transcript_revision=transcript_revision,
+                    text=text,
+                    duration_ms=duration_ms,
+                    monotonic_ms=current_ms,
+                ),
+            )
+            self._state = transition.state
+            self._bounded_put(
+                self._admitted_candidate_revisions,
+                message_id,
+                transcript_revision,
+            )
+            if transition.state.terminal:
+                return TurnDirective(
+                    contract_version=CONTROLLER_ADAPTER_CONTRACT_VERSION,
+                    instruction=None,
+                    suppress_reply=True,
+                    move_id=None,
+                    generation_context_id=None,
+                    tool_mode=True,
+                )
+            authority_id = f"tool-turn:{message_id}"
+            generation_context_id = self._mint_generation_context_id(
+                finalized_turn_id=message_id,
+                move_id=authority_id,
+            )
+            instruction = " ".join(
+                (
+                    "INTERVIEWER_TOOLS",
+                    json.dumps(
+                        {
+                            "active_question_id": (
+                                transition.state.active_question_id
+                            ),
+                            "contract_version": "interviewer-tools.v1",
+                            "lifecycle_version": (
+                                transition.state.lifecycle_version
+                            ),
+                            "state_revision": transition.state.state_revision,
+                            "tool_call_budget": MAX_TOOL_CALLS_PER_TURN,
+                        },
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    "Before a substantive interviewer reply, commit exactly one",
+                    "legal move. Read state/clock or get probe candidates only",
+                    "when needed. Never repeat a tool. After any tool failure,",
+                    "make one natural prompt-led reply without another tool call.",
+                    "Never reveal internal state or reasoning.",
+                )
+            )
+            return TurnDirective(
+                contract_version=CONTROLLER_ADAPTER_CONTRACT_VERSION,
+                instruction=instruction,
+                suppress_reply=False,
+                move_id=None,
+                generation_context_id=generation_context_id,
+                tool_mode=True,
             )
         except Exception as error:
             self._disable(error)
@@ -353,10 +468,16 @@ class InterviewControllerAdapter:
         if not self.enabled or state is None:
             return True
         handle_id = self._current_generation_handle.get()
+        authorized_handle = self._authorized_speech_handles.get(handle_id)
+        if isinstance(handle_id, str) and authorized_handle is not None:
+            return self._authorize_same_handle_continuation(
+                handle_id=handle_id,
+                record=authorized_handle,
+                monotonic_ms=monotonic_ms,
+            )
         created_handle = self._created_speech_handles.get(handle_id)
         if (
             not isinstance(handle_id, str)
-            or handle_id in self._authorized_speech_handles
             or created_handle is None
         ):
             return False
@@ -382,6 +503,37 @@ class InterviewControllerAdapter:
         self._created_speech_handles.pop(handle_id, None)
         self._generation_capabilities.pop(generation_capability, None)
         try:
+            if move_id.startswith("tool-turn:"):
+                if (
+                    state.terminal
+                    or state.speech_fenced
+                    or state.lifecycle_state != "active"
+                    or state.pending_move_id is not None
+                    or state.last_finalized_candidate_turn_id != finalized_turn_id
+                    or move_id != f"tool-turn:{finalized_turn_id}"
+                ):
+                    self._retire_speech_handle(handle_id)
+                    return False
+                projected = project_controller_state(
+                    state,
+                    monotonic_ms=_monotonic_ms(monotonic_ms),
+                )
+                if projected.terminal or projected.speech_fenced:
+                    self._retire_speech_handle(handle_id)
+                    return False
+                self._authorize_speech_handle(
+                    handle_id=handle_id,
+                    record=AuthorizedSpeechHandleRecord(
+                        finalized_turn_id=finalized_turn_id,
+                        move_id=None,
+                        tool_mode=True,
+                        generation_started=False,
+                        continuation_steps=0,
+                        fallback_generation_granted=False,
+                        completion_acceptance=created_handle.completion_acceptance,
+                    ),
+                )
+                return True
             if state.terminal or state.pending_move_id != move_id:
                 self._retire_speech_handle(handle_id)
                 return False
@@ -413,19 +565,20 @@ class InterviewControllerAdapter:
                     monotonic_ms=current_ms,
                 ),
             ).state
-            evicted = put_bounded_correlation(
-                self._authorized_speech_handles,
-                handle_id,
-                AuthorizedSpeechHandleRecord(
+            self._authorize_speech_handle(
+                handle_id=handle_id,
+                record=AuthorizedSpeechHandleRecord(
+                    finalized_turn_id=finalized_turn_id,
                     move_id=move_id,
+                    tool_mode=False,
+                    generation_started=True,
+                    continuation_steps=0,
+                    fallback_generation_granted=False,
                     completion_acceptance=(
                         created_handle.completion_acceptance
                     ),
                 ),
-                limit=MAX_PENDING_CORRELATIONS,
             )
-            for evicted_handle_id in evicted:
-                self._retire_speech_handle(evicted_handle_id)
             return True
         except Exception as error:
             self._retire_speech_handle(handle_id)
@@ -470,6 +623,8 @@ class InterviewControllerAdapter:
         if not self.enabled or state is None or authorized_handle is None:
             return
         move_id = authorized_handle.move_id
+        if move_id is None:
+            return
         try:
             move = _find_move(state, move_id)
             if move.stage in ("aborted", "interrupted", "canonically_delivered"):
@@ -675,6 +830,411 @@ class InterviewControllerAdapter:
                 )
                 return
 
+    def apply_tool_move(
+        self,
+        *,
+        move_id: str,
+        move_type: str,
+        reason_code: str,
+        question_id: str,
+        topic: str,
+        source_turn_id: str,
+        probe_candidate_id: str | None,
+        expected_state_revision: int,
+        monotonic_ms: int,
+        handle_id: str | None = None,
+    ) -> ControllerState:
+        state = self._state
+        if not self.enabled or state is None:
+            raise ControllerError("adapter_unavailable")
+        if handle_id is not None:
+            record = self._authorized_speech_handles.get(handle_id)
+            if (
+                record is None
+                or record.move_id is not None
+                or self._current_generation_handle.get() != handle_id
+            ):
+                raise ControllerError("tool_handle_mismatch")
+        transition = reduce_controller(
+            state,
+            InterviewerMoveAdmitted(
+                expected_state_revision=expected_state_revision,
+                move_id=move_id,
+                move_type=move_type,
+                reason_code=reason_code,
+                question_id=question_id,
+                topic=topic,
+                source_turn_id=source_turn_id,
+                probe_candidate_id=probe_candidate_id,
+                monotonic_ms=monotonic_ms,
+            ),
+        )
+        self._state = transition.state
+        if handle_id is not None:
+            self.bind_tool_move(handle_id=handle_id, move_id=move_id)
+        return transition.state
+
+    def refresh_lifecycle_snapshot(
+        self,
+        *,
+        lifecycle_state: str,
+        lifecycle_version: int,
+        monotonic_ms: int,
+    ) -> ControllerState:
+        state = self._state
+        if not self.enabled or state is None:
+            raise ControllerError("adapter_unavailable")
+        self._state = reduce_controller(
+            state,
+            LifecycleSnapshotRefreshed(
+                expected_state_revision=state.state_revision,
+                lifecycle_state=lifecycle_state,
+                lifecycle_version=lifecycle_version,
+                monotonic_ms=monotonic_ms,
+            ),
+        ).state
+        return self._state
+
+    def invalidate_lifecycle_authority(self) -> None:
+        """Fail closed without affecting the existing speech fallback path."""
+        if self.enabled:
+            self._disable(ControllerError("lifecycle_refresh_unavailable"))
+
+    def begin_tool_call(self, *, handle_id: str, tool_name: str) -> str:
+        if tool_name not in (
+            "read_interview_state",
+            "read_interview_clock",
+            "get_probe_candidates",
+            "commit_interviewer_move",
+            "request_graceful_close",
+        ):
+            return "invalid_request"
+        record = self._authorized_speech_handles.get(handle_id)
+        if (
+            not self.enabled
+            or record is None
+            or self._current_generation_handle.get() != handle_id
+        ):
+            return "unavailable"
+        if record.move_id is not None:
+            return "unavailable"
+        if handle_id in self._tool_fallback_pending_handles:
+            return "unavailable"
+        if handle_id in self._active_tool_handles:
+            return "invalid_request"
+        calls = self._tool_calls_by_handle.get(handle_id, 0)
+        names = self._tool_names_by_handle.setdefault(handle_id, set())
+        if calls >= MAX_TOOL_CALLS_PER_TURN or tool_name in names:
+            self._tool_budget_exhausted_handles.add(handle_id)
+            return "unavailable"
+        self._active_tool_handles.add(handle_id)
+        self._tool_calls_by_handle[handle_id] = calls + 1
+        names.add(tool_name)
+        return "eligible"
+
+    def end_tool_call(self, *, handle_id: str) -> None:
+        self._active_tool_handles.discard(handle_id)
+
+    def bind_tool_move(self, *, handle_id: str, move_id: str) -> None:
+        record = self._authorized_speech_handles.get(handle_id)
+        state = self._state
+        if (
+            record is None
+            or record.move_id is not None
+            or state is None
+            or state.pending_move_id != move_id
+            or self._current_generation_handle.get() != handle_id
+        ):
+            raise ControllerError("tool_handle_mismatch")
+        self._authorized_speech_handles[handle_id] = AuthorizedSpeechHandleRecord(
+            finalized_turn_id=record.finalized_turn_id,
+            move_id=move_id,
+            tool_mode=record.tool_mode,
+            generation_started=False,
+            continuation_steps=record.continuation_steps,
+            fallback_generation_granted=record.fallback_generation_granted,
+            completion_acceptance=record.completion_acceptance,
+        )
+
+    def request_tool_fallback(
+        self,
+        *,
+        handle_id: str,
+        monotonic_ms: int | None = None,
+    ) -> bool:
+        """Fence tools now and defer fallback admission to generation."""
+        state = self._state
+        record = self._authorized_speech_handles.get(handle_id)
+        if (
+            not self.enabled
+            or state is None
+            or record is None
+            or not record.tool_mode
+            or record.move_id is not None
+            or record.fallback_generation_granted
+            or self._current_generation_handle.get() != handle_id
+        ):
+            return False
+        try:
+            projected = project_controller_state(
+                state,
+                monotonic_ms=_monotonic_ms(monotonic_ms),
+            )
+        except ControllerError:
+            return False
+        if (
+            projected.terminal
+            or projected.speech_fenced
+            or projected.lifecycle_state != "active"
+            or projected.pending_move_id is not None
+            or projected.last_finalized_candidate_turn_id
+            != record.finalized_turn_id
+        ):
+            return False
+        self._tool_fallback_pending_handles.add(handle_id)
+        return True
+
+    def admit_tool_fallback_move(
+        self,
+        *,
+        handle_id: str,
+        monotonic_ms: int | None = None,
+    ) -> bool:
+        """Bind one deterministic controller fallback to an active tool handle."""
+        state = self._state
+        record = self._authorized_speech_handles.get(handle_id)
+        if (
+            not self.enabled
+            or state is None
+            or record is None
+            or not record.tool_mode
+            or record.move_id is not None
+            or handle_id not in self._tool_fallback_pending_handles
+            or self._current_generation_handle.get() != handle_id
+        ):
+            return False
+        try:
+            current_ms = _monotonic_ms(monotonic_ms)
+            projected = project_controller_state(state, monotonic_ms=current_ms)
+        except ControllerError:
+            return False
+        if (
+            projected.terminal
+            or projected.speech_fenced
+            or projected.lifecycle_state != "active"
+            or projected.pending_move_id is not None
+            or projected.last_finalized_candidate_turn_id
+            != record.finalized_turn_id
+        ):
+            return False
+
+        candidates = list_probe_candidates(projected)
+        if projected.clock.band == "closing" and "close" in projected.allowed_moves:
+            move_type = "close"
+            topic = projected.current_topic
+            probe_candidate_id = None
+        elif candidates:
+            candidate = candidates[0]
+            move_type = candidate["move_type"]
+            topic = candidate["topic"]
+            probe_candidate_id = candidate["probe_candidate_id"]
+        elif "transition" in projected.allowed_moves:
+            move_type = "transition"
+            topic = projected.topic_catalog[
+                min(projected.topic_index + 1, len(projected.topic_catalog) - 1)
+            ]
+            probe_candidate_id = None
+        elif "close" in projected.allowed_moves:
+            move_type = "close"
+            topic = projected.current_topic
+            probe_candidate_id = None
+        else:
+            return False
+
+        move_id = f"move:{projected.session_id}:{projected.move_ordinal + 1}"
+        try:
+            transition = reduce_controller(
+                state,
+                InterviewerMoveAdmitted(
+                    expected_state_revision=state.state_revision,
+                    move_id=move_id,
+                    move_type=move_type,
+                    reason_code="controller_fallback",
+                    question_id=projected.active_question_id,
+                    topic=topic,
+                    source_turn_id=record.finalized_turn_id,
+                    probe_candidate_id=probe_candidate_id,
+                    monotonic_ms=current_ms,
+                ),
+            )
+        except ControllerError:
+            return False
+        self._state = transition.state
+        self._authorized_speech_handles[handle_id] = AuthorizedSpeechHandleRecord(
+            finalized_turn_id=record.finalized_turn_id,
+            move_id=move_id,
+            tool_mode=record.tool_mode,
+            generation_started=False,
+            continuation_steps=record.continuation_steps,
+            fallback_generation_granted=record.fallback_generation_granted,
+            completion_acceptance=record.completion_acceptance,
+        )
+        return True
+
+    def tools_fenced_for_current_handle(self) -> bool:
+        handle_id = self._current_generation_handle.get()
+        record = self._authorized_speech_handles.get(handle_id)
+        return bool(
+            isinstance(handle_id, str)
+            and (
+                handle_id in self._tool_budget_exhausted_handles
+                or handle_id in self._tool_fallback_pending_handles
+                or (record is not None and record.move_id is not None)
+            )
+        )
+
+    def current_tool_fallback_instruction(self) -> str | None:
+        """Describe only the controller-selected fallback for this handle."""
+        state = self._state
+        handle_id = self._current_generation_handle.get()
+        record = self._authorized_speech_handles.get(handle_id)
+        if (
+            not self.enabled
+            or state is None
+            or record is None
+            or record.move_id is None
+            or state.pending_move_id != record.move_id
+        ):
+            return None
+        move = _find_move(state, record.move_id)
+        if move.reason_code != "controller_fallback":
+            return None
+        return " ".join(
+            (
+                "CONTROLLER_FALLBACK",
+                json.dumps(
+                    {
+                        "contract_version": CONTROLLER_ADAPTER_CONTRACT_VERSION,
+                        "move_type": move.move_type,
+                        "question_id": move.question_id,
+                        "topic": move.topic,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                "Make exactly one natural interviewer reply matching this move.",
+                "Do not call another tool or reveal internal state or reasoning.",
+            )
+        )
+
+    def _authorize_speech_handle(
+        self,
+        *,
+        handle_id: str,
+        record: AuthorizedSpeechHandleRecord,
+    ) -> None:
+        evicted = put_bounded_correlation(
+            self._authorized_speech_handles,
+            handle_id,
+            record,
+            limit=MAX_PENDING_CORRELATIONS,
+        )
+        for evicted_handle_id in evicted:
+            self._retire_speech_handle(evicted_handle_id)
+
+    def _authorize_same_handle_continuation(
+        self,
+        *,
+        handle_id: str,
+        record: AuthorizedSpeechHandleRecord,
+        monotonic_ms: int | None,
+    ) -> bool:
+        state = self._state
+        if state is None:
+            return True
+        if not record.tool_mode:
+            return False
+        current_ms = _monotonic_ms(monotonic_ms)
+        projected = project_controller_state(state, monotonic_ms=current_ms)
+        if (
+            projected.terminal
+            or projected.speech_fenced
+            or projected.lifecycle_state != "active"
+        ):
+            return False
+        next_step = record.continuation_steps + 1
+        fallback_pending = handle_id in self._tool_fallback_pending_handles
+        if next_step > MAX_SAME_HANDLE_CONTINUATIONS:
+            self._tool_budget_exhausted_handles.add(handle_id)
+            if record.fallback_generation_granted:
+                return False
+            self._tool_fallback_pending_handles.add(handle_id)
+            fallback_pending = True
+        if fallback_pending:
+            if not self.admit_tool_fallback_move(
+                handle_id=handle_id,
+                monotonic_ms=current_ms,
+            ):
+                return False
+            self._tool_fallback_pending_handles.discard(handle_id)
+            state = self._state
+            if state is None:
+                return False
+            record = self._authorized_speech_handles[handle_id]
+            record = AuthorizedSpeechHandleRecord(
+                finalized_turn_id=record.finalized_turn_id,
+                move_id=record.move_id,
+                tool_mode=record.tool_mode,
+                generation_started=record.generation_started,
+                continuation_steps=record.continuation_steps,
+                fallback_generation_granted=False,
+                completion_acceptance=record.completion_acceptance,
+            )
+            self._authorized_speech_handles[handle_id] = record
+            if next_step > MAX_SAME_HANDLE_CONTINUATIONS:
+                next_step = record.continuation_steps
+        move_id = record.move_id
+        generation_started = record.generation_started
+        is_fallback_move = False
+        if move_id is not None:
+            if state.pending_move_id != move_id:
+                return False
+            move = _find_move(state, move_id)
+            is_fallback_move = move.reason_code == "controller_fallback"
+            if (
+                is_fallback_move
+                and record.fallback_generation_granted
+            ):
+                return False
+            if not generation_started:
+                if move.stage != "admitted":
+                    return False
+                self._state = reduce_controller(
+                    state,
+                    MoveStageAdvanced(
+                        expected_state_revision=state.state_revision,
+                        move_id=move_id,
+                        stage="generated",
+                        monotonic_ms=current_ms,
+                    ),
+                ).state
+                generation_started = True
+            elif move.stage not in ("generated", "scheduled", "spoken"):
+                return False
+        self._authorized_speech_handles[handle_id] = AuthorizedSpeechHandleRecord(
+            finalized_turn_id=record.finalized_turn_id,
+            move_id=move_id,
+            tool_mode=record.tool_mode,
+            generation_started=generation_started,
+            continuation_steps=next_step,
+            fallback_generation_granted=(
+                record.fallback_generation_granted or is_fallback_move
+            ),
+            completion_acceptance=record.completion_acceptance,
+        )
+        return True
+
     @staticmethod
     def _bounded_put(target: dict, key: str, value: object) -> None:
         put_bounded_correlation(
@@ -693,6 +1253,11 @@ class InterviewControllerAdapter:
             None,
             limit=MAX_PENDING_CORRELATIONS,
         )
+        self._active_tool_handles.discard(handle_id)
+        self._tool_calls_by_handle.pop(handle_id, None)
+        self._tool_names_by_handle.pop(handle_id, None)
+        self._tool_budget_exhausted_handles.discard(handle_id)
+        self._tool_fallback_pending_handles.discard(handle_id)
 
     def _mint_generation_context_id(
         self,
@@ -743,6 +1308,11 @@ class InterviewControllerAdapter:
         self._interruption_move_ids.clear()
         self._persisted_interviewer_events.clear()
         self._admitted_candidate_revisions.clear()
+        self._active_tool_handles.clear()
+        self._tool_calls_by_handle.clear()
+        self._tool_names_by_handle.clear()
+        self._tool_budget_exhausted_handles.clear()
+        self._tool_fallback_pending_handles.clear()
         self._failure_reason = (
             error.code if isinstance(error, ControllerError) else "adapter_failure"
         )
@@ -940,7 +1510,10 @@ def _redact_generation_capability(items: object) -> None:
 def _parse_generation_context_id(
     item_id: str,
 ) -> tuple[str | None, str | None]:
-    if not item_id.startswith("controller:move:"):
+    if not (
+        item_id.startswith("controller:move:")
+        or item_id.startswith("controller:tool-turn:")
+    ):
         return None, None
     body = item_id.removeprefix("controller:")
     if _GENERATION_CAPABILITY_SEPARATOR not in body:

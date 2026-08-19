@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createDrizzleTranscriptIngestStore,
+  createDrizzleInterviewRuntimeLifecycleStore,
   createDrizzleTranscriptInterruptionMarkerStore,
   createDrizzleTranscriptRuntimeSettlementStore,
   createDrizzleTranscriptRuntimeWriterStore,
@@ -14,6 +15,10 @@ import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-trans
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
+import {
+  readInterviewRuntimeLifecycle,
+  TRUSTED_LIFECYCLE_SNAPSHOT_CONTRACT_VERSION,
+} from "@/lib/workflows/read-interview-runtime-lifecycle";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
 import {
@@ -33,6 +38,7 @@ const RuntimeTranscriptRequestSchema = z
     settlement: z.unknown().optional(),
     runtimeEvent: z.unknown().optional(),
     writerRegistration: z.unknown().optional(),
+    runtimeLifecycleRead: z.unknown().optional(),
     settlementCommandPull: z.unknown().optional(),
     settlementCommandAck: z.unknown().optional(),
   })
@@ -44,6 +50,7 @@ const RuntimeTranscriptRequestSchema = z
         body.settlement,
         body.runtimeEvent,
         body.writerRegistration,
+        body.runtimeLifecycleRead,
         body.settlementCommandPull,
         body.settlementCommandAck,
       ].filter((value) => value !== undefined).length === 1,
@@ -107,6 +114,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (parsed.data.runtimeLifecycleRead !== undefined) {
+      const result = await readInterviewRuntimeLifecycle({
+        requestSessionId: parsed.data.sessionId,
+        request: parsed.data.runtimeLifecycleRead,
+        store: createDrizzleInterviewRuntimeLifecycleStore(),
+      });
+      if (result.ok) {
+        return response(
+          {
+            success: true,
+            kind: "runtime_lifecycle_snapshot",
+            lifecycle_snapshot: result.snapshot,
+          },
+          200
+        );
+      }
+      if (result.reason === "not_found") {
+        return response({ error: "runtime_transcript_session_not_found" }, 404);
+      }
+      if (
+        result.reason === "room_mismatch" ||
+        result.reason === "writer_fenced"
+      ) {
+        return response({ error: "runtime_transcript_identity_conflict" }, 409);
+      }
+      return response({ error: "invalid_runtime_transcript_payload" }, 400);
+    }
+
     if (parsed.data.settlementCommandPull !== undefined) {
       if (
         !isTranscriptRuntimeSettlementCommandPull(
@@ -192,6 +227,15 @@ export async function POST(req: NextRequest) {
             disposition: result.disposition,
             kind: "writer_registration",
             writer_generation: result.writerGeneration,
+            lifecycle_snapshot: {
+              contract_version: TRUSTED_LIFECYCLE_SNAPSHOT_CONTRACT_VERSION,
+              session_id: parsed.data.sessionId,
+              room_name: result.writer.roomName,
+              writer_id: result.writer.writerId,
+              writer_generation: result.writerGeneration,
+              state: result.lifecycleState,
+              version: result.lifecycleVersion,
+            },
           },
           200
         );

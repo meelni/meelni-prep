@@ -1014,6 +1014,8 @@ class InterviewControllerTests(unittest.TestCase):
         generated = adapter.state
         self.assertEqual(generated.move_ledger[-1].stage, "generated")
 
+        # SAV-471 prompt-led generation remains single-use. Only an explicit
+        # tool-turn handle may authorize bounded same-handle continuation.
         self.assertFalse(
             allow_controller_generation(
                 adapter,

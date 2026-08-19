@@ -756,6 +756,8 @@ class MemoryEvidenceStore {
         disposition: "existing" as const,
         writer: this.writer,
         writerGeneration: 1,
+        lifecycleState: "active",
+        lifecycleVersion: 1,
       };
     }
     this.writer = registration;
@@ -764,6 +766,8 @@ class MemoryEvidenceStore {
       disposition: "created" as const,
       writer: registration,
       writerGeneration: 1,
+      lifecycleState: "active",
+      lifecycleVersion: 1,
     };
   }
 
