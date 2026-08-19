@@ -247,6 +247,30 @@ export function parseInterviewerBenchmarkAdjudicationApprovalV1(
   };
 }
 
+export function parseInterviewerBenchmarkAdjudicationApprovalJson(
+  contents: string
+): InterviewerBenchmarkAdjudicationApprovalV1 {
+  let input: unknown;
+  try {
+    input = JSON.parse(contents);
+  } catch {
+    invalidApproval();
+  }
+  const approval = parseInterviewerBenchmarkAdjudicationApprovalV1(input);
+  if (
+    contents !== serializeInterviewerBenchmarkAdjudicationApproval(approval)
+  ) {
+    invalidApproval();
+  }
+  return approval;
+}
+
+export function serializeInterviewerBenchmarkAdjudicationApproval(
+  approval: InterviewerBenchmarkAdjudicationApprovalV1
+): string {
+  return `${JSON.stringify(approval, null, 2)}\n`;
+}
+
 export function hashInterviewerBenchmarkAdjudicationApproval(
   approval: InterviewerBenchmarkAdjudicationApprovalV1
 ): string {

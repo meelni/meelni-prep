@@ -39,7 +39,7 @@
     "baseline": "meelni.current-interviewer-baseline.v3",
     "sourceCommit": "1b86ff1d4207aed5ea216a246d6b236c74be66d4",
     "runtimeSourceSha256": "8077ca6d13fc9f36c566f3ca5ea3660b42bb65cd2d832aceef2546f1a1604f93",
-    "benchmarkSourceSha256": "bf49236213a4b2970d37046b4a977d134fe37647296762a595149d0a7772f0c7",
+    "benchmarkSourceSha256": "0ce61bca44fd0d9021e561f55e2d4130d9d48e8c57d4bfde80c68ed58687fe20",
     "promptContract": "full_interview_prompt_v1"
   },
   "corpus": {
@@ -374,7 +374,7 @@
   },
   "conclusion": "baseline_recorded_owner_adjudication_accepted",
   "reproducibility": {
-    "inputSha256": "b84cf2343c8c2194cc301f942464a77e0ed63c223f3a842dd6b74e3552a3f010",
-    "reportSha256": "0342c259554ad6e8f18b9ecf1ac45dcf6c8c017f5e48d49de3a90faa413634ca"
+    "inputSha256": "bc2774b8709d8cc23cbef3b60a4466443dd47aa9dcd0e2bb5b465bb6c9d28ffb",
+    "reportSha256": "e64f58db923c40b62355d8c49cd6af4cc24de7401048051c23c3edb6a9cb37ef"
   }
 }

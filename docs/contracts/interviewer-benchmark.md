@@ -117,8 +117,13 @@ match exactly:
 
 Missing approval keeps the report pending. Missing, extra, reordered,
 duplicated, altered, stale-hash, partial, contradictory, falsely signed, or
-authority-broadening approval data fails before any judge invocation. SAV-198
-adjudication applies to candidate feedback scoring and is not reused here.
+authority-broadening approval data fails before any judge invocation. The raw
+JSON must also equal the canonical two-space-indented serialization plus one
+trailing newline. This rejects duplicate object keys, negative zero, reordered
+keys, alternate whitespace, and other representations that ordinary JSON
+parsing could collapse before exact-key validation. Programmatic object parsing
+retains the same strict semantic contract. SAV-198 adjudication applies to
+candidate feedback scoring and is not reused here.
 Accepted semantic labels remove only the owner-calibration blocker; they do not
 make shadow entry eligible and do not authorize a provider run, launch,
 default-on behavior, Production action, merge, or a SAV-476 GO/NO-GO.

@@ -41,6 +41,12 @@ swapped. Absolute paths, traversal, unrelated files, directories, and symlinks
 fail closed. Writes use an exclusive same-directory temporary file and atomic
 baseline replacement; the CLI never writes the approval artifact.
 
+Approval-file parsing requires byte-for-byte canonical JSON: two-space
+indentation, contract field order, and one trailing newline. Duplicate keys,
+negative zero, reordered keys, alternate whitespace, or other raw forms that
+could collapse under `JSON.parse` are rejected before the runner invokes a
+judge.
+
 The default entrypoint does not read provider credentials, import a provider
 adapter, make network calls, use customer transcripts, or mutate Production.
 The report must show provider-free authorization, `providerCalls: 0`,

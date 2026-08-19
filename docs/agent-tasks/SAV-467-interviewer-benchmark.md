@@ -55,7 +55,7 @@
 - Accepted manifest: `312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f`.
 - Approval contract: `meelni.interviewer-benchmark-adjudication-approval.v1`.
 - Canonical approval hash: `c45778d30fadbe37c3a35c9306443ac67a8fcdfe2693b94ab8663873bccb5757`.
-- Accepted baseline report hash: `0342c259554ad6e8f18b9ecf1ac45dcf6c8c017f5e48d49de3a90faa413634ca`.
+- Accepted baseline report hash: `e64f58db923c40b62355d8c49cd6af4cc24de7401048051c23c3edb6a9cb37ef`.
 - Provenance: direct product-owner message in supervisor task `01a016c0-57eb-72c0-a744-92c802d6be0a`, mirrored in Linear adjudication comment `b44d551e-d988-498f-94e9-16afdeaaac73` at `2026-08-19T05:53:26.680Z`; no named identity or signature is claimed.
 - Resolution: eight of eight ordered scenario/label/seed decisions accepted; the report changes to `baseline_recorded_owner_adjudication_accepted` only when the exact artifact verifies.
 - Authority: semantic gold-set adjudication only. Runtime, provider call/spend, canary, launch, default-on, Production, and SAV-476 GO/NO-GO authority remain denied.
