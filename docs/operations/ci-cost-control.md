@@ -53,7 +53,10 @@ GitHub-hosted lanes:
 - `Production and Browser QA` builds the isolated production artifact, crawls
   public routes, and runs the representative Chromium matrix. CI uses two
   Chromium workers across isolated project/file groups while preserving zero
-  retries and ordered execution within each file.
+  retries and ordered execution within each file. The job runs as UID 1001 in a
+  digest-pinned official Playwright container whose version must match the
+  lockfile, avoiding host browser installation in CI. The local
+  `npm run test:browser:install` bootstrap remains unchanged.
 
 The lanes have no dependencies on each other after classification. A final
 GitHub Actions job uses `always()` and publishes the exact required `Validate`

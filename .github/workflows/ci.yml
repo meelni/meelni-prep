@@ -224,6 +224,9 @@ jobs:
       needs.classify.outputs.production == 'true'
     name: Production and Browser QA
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      options: --user 1001
     timeout-minutes: 15
     env:
       CI: true
@@ -249,22 +252,6 @@ jobs:
 
       - name: Crawl production public routes and links
         run: npm run verify:public-production
-
-      - id: playwright-version
-        name: Resolve pinned Playwright version
-        run: |
-          version="$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - id: playwright-cache
-        name: Restore pinned Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Chromium runtime
-        run: npm run test:browser:install
 
       - id: browser_qa
         name: Run representative browser QA
