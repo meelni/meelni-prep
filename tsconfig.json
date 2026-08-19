@@ -28,6 +28,9 @@
       "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"],
       "@meelni/test-fixtures/synthetic-feedback": [
         "./packages/test-fixtures/src/synthetic-feedback.ts"
+      ],
+      "@meelni/test-fixtures/interviewer-benchmark": [
+        "./packages/test-fixtures/src/interviewer-benchmark.ts"
       ]
     }
   },

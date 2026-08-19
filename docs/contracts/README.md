@@ -9,6 +9,7 @@ Good candidates:
 - [interview credit recovery](./interview-credit-recovery.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [stateful interviewer briefs, decisions, tools, and Director authority](./stateful-interviewer-decisions.md);
+- [versioned synthetic interviewer-quality benchmark and owner calibration gate](./interviewer-benchmark.md);
 - [versioned transcript events](./transcript-events.md);
 - [derived candidate answer blocks](./answer-blocks.md);
 - [feedback v2 evidence and response shape](./feedback-v2.md);

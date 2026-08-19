@@ -1,0 +1,356 @@
+{
+  "contractVersion": "meelni.interviewer-benchmark-report.v2",
+  "recordedAt": "2026-08-18T00:00:00.000Z",
+  "execution": {
+    "kind": "provider_free_replay",
+    "adapterContractVersion": "interviewer-quality-judge-adapter.v1",
+    "authorization": {
+      "contractVersion": "interviewer-benchmark-execution-authorization.v1",
+      "kind": "provider_free",
+      "allowProviderCredentials": false,
+      "allowProduction": false,
+      "maximumProviderCalls": 0,
+      "maximumInputTokensPerCall": 0,
+      "maximumOutputTokensPerCall": 0,
+      "maximumActualCostUsd": 0
+    },
+    "fullySyntheticOnly": true,
+    "customerDataUsed": false,
+    "providerCredentialRead": false,
+    "productionCalled": false,
+    "providerCalls": 0,
+    "inputTokens": null,
+    "outputTokens": null,
+    "actualCostUsd": 0,
+    "judgeLatencyMs": {
+      "count": 12,
+      "min": 0,
+      "p50": 0,
+      "p95": 0,
+      "max": 0,
+      "mean": 0
+    },
+    "modelVersions": [
+      "meelni.interviewer-judge-replay.v1"
+    ]
+  },
+  "versions": {
+    "suite": "meelni.interviewer-benchmark-suite.v2",
+    "baseline": "meelni.current-interviewer-baseline.v2",
+    "sourceCommit": "1b86ff1d4207aed5ea216a246d6b236c74be66d4",
+    "runtimeSourceSha256": "8077ca6d13fc9f36c566f3ca5ea3660b42bb65cd2d832aceef2546f1a1604f93",
+    "benchmarkSourceSha256": "fc0c3a5b523d2fb1009734f2e6fc00ff05e21a28a23dedbe1854b50f81d210cb",
+    "promptContract": "full_interview_prompt_v1"
+  },
+  "corpus": {
+    "scenarios": 14,
+    "baselineSessions": 4,
+    "rounds": 4,
+    "candidateBehaviors": 7,
+    "invariantControls": 6,
+    "replaySeeds": [
+      17,
+      43,
+      89
+    ],
+    "judgeRuns": 12,
+    "calibrationPairs": 4,
+    "calibrationExamples": 8,
+    "adjudicationStatus": "agent_authored_pending_product_owner_review",
+    "adjudicationManifestSha256": "312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f"
+  },
+  "deterministicInvariants": {
+    "controlsDetected": 6,
+    "controlsTotal": 6,
+    "baselineViolations": 0,
+    "status": "passed"
+  },
+  "scenarios": [
+    {
+      "scenarioId": "current-product-sense-strong",
+      "roundType": "product_sense",
+      "candidateBehaviors": [
+        "strong"
+      ],
+      "judgeRuns": 3,
+      "quality": {
+        "overall": {
+          "count": 3,
+          "min": 87.5,
+          "p50": 87.5,
+          "p95": 90,
+          "max": 90,
+          "mean": 88.333
+        },
+        "dimensionMeans": {
+          "question_relevance": 4,
+          "depth": 3.667,
+          "evidence_targeting": 4,
+          "redundancy": 3,
+          "one_question_per_turn": 4,
+          "no_coaching_or_evaluation": 4,
+          "challenge_calibration": 3,
+          "round_progression": 3,
+          "time_management": 2.667,
+          "graceful_close": 4
+        },
+        "maximumDimensionRange": 1
+      },
+      "responseLatencyMs": {
+        "count": 6,
+        "min": 2000,
+        "p50": 2000,
+        "p95": 3000,
+        "max": 3000,
+        "mean": 2333.333
+      },
+      "invariantViolations": [],
+      "actionableFailures": [
+        {
+          "code": "challenge_miscalibrated",
+          "dimension": "challenge_calibration",
+          "turn_ids": [
+            "ps-i-4"
+          ],
+          "explanation": "The challenge tests friction but does not introduce a sharper constraint."
+        }
+      ]
+    },
+    {
+      "scenarioId": "current-execution-shallow-silent",
+      "roundType": "execution",
+      "candidateBehaviors": [
+        "shallow",
+        "silent"
+      ],
+      "judgeRuns": 3,
+      "quality": {
+        "overall": {
+          "count": 3,
+          "min": 65,
+          "p50": 65,
+          "p95": 67.5,
+          "max": 67.5,
+          "mean": 65.833
+        },
+        "dimensionMeans": {
+          "question_relevance": 3,
+          "depth": 1.667,
+          "evidence_targeting": 2,
+          "redundancy": 2,
+          "one_question_per_turn": 4,
+          "no_coaching_or_evaluation": 4,
+          "challenge_calibration": 2,
+          "round_progression": 2,
+          "time_management": 2.667,
+          "graceful_close": 3
+        },
+        "maximumDimensionRange": 1
+      },
+      "responseLatencyMs": {
+        "count": 6,
+        "min": 2000,
+        "p50": 2000,
+        "p95": 3000,
+        "max": 3000,
+        "mean": 2333.333
+      },
+      "invariantViolations": [],
+      "actionableFailures": [
+        {
+          "code": "generic_probe",
+          "dimension": "depth",
+          "turn_ids": [
+            "ex-i-2",
+            "ex-i-3"
+          ],
+          "explanation": "The probes remain generic instead of testing the candidate's causal diagnosis."
+        },
+        {
+          "code": "missed_candidate_evidence",
+          "dimension": "evidence_targeting",
+          "turn_ids": [
+            "ex-c-5",
+            "ex-i-6"
+          ],
+          "explanation": "The interviewer does not turn the engineering hypothesis into a falsifiable branch."
+        }
+      ]
+    },
+    {
+      "scenarioId": "current-strategy-rambling-contradictory",
+      "roundType": "strategy",
+      "candidateBehaviors": [
+        "rambling",
+        "contradictory",
+        "time_consuming"
+      ],
+      "judgeRuns": 3,
+      "quality": {
+        "overall": {
+          "count": 3,
+          "min": 65,
+          "p50": 65,
+          "p95": 67.5,
+          "max": 67.5,
+          "mean": 65.833
+        },
+        "dimensionMeans": {
+          "question_relevance": 3,
+          "depth": 1.667,
+          "evidence_targeting": 2,
+          "redundancy": 2,
+          "one_question_per_turn": 4,
+          "no_coaching_or_evaluation": 4,
+          "challenge_calibration": 2,
+          "round_progression": 2,
+          "time_management": 1.667,
+          "graceful_close": 4
+        },
+        "maximumDimensionRange": 1
+      },
+      "responseLatencyMs": {
+        "count": 5,
+        "min": 2000,
+        "p50": 3000,
+        "p95": 3000,
+        "max": 3000,
+        "mean": 2800
+      },
+      "invariantViolations": [],
+      "actionableFailures": [
+        {
+          "code": "missed_candidate_evidence",
+          "dimension": "evidence_targeting",
+          "turn_ids": [
+            "st-c-1",
+            "st-i-2"
+          ],
+          "explanation": "The interviewer misses the contradiction between broad entry and enterprise focus."
+        },
+        {
+          "code": "poor_time_management",
+          "dimension": "time_management",
+          "turn_ids": [
+            "st-c-4",
+            "st-i-5"
+          ],
+          "explanation": "The session advances after several long lists without forcing a decision."
+        }
+      ]
+    },
+    {
+      "scenarioId": "current-behavioral-interrupting",
+      "roundType": "behavioral",
+      "candidateBehaviors": [
+        "interrupting"
+      ],
+      "judgeRuns": 3,
+      "quality": {
+        "overall": {
+          "count": 3,
+          "min": 67.5,
+          "p50": 67.5,
+          "p95": 70,
+          "max": 70,
+          "mean": 68.333
+        },
+        "dimensionMeans": {
+          "question_relevance": 3,
+          "depth": 2.667,
+          "evidence_targeting": 2,
+          "redundancy": 3,
+          "one_question_per_turn": 4,
+          "no_coaching_or_evaluation": 4,
+          "challenge_calibration": 2,
+          "round_progression": 2,
+          "time_management": 1.667,
+          "graceful_close": 3
+        },
+        "maximumDimensionRange": 1
+      },
+      "responseLatencyMs": {
+        "count": 5,
+        "min": 2000,
+        "p50": 3000,
+        "p95": 3000,
+        "max": 3000,
+        "mean": 2800
+      },
+      "invariantViolations": [],
+      "actionableFailures": [
+        {
+          "code": "missed_candidate_evidence",
+          "dimension": "evidence_targeting",
+          "turn_ids": [
+            "be-c-5",
+            "be-i-6"
+          ],
+          "explanation": "The interviewer closes without probing the candidate's admitted attribution gap."
+        },
+        {
+          "code": "weak_progression",
+          "dimension": "round_progression",
+          "turn_ids": [
+            "be-i-3",
+            "be-i-5"
+          ],
+          "explanation": "The sequence gathers facts but does not reach learning or a counterfactual."
+        }
+      ]
+    }
+  ],
+  "aggregate": {
+    "qualityScore": 72.083,
+    "responseLatencyMs": {
+      "count": 22,
+      "min": 2000,
+      "p50": 3000,
+      "p95": 3000,
+      "max": 3000,
+      "mean": 2545.455
+    },
+    "maximumDimensionRange": 1,
+    "actionableFailures": 7
+  },
+  "thresholds": {
+    "regression": {
+      "aggregateQualityFloor": 70.083,
+      "scenarioQualityFloors": {
+        "current-product-sense-strong": 83.333,
+        "current-execution-shallow-silent": 60.833,
+        "current-strategy-rambling-contradictory": 60.833,
+        "current-behavioral-interrupting": 63.333
+      },
+      "responseLatencyP95CeilingMs": 3450,
+      "requireNoInvariantViolations": true,
+      "maximumDimensionRange": 1
+    },
+    "shadowEntry": {
+      "aggregateQualityFloor": 77.083,
+      "everyScenarioQualityFloor": 75,
+      "responseLatencyP95CeilingMs": 3450,
+      "maximumProviderCalls": 12,
+      "maximumActualCostUsd": 1,
+      "requireNoInvariantViolations": true,
+      "requireOwnerCalibrationApproval": true,
+      "eligible": false,
+      "blockers": [
+        "eight calibration examples require product-owner adjudication",
+        "provider-backed candidate evidence has not been run"
+      ]
+    }
+  },
+  "ownerAdjudication": {
+    "status": "agent_authored_pending_product_owner_review",
+    "examples": 8,
+    "requiredAction": "Product owner reviews the four strong/weak pairs in the manifest and records accept or reject for each of the eight examples.",
+    "reusedHumanAdjudication": false,
+    "note": "SAV-198 evidence concerns candidate feedback scoring and does not adjudicate interviewer-quality examples."
+  },
+  "conclusion": "baseline_recorded_owner_adjudication_pending",
+  "reproducibility": {
+    "inputSha256": "24d1118ac659880aa8e9c15b82a8df393ad09fba1a15554d027942ac8a95c3f2",
+    "reportSha256": "e1cc2c344bed51c62fe95d7c80ac1aa40e87770fd696980917f6f68c0e60a857"
+  }
+}

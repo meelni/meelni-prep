@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./synthetic-feedback": "./src/synthetic-feedback.ts"
+    "./synthetic-feedback": "./src/synthetic-feedback.ts",
+    "./interviewer-benchmark": "./src/interviewer-benchmark.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts"

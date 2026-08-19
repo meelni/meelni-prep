@@ -120,6 +120,9 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   const syntheticFeedback = await import(
     "@meelni/test-fixtures/synthetic-feedback"
   );
+  const interviewerBenchmark = await import(
+    "@meelni/test-fixtures/interviewer-benchmark"
+  );
 
   assert.equal(typeof core.buildFullConfig, "function");
   assert.equal(typeof core.calculateOverallScore, "function");
@@ -140,6 +143,10 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   );
   assert.equal(
     typeof syntheticFeedback.decodeSyntheticFeedbackArtifactV1,
+    "function"
+  );
+  assert.equal(
+    typeof interviewerBenchmark.createInterviewerBenchmarkScenarios,
     "function"
   );
 });
