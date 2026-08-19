@@ -9,6 +9,7 @@ import {
 } from "@meelni/core";
 import {
   isInterviewBriefV2,
+  hasNonIntegerJsonNumberToken,
   resolveOptionalInterviewBriefV2,
   type InterviewBriefV2,
 } from "./interviewer-contracts";
@@ -274,9 +275,9 @@ export function parseInterviewRoomMetadata(
   const normalizedQuestion = isRecord(parsed.question)
     ? normalizeQuestion(parsed.question)
     : null;
-  const briefResolution = resolveOptionalInterviewBriefV2(
-    parsed.interview_brief
-  );
+  const briefResolution = hasNonCanonicalBriefNumber(rawMetadata)
+    ? { mode: "room_metadata_v1" as const, reason: "invalid_payload" as const }
+    : resolveOptionalInterviewBriefV2(parsed.interview_brief);
   const interviewBrief =
     briefResolution.mode === "brief_v2" &&
     isInterviewBriefCompatibleWithRoom(briefResolution.brief, {
@@ -308,6 +309,93 @@ export function parseInterviewRoomMetadata(
     question: normalizedQuestion,
     ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
   });
+}
+
+function hasNonCanonicalBriefNumber(rawMetadata: string): boolean {
+  const rawBrief = extractRawJsonProperty(rawMetadata, "interview_brief");
+  return rawBrief !== null && hasNonIntegerJsonNumberToken(rawBrief);
+}
+
+function extractRawJsonProperty(
+  raw: string,
+  propertyName: string
+): string | null {
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character !== '"') continue;
+    const keyEnd = findJsonStringEnd(raw, index);
+    if (keyEnd === null) return null;
+    let key: unknown;
+    try {
+      key = JSON.parse(raw.slice(index, keyEnd + 1));
+    } catch {
+      return null;
+    }
+    let cursor = keyEnd + 1;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] !== ":") {
+      index = keyEnd;
+      continue;
+    }
+    cursor += 1;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (key !== propertyName) {
+      index = keyEnd;
+      continue;
+    }
+    const valueEnd = findJsonValueEnd(raw, cursor);
+    return valueEnd === null ? null : raw.slice(cursor, valueEnd);
+  }
+  return null;
+}
+
+function findJsonStringEnd(raw: string, start: number): number | null {
+  let escaped = false;
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const character = raw[index]!;
+    if (escaped) escaped = false;
+    else if (character === "\\") escaped = true;
+    else if (character === '"') return index;
+  }
+  return null;
+}
+
+function findJsonValueEnd(raw: string, start: number): number | null {
+  if (raw[start] === '"') {
+    const end = findJsonStringEnd(raw, start);
+    return end === null ? null : end + 1;
+  }
+  if (raw[start] !== "{" && raw[start] !== "[") {
+    const match = raw.slice(start).match(/^[^,}\]]+/u);
+    return match ? start + match[0].trimEnd().length : null;
+  }
+  const stack = [raw[start]];
+  let inString = false;
+  let escaped = false;
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const character = raw[index]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{" || character === "[") stack.push(character);
+    else if (character === "}" || character === "]") {
+      stack.pop();
+      if (stack.length === 0) return index + 1;
+    }
+  }
+  return null;
 }
 
 export function normalizeInterviewRuntimeConfig(

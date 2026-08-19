@@ -1,6 +1,28 @@
 import type { DifficultyLevel, RoundType } from "@meelni/core";
 
-import { calculateInterviewBriefV2PayloadDigest } from "./interview-brief-canonicalization";
+import {
+  calculateInterviewBriefV2PayloadDigest,
+  hasOnlyUnicodeScalarStrings,
+} from "./interview-brief-canonicalization";
+import {
+  hasExactKeys,
+  hasNonIntegerJsonNumberToken,
+  includes,
+  isBoundedArray,
+  isBoundedString,
+  isBoundedUniqueArray,
+  isCanonicalUtcTimestamp,
+  isContractToken,
+  isGuidance,
+  isIdentifier,
+  isNonNegativeFiniteNumber,
+  isNonNegativeInteger,
+  isPositiveInteger,
+  isRecord,
+  isSha256Digest,
+  isShortToken,
+} from "./interviewer-contract-validation-primitives";
+import { calculateInterviewerMutationRequestDigest } from "./interviewer-request-canonicalization";
 import {
   DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
   DIRECTOR_RECOMMENDATION_MAX_TTL_MS,
@@ -22,7 +44,6 @@ import {
   INTERVIEWER_TOOL_RESULT_STATUSES,
   InterviewerContractError,
   type DirectorRecommendation,
-  type DirectorRecommendationEligibility,
   type FullInterviewPolicyV1,
   type InterviewBriefQuestionV2,
   type InterviewBriefV2,
@@ -41,6 +62,8 @@ import {
   type InterviewerToolResult,
   type InterviewerToolResultPayload,
 } from "./interviewer-contract-types";
+
+export { hasNonIntegerJsonNumberToken } from "./interviewer-contract-validation-primitives";
 
 export function resolveOptionalInterviewBriefV2(
   raw: unknown
@@ -146,6 +169,7 @@ export function isInterviewBriefV2(value: unknown): value is InterviewBriefV2 {
   }
 
   const structurallyValid =
+    hasOnlyUnicodeScalarStrings(value) &&
     value.contract_version === INTERVIEW_BRIEF_V2_CONTRACT_VERSION &&
     isSha256Digest(value.payload_digest) &&
     value.brief_id ===
@@ -192,6 +216,7 @@ export function isInterviewRuntimeState(
       "allowed_moves",
       "probe_ledger",
       "last_finalized_candidate_turn_id",
+      "last_finalized_candidate_transcript_revision",
       "interruption_state",
       "close_state",
       "speech_fenced",
@@ -214,8 +239,20 @@ export function isInterviewRuntimeState(
     !isInterviewClock(value.clock) ||
     !isBoundedUniqueArray(value.allowed_moves, 0, 5, isInterviewerMoveType) ||
     !isBoundedArray(value.probe_ledger, 0, 100, isInterviewProbeLedgerEntry) ||
+    new Set(value.probe_ledger.map((entry) => entry.move_id)).size !==
+      value.probe_ledger.length ||
     (value.last_finalized_candidate_turn_id !== null &&
       !isIdentifier(value.last_finalized_candidate_turn_id)) ||
+    (value.last_finalized_candidate_transcript_revision !== null &&
+      !isIdentifier(value.last_finalized_candidate_transcript_revision)) ||
+    (value.last_finalized_candidate_turn_id === null) !==
+      (value.last_finalized_candidate_transcript_revision === null) ||
+    (value.clock.band === "elapsed" && value.close_state === "open") ||
+    (value.controller_phase === "closing" &&
+      value.close_state !== "requested" &&
+      value.close_state !== "admitted") ||
+    (value.close_state === "admitted" &&
+      value.controller_phase !== "closing") ||
     !includes(INTERVIEW_INTERRUPTION_STATES, value.interruption_state) ||
     !includes(INTERVIEW_CLOSE_STATES, value.close_state) ||
     typeof value.speech_fenced !== "boolean"
@@ -241,6 +278,7 @@ export function isInterviewerMove(value: unknown): value is InterviewerMove {
       "writer_id",
       "writer_generation",
       "based_on_state_revision",
+      "based_on_lifecycle_version",
       "move_type",
       "target",
       "reason_code",
@@ -260,6 +298,7 @@ export function isInterviewerMove(value: unknown): value is InterviewerMove {
     isIdentifier(value.writer_id) &&
     isPositiveInteger(value.writer_generation) &&
     isNonNegativeInteger(value.based_on_state_revision) &&
+    isPositiveInteger(value.based_on_lifecycle_version) &&
     isInterviewerMoveType(value.move_type) &&
     isInterviewerMoveTarget(value.target) &&
     includes(INTERVIEWER_MOVE_REASON_CODES, value.reason_code) &&
@@ -315,7 +354,12 @@ export function isInterviewerToolRequest(
           "writer_generation",
           "deadline_at",
           "expected_state_revision",
-        ]) && isNonNegativeInteger(value.expected_state_revision)
+          "expected_lifecycle_version",
+          "active_question_id",
+        ]) &&
+        isNonNegativeInteger(value.expected_state_revision) &&
+        isPositiveInteger(value.expected_lifecycle_version) &&
+        isIdentifier(value.active_question_id)
       );
     case "commit_interviewer_move":
       return (
@@ -328,17 +372,30 @@ export function isInterviewerToolRequest(
           "writer_generation",
           "deadline_at",
           "expected_state_revision",
+          "expected_lifecycle_version",
           "idempotency_key",
+          "request_digest",
           "move",
         ]) &&
         isNonNegativeInteger(value.expected_state_revision) &&
+        isPositiveInteger(value.expected_lifecycle_version) &&
         isIdentifier(value.idempotency_key) &&
+        isSha256Digest(value.request_digest) &&
         isInterviewerMove(value.move) &&
         value.move.session_id === value.session_id &&
         value.move.writer_id === value.writer_id &&
         value.move.writer_generation === value.writer_generation &&
         value.move.based_on_state_revision === value.expected_state_revision &&
-        value.move.idempotency_key === value.idempotency_key
+        value.move.based_on_lifecycle_version ===
+          value.expected_lifecycle_version &&
+        value.move.idempotency_key === value.idempotency_key &&
+        value.request_digest ===
+          calculateInterviewerMutationRequestDigest(
+            value as unknown as Extract<
+              InterviewerToolRequest,
+              { tool_name: "commit_interviewer_move" }
+            >
+          )
       );
     case "request_graceful_close":
       return (
@@ -351,15 +408,26 @@ export function isInterviewerToolRequest(
           "writer_generation",
           "deadline_at",
           "expected_state_revision",
+          "expected_lifecycle_version",
           "idempotency_key",
+          "request_digest",
           "reason",
         ]) &&
         isNonNegativeInteger(value.expected_state_revision) &&
+        isPositiveInteger(value.expected_lifecycle_version) &&
         isIdentifier(value.idempotency_key) &&
+        isSha256Digest(value.request_digest) &&
         includes(
           ["deadline", "candidate_request", "controller_policy"] as const,
           value.reason
-        )
+        ) &&
+        value.request_digest ===
+          calculateInterviewerMutationRequestDigest(
+            value as unknown as Extract<
+              InterviewerToolRequest,
+              { tool_name: "request_graceful_close" }
+            >
+          )
       );
   }
 }
@@ -377,6 +445,7 @@ export function isInterviewerToolResult(
       "writer_generation",
       "status",
       "observed_state_revision",
+      "observed_lifecycle_version",
       "payload",
       "failure_code",
       "latency_ms",
@@ -393,6 +462,7 @@ export function isInterviewerToolResult(
     !isPositiveInteger(value.writer_generation) ||
     !includes(INTERVIEWER_TOOL_RESULT_STATUSES, value.status) ||
     !isNonNegativeInteger(value.observed_state_revision) ||
+    !isPositiveInteger(value.observed_lifecycle_version) ||
     !isNonNegativeFiniteNumber(value.latency_ms)
   ) {
     return false;
@@ -401,7 +471,13 @@ export function isInterviewerToolResult(
   if (value.status === "ok" || value.status === "duplicate") {
     return (
       value.failure_code === null &&
-      isToolPayload(value.tool_name, value.payload)
+      isToolPayload(value.tool_name, value.payload, {
+        sessionId: value.session_id,
+        writerId: value.writer_id,
+        writerGeneration: value.writer_generation,
+        observedStateRevision: value.observed_state_revision,
+        observedLifecycleVersion: value.observed_lifecycle_version,
+      })
     );
   }
 
@@ -420,6 +496,7 @@ export function isDirectorRecommendation(
       "writer_id",
       "writer_generation",
       "based_on_state_revision",
+      "based_on_lifecycle_version",
       "source_turn_id",
       "source_transcript_revision",
       "source_finality",
@@ -441,6 +518,7 @@ export function isDirectorRecommendation(
     isIdentifier(value.writer_id) &&
     isPositiveInteger(value.writer_generation) &&
     isNonNegativeInteger(value.based_on_state_revision) &&
+    isPositiveInteger(value.based_on_lifecycle_version) &&
     isIdentifier(value.source_turn_id) &&
     isIdentifier(value.source_transcript_revision) &&
     includes(["speculative", "finalized"] as const, value.source_finality) &&
@@ -459,51 +537,6 @@ export function isDirectorRecommendation(
   );
 }
 
-export function assessDirectorRecommendation(
-  recommendation: DirectorRecommendation,
-  state: InterviewRuntimeState,
-  now: Date | string
-): DirectorRecommendationEligibility {
-  if (recommendation.session_id !== state.session_id) return "session_mismatch";
-  if (recommendation.brief_id !== state.brief_id) return "brief_mismatch";
-  if (
-    recommendation.writer_id !== state.active_writer.writer_id ||
-    recommendation.writer_generation !== state.active_writer.writer_generation
-  ) {
-    return "stale_state";
-  }
-  if (recommendation.based_on_state_revision !== state.state_revision) {
-    return "stale_state";
-  }
-  if (recommendation.source_finality !== "finalized") {
-    return "source_not_final";
-  }
-  if (
-    recommendation.source_turn_id !== state.last_finalized_candidate_turn_id
-  ) {
-    return "source_turn_mismatch";
-  }
-  const nowMs = typeof now === "string" ? Date.parse(now) : now.getTime();
-  if (
-    !Number.isFinite(nowMs) ||
-    nowMs < Date.parse(recommendation.created_at)
-  ) {
-    return "not_yet_valid";
-  }
-  if (nowMs > Date.parse(recommendation.expires_at)) return "expired";
-  if (
-    state.lifecycle_snapshot.state !== "active" &&
-    state.lifecycle_snapshot.state !== "reconnecting"
-  ) {
-    return "lifecycle_not_active";
-  }
-  if (state.speech_fenced) return "speech_fenced";
-  if (!state.allowed_moves.includes(recommendation.move_type)) {
-    return "move_not_allowed";
-  }
-  return "eligible";
-}
-
 function parseContract<T>(
   raw: unknown,
   contract: InterviewerContractError["contract"],
@@ -512,6 +545,12 @@ function parseContract<T>(
 ): T {
   let value = raw;
   if (typeof raw === "string") {
+    if (
+      contract === "interview_brief_v2" &&
+      hasNonIntegerJsonNumberToken(raw)
+    ) {
+      throw new InterviewerContractError(contract, "invalid_payload");
+    }
     try {
       value = JSON.parse(raw);
     } catch {
@@ -605,21 +644,31 @@ function isFullInterviewPolicy(value: unknown): value is FullInterviewPolicyV1 {
 }
 
 function isInterviewClock(value: unknown): value is InterviewClock {
-  return (
-    hasExactKeys(value, [
+  if (
+    !hasExactKeys(value, [
       "started_at",
       "deadline_at",
       "observed_at",
       "remaining_ms",
       "band",
-    ]) &&
-    isCanonicalUtcTimestamp(value.started_at) &&
-    isCanonicalUtcTimestamp(value.deadline_at) &&
-    isCanonicalUtcTimestamp(value.observed_at) &&
-    Date.parse(value.deadline_at) > Date.parse(value.started_at) &&
-    isNonNegativeInteger(value.remaining_ms) &&
-    includes(INTERVIEW_CLOCK_BANDS, value.band) &&
-    (value.band === "elapsed" ? value.remaining_ms === 0 : true)
+    ]) ||
+    !isCanonicalUtcTimestamp(value.started_at) ||
+    !isCanonicalUtcTimestamp(value.deadline_at) ||
+    !isCanonicalUtcTimestamp(value.observed_at) ||
+    !isNonNegativeInteger(value.remaining_ms) ||
+    !includes(INTERVIEW_CLOCK_BANDS, value.band)
+  ) {
+    return false;
+  }
+  const startedAt = Date.parse(value.started_at);
+  const deadlineAt = Date.parse(value.deadline_at);
+  const observedAt = Date.parse(value.observed_at);
+  const projectedRemainingMs = Math.max(0, deadlineAt - observedAt);
+  return (
+    deadlineAt > startedAt &&
+    observedAt >= startedAt &&
+    value.remaining_ms === projectedRemainingMs &&
+    (value.band === "elapsed") === (projectedRemainingMs === 0)
   );
 }
 
@@ -641,7 +690,7 @@ function isLifecycleSnapshot(
       ] as const,
       value.state
     ) &&
-    isNonNegativeInteger(value.version)
+    isPositiveInteger(value.version)
   );
 }
 
@@ -682,23 +731,53 @@ function isDeliveryEvidence(
   deliveryState: unknown,
   value: unknown
 ): value is InterviewProbeLedgerEntry["delivery_evidence"] {
-  if (deliveryState !== "canonically_delivered") return value === null;
+  if (value === null) {
+    return (
+      deliveryState !== "canonically_delivered" &&
+      deliveryState !== "interrupted"
+    );
+  }
+  if (!isRecord(value)) return false;
+  if (value.evidence_type === "transcript_event") {
+    return (
+      (deliveryState === "canonically_delivered" ||
+        deliveryState === "interrupted") &&
+      hasExactKeys(value, [
+        "evidence_type",
+        "event_id",
+        "writer_id",
+        "writer_generation",
+        "sequence",
+        "delivery_state",
+      ]) &&
+      isIdentifier(value.event_id) &&
+      isIdentifier(value.writer_id) &&
+      isPositiveInteger(value.writer_generation) &&
+      isPositiveInteger(value.sequence) &&
+      includes(
+        ["delivered", "partially_delivered"] as const,
+        value.delivery_state
+      ) &&
+      (deliveryState !== "interrupted" ||
+        value.delivery_state === "partially_delivered")
+    );
+  }
   return (
+    deliveryState === "interrupted" &&
     hasExactKeys(value, [
+      "evidence_type",
       "event_id",
       "writer_id",
       "writer_generation",
       "sequence",
-      "delivery_state",
+      "reason",
     ]) &&
+    value.evidence_type === "interruption_marker" &&
     isIdentifier(value.event_id) &&
     isIdentifier(value.writer_id) &&
     isPositiveInteger(value.writer_generation) &&
     isPositiveInteger(value.sequence) &&
-    includes(
-      ["delivered", "partially_delivered"] as const,
-      value.delivery_state
-    )
+    value.reason === "no_provider_confirmed_prefix"
   );
 }
 
@@ -733,18 +812,34 @@ function isProbeCandidate(value: unknown): value is InterviewProbeCandidate {
     includes(["probe", "clarify", "challenge"] as const, value.move_type) &&
     isIdentifier(value.question_id) &&
     isBoundedString(value.topic, 1, 240) &&
-    includes(INTERVIEWER_MOVE_REASON_CODES, value.reason_code)
+    includes(INTERVIEWER_MOVE_REASON_CODES, value.reason_code) &&
+    isMoveReasonAllowed(value.move_type, value.reason_code)
   );
 }
 
 function isToolPayload(
   toolName: InterviewerToolName,
-  value: unknown
+  value: unknown,
+  envelope: {
+    sessionId: string;
+    writerId: string;
+    writerGeneration: number;
+    observedStateRevision: number;
+    observedLifecycleVersion: number;
+  }
 ): value is InterviewerToolResultPayload {
   switch (toolName) {
     case "read_interview_state":
       return (
-        hasExactKeys(value, ["state"]) && isInterviewRuntimeState(value.state)
+        hasExactKeys(value, ["state"]) &&
+        isInterviewRuntimeState(value.state) &&
+        value.state.session_id === envelope.sessionId &&
+        value.state.active_writer.writer_id === envelope.writerId &&
+        value.state.active_writer.writer_generation ===
+          envelope.writerGeneration &&
+        value.state.state_revision === envelope.observedStateRevision &&
+        value.state.lifecycle_snapshot.version ===
+          envelope.observedLifecycleVersion
       );
     case "read_interview_clock":
       return hasExactKeys(value, ["clock"]) && isInterviewClock(value.clock);
@@ -756,7 +851,14 @@ function isToolPayload(
     case "commit_interviewer_move":
       return (
         hasExactKeys(value, ["committed_move"]) &&
-        isInterviewerMove(value.committed_move)
+        isInterviewerMove(value.committed_move) &&
+        value.committed_move.session_id === envelope.sessionId &&
+        value.committed_move.writer_id === envelope.writerId &&
+        value.committed_move.writer_generation === envelope.writerGeneration &&
+        value.committed_move.based_on_state_revision + 1 ===
+          envelope.observedStateRevision &&
+        value.committed_move.based_on_lifecycle_version ===
+          envelope.observedLifecycleVersion
       );
     case "request_graceful_close":
       return (
@@ -823,119 +925,4 @@ function hasBoundedPositiveTtl(
 ): boolean {
   const ttl = Date.parse(expiresAt) - Date.parse(createdAt);
   return ttl > 0 && ttl <= maximumMs;
-}
-
-function isCanonicalUtcTimestamp(value: unknown): value is string {
-  if (
-    typeof value !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
-  ) {
-    return false;
-  }
-  const timestamp = Date.parse(value);
-  return (
-    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
-  );
-}
-
-function isIdentifier(value: unknown): value is string {
-  return (
-    isBoundedString(value, 1, 128) &&
-    /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value)
-  );
-}
-
-function isContractToken(value: unknown): value is string {
-  return (
-    isBoundedString(value, 1, 96) &&
-    /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value)
-  );
-}
-
-function isShortToken(value: unknown): value is string {
-  return isBoundedString(value, 1, 96) && /^[a-z0-9][a-z0-9_-]*$/.test(value);
-}
-
-function isGuidance(value: unknown): value is string {
-  return isBoundedString(value, 1, 240);
-}
-
-function isBoundedString(
-  value: unknown,
-  minimum: number,
-  maximum: number
-): value is string {
-  return (
-    typeof value === "string" &&
-    value.trim() === value &&
-    value.length >= minimum &&
-    value.length <= maximum
-  );
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return Number.isSafeInteger(value) && Number(value) >= 0;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return Number.isSafeInteger(value) && Number(value) > 0;
-}
-
-function isNonNegativeFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasExactKeys<K extends string>(
-  value: unknown,
-  keys: readonly K[]
-): value is Record<K, unknown> {
-  if (!isRecord(value)) return false;
-  const actual = Object.keys(value);
-  return (
-    actual.length === keys.length &&
-    actual.every((key) => keys.includes(key as K))
-  );
-}
-
-function isBoundedArray<T>(
-  value: unknown,
-  minimum: number,
-  maximum: number,
-  guard: (item: unknown) => item is T
-): value is T[] {
-  return (
-    Array.isArray(value) &&
-    value.length >= minimum &&
-    value.length <= maximum &&
-    value.every(guard)
-  );
-}
-
-function isBoundedUniqueArray<T>(
-  value: unknown,
-  minimum: number,
-  maximum: number,
-  guard: (item: unknown) => item is T
-): value is T[] {
-  return (
-    isBoundedArray(value, minimum, maximum, guard) &&
-    new Set(value).size === value.length
-  );
-}
-
-function includes<T extends string>(
-  values: readonly T[],
-  value: unknown
-): value is T {
-  return (
-    typeof value === "string" && values.some((candidate) => candidate === value)
-  );
-}
-
-function isSha256Digest(value: unknown): value is string {
-  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 }

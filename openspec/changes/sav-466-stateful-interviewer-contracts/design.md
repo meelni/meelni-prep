@@ -42,34 +42,50 @@ JSON sorts object keys and preserves contract-defined array order. SHA-256 binds
 that payload, including the stable session-start fingerprint. The compiler
 must persist and reuse the accepted bytes on retry. No compile timestamp,
 random identity, live read, or generated model context is permitted.
+Strings must contain Unicode scalar values only; unpaired surrogates fail
+closed before canonical UTF-8 encoding in both runtimes.
+`duration_minutes` permits only integer JSON wire tokens `15`, `30`, or `45`;
+float/exponent spellings are invalid. Wire timestamps are strings.
 
 ## Decision design
 
 The Director recommends a typed move from finalized or explicitly speculative
-turn context. The controller checks the current lifecycle/deadline snapshot,
-writer generation, state CAS, freshness, allowed move, ledger, and close state.
+turn context. The controller checks lifecycle is exactly active, current time
+is strictly before the canonical deadline, and writer generation, controller
+state CAS, independent lifecycle-version CAS, finalized turn/transcript
+revision, active question, freshness, allowed move, ledger, and close state all
+match. Reconnect work may remain shadow-only until a fresh active state and
+lifecycle version exist.
 An admitted `InterviewerMove` authorizes intent but contains no spoken prose.
 The live interviewer phrases it within the full-interview policy.
 
 Recommended, admitted, generated, scheduled, spoken, interrupted/aborted, and
-canonically delivered states are separate. A transcript-v2 event is the only
-way to bind delivered evidence into the ledger.
+canonically delivered states are separate. Delivery attribution reuses the
+existing transcript-v2 event ID plus writer/generation and sequence; transcript
+v2 is not redesigned. Partial-prefix delivery requires an exact transcript
+event, while interruption without a confirmed prefix may cite only the
+existing metadata-only integrity marker and remains non-delivery.
 
 ## Tool design
 
 The allowlist contains five local session capabilities. Every call is bound to
 session/writer identity and a server-configured absolute deadline. Mutations
-also bind state revision and idempotency key. Exact replay returns the original
-result, conflicting key reuse fails, stale CAS/writer fails, and no failure
-blocks the current fallback or settlement.
+also bind controller revision, lifecycle version, idempotency key, and a SHA-256
+digest of canonical semantic request payload bytes. Recursive key sorting makes
+reordered requests duplicates; a changed semantic field under the same key is
+a conflict. A separate adapter helper correlates every result to its pending
+request by call/tool/session/writer/deadline and applicable revisions. No
+failure blocks the current fallback or settlement.
 
 ## Evidence and authority design
 
 The controller is operational state only. Existing workflows retain lifecycle,
 deadline, transcript, settlement, answer-block, and feedback authority.
 Director and tool traces are excluded from evaluation. The golden fixture and
-tests assert identical evaluator input/eligibility for identical canonical
-transcripts despite different operational traces.
+tests pass identical frozen transcript plus writer integrity/settlement
+authority through the production trusted-answer-block projector and production
+dimension-coverage prompt builder, asserting identical evaluator input and
+feedback authority despite different operational traces.
 
 ## Rollout design
 

@@ -16,9 +16,11 @@ and prompt contract.
 
 The public TypeScript façade is
 `packages/agent/src/interviewer-contracts.ts`; cohesive internal modules keep
-wire types, brief canonicalization, and validation/eligibility separate while
-the package exposes them only through `@meelni/agent`. The Python reader is
-`agent/shared/interviewer_contracts.py`. Both read the shared
+wire types, canonicalization, structural validation, admission/correlation,
+and attribution separate while the package exposes them only through
+`@meelni/agent`. The stable Python façade is
+`agent/shared/interviewer_contracts.py`, with canonicalization and assessment
+policy in focused internal modules. Both runtimes read the shared
 `packages/test-fixtures/interviewer-contracts.json` golden fixture.
 
 ## Contract versions
@@ -100,6 +102,18 @@ output.
 Changing any payload field requires a new digest and brief ID. Reordering JSON
 object keys does not.
 
+Every string in an accepted brief must contain Unicode scalar values only.
+Lone high or low UTF-16 surrogates are invalid in both runtimes; they cannot be
+hashed through a replacement-character path. Valid astral characters encode as
+their standard UTF-8 bytes and produce the same canonical payload and SHA-256
+digest in TypeScript and Python. Any Unicode or canonicalization failure is an
+`invalid_payload` and optional room-metadata negotiation falls back to v1.
+The only canonical brief number is `duration_minutes`; its JSON wire token must
+be one of the integer lexemes `15`, `30`, or `45`. Float and exponent forms such
+as `30.0` and `3e1` are invalid even when a JavaScript decoder would produce the
+same numeric value. Timestamps remain canonical UTC strings, never numbers or
+runtime date objects.
+
 ## Authority matrix
 
 | Fact or action                                                         | Authority                                                                                  | Non-authoritative inputs                                                       |
@@ -123,20 +137,32 @@ durable semantics.
 The state is session-local, bounded, versioned, and subordinate to durable
 authorities. It carries:
 
-- an exact state revision used for compare-and-swap;
-- a read-only lifecycle state/version snapshot;
+- an exact state revision used for controller compare-and-swap;
+- a read-only lifecycle state/positive-version snapshot used as an independent
+  compare-and-swap authority;
 - the active transcript writer ID and positive writer generation;
 - `controller_phase`, round objective, topic, and selected question ID;
 - a clock projection derived from the canonical deadline;
 - the controller-derived allowed move set;
 - a bounded move-delivery ledger;
-- the latest finalized candidate turn ID;
+- the latest finalized candidate turn ID and its exact authoritative transcript
+  revision, either both present or both absent;
 - interruption and close state; and
 - a `speech_fenced` bit that prevents further interviewer output without
   claiming that the durable session is terminal.
 
 The controller cannot mutate lifecycle rows, extend a deadline, manufacture
 settlement, or mark a session complete.
+
+The controller computes `observed_at`, `remaining_ms`, clock band, and close
+state in one state projection. `observed_at` cannot precede session start;
+`remaining_ms` equals `max(0, deadline_at - observed_at)` exactly; `elapsed` is
+used if and only if that value is zero; and an elapsed clock cannot remain
+`open`. Warning/closing thresholds remain rollout policy, not SAV-466 latency
+baselines.
+Move IDs are unique within the bounded ledger. A `closing` phase requires a
+requested or admitted close, an admitted close requires the `closing` phase,
+and a zero lifecycle version is invalid.
 
 ### Move lifecycle
 
@@ -155,7 +181,8 @@ The following states are intentionally distinct:
    feedback evidence.
 7. `canonically_delivered`: a durable transcript v2 event binds event ID,
    writer ID/generation, sequence, and `delivered` or `partially_delivered`
-   state to the ledger entry.
+   state to the ledger entry. The event ID already present in transcript v2 is
+   the move-attribution key; transcript v2 is not changed.
 
 Only stage 7 commits delivered history. Generated, scheduled, spoken, aborted,
 and unheard interrupted content never enters answer blocks or feedback.
@@ -172,9 +199,9 @@ An admitted move has exactly one type:
 
 It carries no spoken text, score, evaluation, coaching, or free-form hidden
 rationale. It binds the session, brief, current writer ID/generation, source
-state revision, selected question, bounded topic, optional finalized source
-turn, optional round-pack probe candidate, reason code, creation/expiry, and
-idempotency key.
+state revision, lifecycle version, selected question, bounded topic, optional
+finalized source turn, optional round-pack probe candidate, reason code,
+creation/expiry, and idempotency key.
 
 Reason codes are closed by move type: probe/deepen reasoning,
 clarify/resolve ambiguity, challenge/test tradeoff, transition/advance round,
@@ -197,23 +224,45 @@ applies checks in this order:
    different canonical request bytes returns `idempotency_conflict`.
 2. Match session, active writer ID, and writer generation. A fenced generation
    returns `stale_writer`.
-3. Accept an absolute request/move expiry through the exact timestamp;
-   one millisecond after it returns `timeout` or `expired` as applicable.
+3. Treat the tool request deadline as exclusive: at or after that timestamp the
+   request is expired. While the request remains live, accept a move's own
+   expiry through its exact timestamp; one millisecond after it is expired.
 4. Compare `expected_state_revision` to the current revision. A mismatch
    returns `stale_state` and changes nothing.
-5. Validate lifecycle/deadline snapshot, allowed move, one-question policy,
+5. Compare positive `expected_lifecycle_version` to the fresh durable
+   lifecycle version. A mismatch changes nothing.
+6. Validate lifecycle/deadline snapshot, allowed move, one-question policy,
    probe eligibility, close/speech fence, and no-coaching policy.
-6. Admit exactly once and advance the state revision once.
+7. Admit exactly once and advance the controller state revision once. Commit
+   and close requests do not themselves advance the independent lifecycle
+   version.
 
 Failures never partially mutate state.
+`assessInterviewerToolRequestAgainstState` and its Python mirror implement the
+fresh-state comparison; a lifecycle-version mismatch returns
+`stale_lifecycle` independently of controller-revision freshness.
+
+The mutation request carries `request_digest =
+"sha256:" + SHA256(UTF8(canonical_semantic_payload))`. The semantic payload
+sorts every object key recursively, preserves array order, and includes
+contract/tool name, session, writer ID/generation, absolute request deadline,
+expected controller and lifecycle versions, and either the complete move or
+close reason. It excludes only retry-local `call_id`, the outer
+`idempotency_key`, and `request_digest`; the move's own idempotency key remains
+inside a commit payload. TypeScript and Python use identical Unicode-scalar and
+integer rules. Reordered keys therefore replay as `duplicate`; changing one
+semantic field under the same idempotency key is `idempotency_conflict`.
 
 ### Interruption
 
 An interrupted interviewer turn commits delivered history only when the
 canonical transcript contains a provider-confirmed `partially_delivered`
-event. An interruption with no provider-confirmed prefix remains operational
-only and follows the existing integrity-marker rules. The controller does not
-invent text or mark an unheard question delivered.
+event whose event ID, writer ID/generation, and sequence exactly match the
+ledger evidence. An interruption with no provider-confirmed prefix remains
+non-delivery operational state and may cite the existing metadata-only
+`integrity_unavailable` marker by the same immutable identity tuple. The marker
+never turns unheard text into delivery evidence. Exact event replay dedupes to
+the same attribution; a conflicting replay or identity mismatch fails closed.
 
 Recovery derives the next allowed move from the canonical delivery ledger. It
 may intentionally clarify or restate context, but it may not silently treat an
@@ -241,7 +290,11 @@ Only these tool names are allowed:
 
 Every request binds a call ID, session, active writer ID/generation, and a
 server-configured absolute deadline. State-sensitive and mutating requests also
-bind the expected state revision; mutations require an idempotency key.
+bind the expected state revision and positive lifecycle version; mutations
+require an idempotency key and canonical semantic request digest.
+`get_probe_candidates` also binds the active selected-question ID. The pending
+request correlation rejects any successful candidate list containing another
+question, and fresh-state admission applies the same check to committed moves.
 
 The tools are served from session-local/in-memory controller state wherever
 possible. They cannot access the database, question-bank search, raw transcript
@@ -254,6 +307,24 @@ Typed outcomes are `ok`, `duplicate`, `stale_state`, `stale_writer`, `expired`,
 or failure returns control to the current deterministic/prompt-led fallback;
 speech, transcript persistence, explicit exit, and settlement never wait for a
 tool loop.
+
+Every `ok` or `duplicate` result validates its payload against the result
+envelope, not only against the payload schema. A returned runtime state must
+match the envelope session, active writer ID/generation, and exact
+`observed_state_revision` and `observed_lifecycle_version`. A committed move
+must match the envelope session and writer ID/generation, its
+`based_on_state_revision + 1` must equal the result's controller revision, and
+its lifecycle version must equal the result lifecycle version. An exact
+duplicate returns the original post-commit result, so it obeys the same rules.
+
+Before adapter use, `assessInterviewerToolResultForRequest` (and its Python
+mirror) compares the result to the one pending request by call ID, tool name,
+session, writer ID/generation, absolute request deadline, expected controller
+revision, and expected lifecycle version. Exact request deadline is expired.
+Identity mismatch, stale revision, or expired correlation rejects the result
+even when its standalone schema is valid. Consumers therefore never accept a
+cross-call, cross-tool, cross-session, fenced-writer, or revision-detached
+result.
 
 Telemetry records tool name, contract version, outcome, state/writer version,
 and latency. Tool arguments/results and transcript content are off by default.
@@ -276,12 +347,22 @@ freshness windows, not claims about the measured latency baseline.
 
 The deterministic controller may admit a recommendation only when:
 
-- session, brief, writer, and state revision are current;
-- the source is the latest finalized candidate turn;
+- session, brief, writer, state revision, and lifecycle version are current;
+- the source is the latest finalized candidate turn at the exact authoritative
+  transcript revision;
+- the target question is the current active/selected question;
 - current time is at or after creation and at or before expiry;
-- the move remains allowed by lifecycle, deadline, phase, ledger, and close
-  policy; and
+- durable lifecycle is exactly `active`, speech is unfenced, and current time
+  is strictly before the canonical runtime deadline;
+- the move remains allowed by phase, ledger, and close policy; and
 - influence is enabled for the authorized rollout cohort.
+
+The exact canonical deadline is already elapsed for admission purposes: a
+recommendation evaluated at `now == deadline_at` returns `deadline_elapsed`, as
+does every later instant, even when its own TTL has not expired. During
+`reconnecting`, the Director may continue shadow planning, but no recommendation
+is admitted until a fresh `active` runtime-state revision reconciles the latest
+turn, transcript revision, active question, writer, and deadline.
 
 Missing, speculative, late, stale, malformed, disallowed, failed, or slow
 recommendations have zero effect. The live interviewer never awaits Director
@@ -299,7 +380,10 @@ evaluator_input(run A) == evaluator_input(run B)
 feedback_authority(run A) == feedback_authority(run B)
 ```
 
-This remains true even when brief rationale, controller phase, move IDs,
+The executable invariant runs the frozen transcript plus writer integrity and
+settlement authority through the production trusted closed-answer-block
+projection and production dimension-coverage prompt builder. This remains true
+even when brief rationale, controller phase, move IDs,
 Director recommendation/trace, tool request/result, model/provider, or hidden
 planner reasoning differ. Those fields may be privacy-safe operational
 metadata only and are never concatenated into the transcript or evaluation

@@ -1,4 +1,5 @@
 import {
+  InterviewerContractError,
   type InterviewBriefV2,
   type InterviewBriefV2CanonicalPayload,
 } from "./interviewer-contract-types";
@@ -11,7 +12,30 @@ export function canonicalizeInterviewBriefV2Payload(
       ([key]) => key !== "brief_id" && key !== "payload_digest"
     )
   ) as InterviewBriefV2CanonicalPayload;
+  if (!hasOnlyUnicodeScalarStrings(payload)) {
+    throw new InterviewerContractError("interview_brief_v2", "invalid_payload");
+  }
   return canonicalJson(payload);
+}
+
+export function hasOnlyUnicodeScalarStrings(value: unknown): boolean {
+  if (typeof value === "string") {
+    for (const character of value) {
+      const codePoint = character.codePointAt(0)!;
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) return false;
+    }
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => hasOnlyUnicodeScalarStrings(item));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).every(
+      ([key, item]) =>
+        hasOnlyUnicodeScalarStrings(key) && hasOnlyUnicodeScalarStrings(item)
+    );
+  }
+  return true;
 }
 
 export function calculateInterviewBriefV2PayloadDigest(

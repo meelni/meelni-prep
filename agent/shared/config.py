@@ -58,7 +58,11 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         data = json.loads(metadata)
         if not isinstance(data, dict):
             raise ValueError("Interview room metadata must be an object")
-        if data.get("contract_version") != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION:
+        if (
+            type(data.get("contract_version")) is not int
+            or data.get("contract_version")
+            != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION
+        ):
             raise ValueError("Unsupported interview room metadata contract")
         session_id = data.get("session_id")
         if not isinstance(session_id, str) or not session_id.strip():

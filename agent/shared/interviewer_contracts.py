@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
 from datetime import datetime
 from typing import Any, Callable
+
+from shared.interviewer_contract_assessment import (
+    assess_director_recommendation,
+    assess_interview_probe_ledger_attribution,
+    assess_interviewer_tool_request_against_state,
+    assess_interviewer_tool_result_for_request,
+)
+from shared.interviewer_contract_canonicalization import (
+    assess_interviewer_mutation_replay,
+    calculate_interview_brief_v2_payload_digest,
+    calculate_interviewer_mutation_request_digest,
+    canonicalize_interview_brief_v2_payload,
+    canonicalize_interviewer_mutation_request_payload,
+)
+from shared.interviewer_contract_errors import InterviewerContractError
 
 INTERVIEW_BRIEF_V2_CONTRACT_VERSION = "interview-brief.v2"
 INTERVIEW_ROUND_PACK_CONTRACT_VERSION = "pm-round-pack.v1"
@@ -96,15 +110,6 @@ _SHORT_TOKEN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 
 
-class InterviewerContractError(ValueError):
-    """Stable parser failure for the cross-language contract boundary."""
-
-    def __init__(self, contract: str, code: str):
-        self.contract = contract
-        self.code = code
-        super().__init__(f"Invalid {contract}: {code}")
-
-
 def parse_interview_brief_v2(raw: Any) -> dict[str, Any]:
     return _parse_contract(
         raw,
@@ -171,25 +176,8 @@ def resolve_optional_interview_brief_v2(raw: Any) -> dict[str, Any]:
             else "invalid_payload"
         )
         return {"mode": "room_metadata_v1", "reason": reason}
-
-
-def canonicalize_interview_brief_v2_payload(brief: dict[str, Any]) -> str:
-    payload = {
-        key: value
-        for key, value in brief.items()
-        if key not in {"brief_id", "payload_digest"}
-    }
-    return json.dumps(
-        payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-
-
-def calculate_interview_brief_v2_payload_digest(brief: dict[str, Any]) -> str:
-    material = canonicalize_interview_brief_v2_payload(brief).encode("utf-8")
-    return f"sha256:{hashlib.sha256(material).hexdigest()}"
+    except (TypeError, ValueError, UnicodeError):
+        return {"mode": "room_metadata_v1", "reason": "invalid_payload"}
 
 
 def is_interview_brief_v2(value: Any) -> bool:
@@ -218,7 +206,8 @@ def is_interview_brief_v2(value: Any) -> bool:
     round_pack = value["round_pack"]
     policy = value["policy"]
     structurally_valid = (
-        value["contract_version"] == INTERVIEW_BRIEF_V2_CONTRACT_VERSION
+        _unicode_scalar_tree(value)
+        and value["contract_version"] == INTERVIEW_BRIEF_V2_CONTRACT_VERSION
         and _sha256(value["payload_digest"])
         and value["brief_id"]
         == f"brief:{value['payload_digest'][len('sha256:'):]}"
@@ -228,6 +217,7 @@ def is_interview_brief_v2(value: Any) -> bool:
         and value["round_type"]
         in ("behavioral", "product_sense", "execution", "strategy")
         and value["difficulty"] in ("beginner", "intermediate", "advanced")
+        and type(value["duration_minutes"]) is int
         and value["duration_minutes"] in (15, 30, 45)
         and _question(selected)
         and _company_context(company)
@@ -265,6 +255,7 @@ def is_interview_runtime_state(value: Any) -> bool:
             "allowed_moves",
             "probe_ledger",
             "last_finalized_candidate_turn_id",
+            "last_finalized_candidate_transcript_revision",
             "interruption_state",
             "close_state",
             "speech_fenced",
@@ -285,9 +276,28 @@ def is_interview_runtime_state(value: Any) -> bool:
         and _clock(value["clock"])
         and _unique_array(value["allowed_moves"], 0, 5, _move_type)
         and _array(value["probe_ledger"], 0, 100, _ledger_entry)
+        and len({entry["move_id"] for entry in value["probe_ledger"]})
+        == len(value["probe_ledger"])
         and (
             value["last_finalized_candidate_turn_id"] is None
             or _identifier(value["last_finalized_candidate_turn_id"])
+        )
+        and (
+            value["last_finalized_candidate_transcript_revision"] is None
+            or _identifier(value["last_finalized_candidate_transcript_revision"])
+        )
+        and (
+            (value["last_finalized_candidate_turn_id"] is None)
+            == (value["last_finalized_candidate_transcript_revision"] is None)
+        )
+        and not (value["clock"]["band"] == "elapsed" and value["close_state"] == "open")
+        and not (
+            value["controller_phase"] == "closing"
+            and value["close_state"] not in ("requested", "admitted")
+        )
+        and not (
+            value["close_state"] == "admitted"
+            and value["controller_phase"] != "closing"
         )
         and value["interruption_state"] in INTERVIEW_INTERRUPTION_STATES
         and value["close_state"] in INTERVIEW_CLOSE_STATES
@@ -318,6 +328,7 @@ def is_interviewer_move(value: Any) -> bool:
                 "writer_id",
                 "writer_generation",
                 "based_on_state_revision",
+                "based_on_lifecycle_version",
                 "move_type",
                 "target",
                 "reason_code",
@@ -333,6 +344,7 @@ def is_interviewer_move(value: Any) -> bool:
         and _identifier(value["writer_id"])
         and _positive_int(value["writer_generation"])
         and _non_negative_int(value["based_on_state_revision"])
+        and _positive_int(value["based_on_lifecycle_version"])
         and _move_type(value["move_type"])
         and _move_target(value["target"])
         and value["reason_code"] in INTERVIEWER_MOVE_REASON_CODES
@@ -377,35 +389,69 @@ def is_interviewer_tool_request(value: Any) -> bool:
     if name in ("read_interview_state", "read_interview_clock"):
         return _exact_keys(value, common)
     if name == "get_probe_candidates":
-        return _exact_keys(value, (*common, "expected_state_revision")) and (
+        return _exact_keys(
+            value,
+            (
+                *common,
+                "expected_state_revision",
+                "expected_lifecycle_version",
+                "active_question_id",
+            ),
+        ) and (
             _non_negative_int(value["expected_state_revision"])
+            and _positive_int(value["expected_lifecycle_version"])
+            and _identifier(value["active_question_id"])
         )
     if name == "commit_interviewer_move":
         move = value.get("move")
         return bool(
             _exact_keys(
                 value,
-                (*common, "expected_state_revision", "idempotency_key", "move"),
+                (
+                    *common,
+                    "expected_state_revision",
+                    "expected_lifecycle_version",
+                    "idempotency_key",
+                    "request_digest",
+                    "move",
+                ),
             )
             and _non_negative_int(value["expected_state_revision"])
+            and _positive_int(value["expected_lifecycle_version"])
             and _identifier(value["idempotency_key"])
+            and _sha256(value["request_digest"])
             and is_interviewer_move(move)
             and move["session_id"] == value["session_id"]
             and move["writer_id"] == value["writer_id"]
             and move["writer_generation"] == value["writer_generation"]
             and move["based_on_state_revision"]
             == value["expected_state_revision"]
+            and move["based_on_lifecycle_version"]
+            == value["expected_lifecycle_version"]
             and move["idempotency_key"] == value["idempotency_key"]
+            and value["request_digest"]
+            == calculate_interviewer_mutation_request_digest(value)
         )
     return bool(
         _exact_keys(
             value,
-            (*common, "expected_state_revision", "idempotency_key", "reason"),
+            (
+                *common,
+                "expected_state_revision",
+                "expected_lifecycle_version",
+                "idempotency_key",
+                "request_digest",
+                "reason",
+            ),
         )
         and _non_negative_int(value["expected_state_revision"])
+        and _positive_int(value["expected_lifecycle_version"])
         and _identifier(value["idempotency_key"])
+        and _sha256(value["request_digest"])
         and value["reason"]
         in ("deadline", "candidate_request", "controller_policy")
+        and value["request_digest"]
+        == calculate_interviewer_mutation_request_digest(value)
     )
 
 
@@ -421,6 +467,7 @@ def is_interviewer_tool_result(value: Any) -> bool:
             "writer_generation",
             "status",
             "observed_state_revision",
+            "observed_lifecycle_version",
             "payload",
             "failure_code",
             "latency_ms",
@@ -436,12 +483,19 @@ def is_interviewer_tool_result(value: Any) -> bool:
         and _positive_int(value["writer_generation"])
         and value["status"] in INTERVIEWER_TOOL_RESULT_STATUSES
         and _non_negative_int(value["observed_state_revision"])
+        and _positive_int(value["observed_lifecycle_version"])
         and _non_negative_number(value["latency_ms"])
     ):
         return False
     if value["status"] in ("ok", "duplicate"):
         return value["failure_code"] is None and _tool_payload(
-            value["tool_name"], value["payload"]
+            value["tool_name"],
+            value["payload"],
+            session_id=value["session_id"],
+            writer_id=value["writer_id"],
+            writer_generation=value["writer_generation"],
+            observed_state_revision=value["observed_state_revision"],
+            observed_lifecycle_version=value["observed_lifecycle_version"],
         )
     return value["payload"] is None and value["failure_code"] == value["status"]
 
@@ -458,6 +512,7 @@ def is_director_recommendation(value: Any) -> bool:
                 "writer_id",
                 "writer_generation",
                 "based_on_state_revision",
+                "based_on_lifecycle_version",
                 "source_turn_id",
                 "source_transcript_revision",
                 "source_finality",
@@ -476,6 +531,7 @@ def is_director_recommendation(value: Any) -> bool:
         and _identifier(value["writer_id"])
         and _positive_int(value["writer_generation"])
         and _non_negative_int(value["based_on_state_revision"])
+        and _positive_int(value["based_on_lifecycle_version"])
         and _identifier(value["source_turn_id"])
         and _identifier(value["source_transcript_revision"])
         and value["source_finality"] in ("speculative", "finalized")
@@ -492,44 +548,6 @@ def is_director_recommendation(value: Any) -> bool:
             DIRECTOR_RECOMMENDATION_MAX_TTL_MS,
         )
     )
-
-
-def assess_director_recommendation(
-    recommendation: dict[str, Any],
-    state: dict[str, Any],
-    now: str | datetime,
-) -> str:
-    if recommendation["session_id"] != state["session_id"]:
-        return "session_mismatch"
-    if recommendation["brief_id"] != state["brief_id"]:
-        return "brief_mismatch"
-    writer = state["active_writer"]
-    if (
-        recommendation["writer_id"] != writer["writer_id"]
-        or recommendation["writer_generation"] != writer["writer_generation"]
-    ):
-        return "stale_state"
-    if recommendation["based_on_state_revision"] != state["state_revision"]:
-        return "stale_state"
-    if recommendation["source_finality"] != "finalized":
-        return "source_not_final"
-    if (
-        recommendation["source_turn_id"]
-        != state["last_finalized_candidate_turn_id"]
-    ):
-        return "source_turn_mismatch"
-    now_ms = _timestamp_ms(now)
-    if now_ms is None or now_ms < _timestamp_ms(recommendation["created_at"]):
-        return "not_yet_valid"
-    if now_ms > _timestamp_ms(recommendation["expires_at"]):
-        return "expired"
-    if state["lifecycle_snapshot"]["state"] not in ("active", "reconnecting"):
-        return "lifecycle_not_active"
-    if state["speech_fenced"]:
-        return "speech_fenced"
-    if recommendation["move_type"] not in state["allowed_moves"]:
-        return "move_not_allowed"
-    return "eligible"
 
 
 def _parse_contract(
@@ -630,7 +648,7 @@ def _full_interview_policy(value: Any) -> bool:
 
 
 def _clock(value: Any) -> bool:
-    return bool(
+    if not (
         _exact_keys(
             value,
             ("started_at", "deadline_at", "observed_at", "remaining_ms", "band"),
@@ -638,10 +656,19 @@ def _clock(value: Any) -> bool:
         and _timestamp(value["started_at"])
         and _timestamp(value["deadline_at"])
         and _timestamp(value["observed_at"])
-        and _timestamp_ms(value["deadline_at"]) > _timestamp_ms(value["started_at"])
         and _non_negative_int(value["remaining_ms"])
         and value["band"] in INTERVIEW_CLOCK_BANDS
-        and (value["band"] != "elapsed" or value["remaining_ms"] == 0)
+    ):
+        return False
+    started_at = _timestamp_ms(value["started_at"])
+    deadline_at = _timestamp_ms(value["deadline_at"])
+    observed_at = _timestamp_ms(value["observed_at"])
+    projected_remaining_ms = max(0, deadline_at - observed_at)
+    return bool(
+        deadline_at > started_at
+        and observed_at >= started_at
+        and value["remaining_ms"] == projected_remaining_ms
+        and (value["band"] == "elapsed") == (projected_remaining_ms == 0)
     )
 
 
@@ -649,7 +676,7 @@ def _lifecycle_snapshot(value: Any) -> bool:
     return bool(
         _exact_keys(value, ("state", "version"))
         and value["state"] in INTERVIEW_LIFECYCLE_STATES
-        and _non_negative_int(value["version"])
+        and _positive_int(value["version"])
     )
 
 
@@ -688,24 +715,54 @@ def _ledger_entry(value: Any) -> bool:
 
 
 def _delivery_evidence(delivery_state: Any, value: Any) -> bool:
-    if delivery_state != "canonically_delivered":
-        return value is None
+    if value is None:
+        return delivery_state not in ("canonically_delivered", "interrupted")
+    if not isinstance(value, dict):
+        return False
+    if value.get("evidence_type") == "transcript_event":
+        return bool(
+            delivery_state in ("canonically_delivered", "interrupted")
+            and _exact_keys(
+                value,
+                (
+                    "evidence_type",
+                    "event_id",
+                    "writer_id",
+                    "writer_generation",
+                    "sequence",
+                    "delivery_state",
+                ),
+            )
+            and _identifier(value["event_id"])
+            and _identifier(value["writer_id"])
+            and _positive_int(value["writer_generation"])
+            and _positive_int(value["sequence"])
+            and value["delivery_state"]
+            in ("delivered", "partially_delivered")
+            and (
+                delivery_state != "interrupted"
+                or value["delivery_state"] == "partially_delivered"
+            )
+        )
     return bool(
-        _exact_keys(
+        delivery_state == "interrupted"
+        and _exact_keys(
             value,
             (
+                "evidence_type",
                 "event_id",
                 "writer_id",
                 "writer_generation",
                 "sequence",
-                "delivery_state",
+                "reason",
             ),
         )
+        and value["evidence_type"] == "interruption_marker"
         and _identifier(value["event_id"])
         and _identifier(value["writer_id"])
         and _positive_int(value["writer_generation"])
         and _positive_int(value["sequence"])
-        and value["delivery_state"] in ("delivered", "partially_delivered")
+        and value["reason"] == "no_provider_confirmed_prefix"
     )
 
 
@@ -745,13 +802,31 @@ def _probe_candidate(value: Any) -> bool:
         and _identifier(value["question_id"])
         and _bounded_string(value["topic"], 1, 240)
         and value["reason_code"] in INTERVIEWER_MOVE_REASON_CODES
+        and _move_reason_allowed(value["move_type"], value["reason_code"])
     )
 
 
-def _tool_payload(tool_name: str, value: Any) -> bool:
+def _tool_payload(
+    tool_name: str,
+    value: Any,
+    *,
+    session_id: str,
+    writer_id: str,
+    writer_generation: int,
+    observed_state_revision: int,
+    observed_lifecycle_version: int,
+) -> bool:
     if tool_name == "read_interview_state":
-        return _exact_keys(value, ("state",)) and is_interview_runtime_state(
-            value["state"]
+        return bool(
+            _exact_keys(value, ("state",))
+            and is_interview_runtime_state(value["state"])
+            and value["state"]["session_id"] == session_id
+            and value["state"]["active_writer"]["writer_id"] == writer_id
+            and value["state"]["active_writer"]["writer_generation"]
+            == writer_generation
+            and value["state"]["state_revision"] == observed_state_revision
+            and value["state"]["lifecycle_snapshot"]["version"]
+            == observed_lifecycle_version
         )
     if tool_name == "read_interview_clock":
         return _exact_keys(value, ("clock",)) and _clock(value["clock"])
@@ -760,8 +835,17 @@ def _tool_payload(tool_name: str, value: Any) -> bool:
             value["probe_candidates"], 0, 8, _probe_candidate
         )
     if tool_name == "commit_interviewer_move":
-        return _exact_keys(value, ("committed_move",)) and is_interviewer_move(
-            value["committed_move"]
+        return bool(
+            _exact_keys(value, ("committed_move",))
+            and is_interviewer_move(value["committed_move"])
+            and value["committed_move"]["session_id"] == session_id
+            and value["committed_move"]["writer_id"] == writer_id
+            and value["committed_move"]["writer_generation"]
+            == writer_generation
+            and value["committed_move"]["based_on_state_revision"] + 1
+            == observed_state_revision
+            and value["committed_move"]["based_on_lifecycle_version"]
+            == observed_lifecycle_version
         )
     return _exact_keys(value, ("close_state",)) and (
         value["close_state"] in INTERVIEW_CLOSE_STATES
@@ -769,7 +853,7 @@ def _tool_payload(tool_name: str, value: Any) -> bool:
 
 
 def _timestamp(value: Any) -> bool:
-    return _timestamp_ms(value) is not None
+    return isinstance(value, str) and _timestamp_ms(value) is not None
 
 
 def _timestamp_ms(value: Any) -> int | None:
@@ -799,9 +883,29 @@ def _exact_keys(value: Any, keys: tuple[str, ...]) -> bool:
 def _bounded_string(value: Any, minimum: int, maximum: int) -> bool:
     return (
         isinstance(value, str)
+        and _unicode_scalar_string(value)
         and value.strip() == value
         and minimum <= len(value) <= maximum
     )
+
+
+def _unicode_scalar_string(value: Any) -> bool:
+    return isinstance(value, str) and all(
+        not 0xD800 <= ord(character) <= 0xDFFF for character in value
+    )
+
+
+def _unicode_scalar_tree(value: Any) -> bool:
+    if isinstance(value, str):
+        return _unicode_scalar_string(value)
+    if isinstance(value, list):
+        return all(_unicode_scalar_tree(item) for item in value)
+    if isinstance(value, dict):
+        return all(
+            _unicode_scalar_string(key) and _unicode_scalar_tree(item)
+            for key, item in value.items()
+        )
+    return True
 
 
 def _identifier(value: Any) -> bool:
