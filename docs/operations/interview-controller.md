@@ -27,8 +27,16 @@ IDs before the finalized hook, so a stale preemptive task is denied without
 clock, revision, or move-stage mutation. The matching finalized pipeline may
 authorize once. A normal/warning move that has crossed into closing is aborted
 and leaves only `close` admissible; a move at elapsed is fenced. A pre-deadline
-close may still generate. `speech_created` alone establishes correlation and
-does not advance the move to generated.
+close may still generate.
+
+Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
+before it creates that handle's pipeline task. The adapter uses Python task
+context to carry the exact candidate handle identity across that public
+ordering boundary. Creation alone grants no move authority. Only a successful
+finalized-turn plus move authorization promotes the handle; denied, evicted,
+duplicate, and replayed handles cannot stage or abort the move and cannot
+correlate transcript or interruption evidence. Candidate, authorized, retired,
+transcript, and interruption correlation maps are deterministically bounded.
 
 ## Flag and fallback
 
@@ -72,8 +80,9 @@ pipeline, commits/emits the finalized user `ChatMessage` once, and the existing
 interviewer output. A normal pre-deadline explicit exit still admits one
 graceful `candidate_requested_close`; canonical close delivery then makes the
 controller terminal. Exit classification is a bounded anchored grammar for
-unambiguous stop/end/finish interview requests; those words inside ordinary PM
-answer content do not trigger close.
+stop/end/finish requests with an explicit interview/session target or clear
+temporal/deictic termination context; bare clauses and those words inside
+ordinary PM answer content do not trigger close.
 
 An interviewer move commits only in the `TranscriptIngestQueue.publisher`
 success callback, after positive move-to-speech-handle-to-assistant-item-to-event

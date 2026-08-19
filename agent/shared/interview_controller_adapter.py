@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Mapping
@@ -28,30 +29,30 @@ CONTROLLER_FEATURE_ENV = "MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED"
 MAX_PENDING_CORRELATIONS = 8
 MAX_GENERATION_CONTEXT_ITEMS = 16
 MAX_EXIT_INTENT_WORDS = 12
+MAX_RUNTIME_TRANSCRIPT_CORRELATIONS = 1_000
 
 _EXIT_ACTION = r"(?:stop|end|finish)"
 _EXIT_TARGET = r"(?:(?:the|this|our) )?(?:mock interview|interview|session)"
 _EXIT_WHEN = r"(?:now|here|today|for now|for today|at this point)"
+_EXIT_SCOPE = rf"(?: {_EXIT_TARGET}(?: {_EXIT_WHEN})?| {_EXIT_WHEN})"
 _EXIT_REQUEST_PATTERNS = (
     re.compile(
-        rf"^(?:please )?{_EXIT_ACTION}(?: {_EXIT_TARGET})?"
-        rf"(?: {_EXIT_WHEN})?(?: please)?$"
+        rf"^(?:please )?{_EXIT_ACTION}{_EXIT_SCOPE}(?: please)?$"
     ),
     re.compile(
         rf"^(?:i (?:want|need) to|i would like to|id like to) {_EXIT_ACTION}"
-        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+        rf"{_EXIT_SCOPE}(?: please)?$"
     ),
     re.compile(
         rf"^(?:can|could|would|will) (?:we|you) (?:please )?{_EXIT_ACTION}"
-        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+        rf"{_EXIT_SCOPE}(?: please)?$"
     ),
     re.compile(
-        rf"^lets {_EXIT_ACTION}(?: {_EXIT_TARGET})?"
-        rf"(?: {_EXIT_WHEN})?(?: please)?$"
+        rf"^lets {_EXIT_ACTION}{_EXIT_SCOPE}(?: please)?$"
     ),
     re.compile(
         rf"^(?:i think )?(?:we can|we should) {_EXIT_ACTION}"
-        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+        rf"{_EXIT_SCOPE}(?: please)?$"
     ),
 )
 _CLARIFICATION_PATTERNS = (
@@ -88,9 +89,12 @@ class ReplySuppressionGate:
     def arm(self, message_id: str) -> None:
         if not isinstance(message_id, str) or not message_id:
             raise ControllerError("invalid_adapter_input")
-        self._message_ids[message_id] = None
-        while len(self._message_ids) > MAX_PENDING_CORRELATIONS:
-            self._message_ids.pop(next(iter(self._message_ids)))
+        put_bounded_correlation(
+            self._message_ids,
+            message_id,
+            None,
+            limit=MAX_PENDING_CORRELATIONS,
+        )
 
     def consume_for_items(self, items: object) -> bool:
         message_id, _ = _generation_context_identity(items)
@@ -132,7 +136,13 @@ class InterviewControllerAdapter:
     ) -> None:
         self._state = state
         self._failure_reason = failure_reason
+        self._current_generation_handle: ContextVar[str | None] = ContextVar(
+            f"interview_controller_generation_handle_{id(self)}",
+            default=None,
+        )
+        self._created_speech_handles: dict[str, None] = {}
         self._speech_move_ids: dict[str, str] = {}
+        self._retired_speech_handles: dict[str, None] = {}
         self._transcript_move_ids: dict[str, str] = {}
         self._interruption_move_ids: dict[str, str] = {}
         self._persisted_interviewer_events: dict[str, Mapping[str, object]] = {}
@@ -208,14 +218,40 @@ class InterviewControllerAdapter:
             return None
 
     def speech_created(
-        self, *, handle_id: str, monotonic_ms: int | None = None
+        self,
+        *,
+        handle_id: str,
+        source: Literal["say", "generate_reply"] = "generate_reply",
+        monotonic_ms: int | None = None,
     ) -> None:
-        state = self._state
-        if not self.enabled or state is None or state.pending_move_id is None:
+        if not self.enabled:
             return
         try:
             _required_identifier(handle_id)
-            self._speech_move_ids[handle_id] = state.pending_move_id
+            if source not in ("say", "generate_reply"):
+                raise ControllerError("invalid_adapter_input")
+            if source != "generate_reply":
+                self._current_generation_handle.set(None)
+                return
+            if (
+                handle_id in self._created_speech_handles
+                or handle_id in self._speech_move_ids
+                or handle_id in self._retired_speech_handles
+            ):
+                self._current_generation_handle.set(None)
+                return
+            evicted = put_bounded_correlation(
+                self._created_speech_handles,
+                handle_id,
+                None,
+                limit=MAX_PENDING_CORRELATIONS,
+            )
+            for evicted_handle_id in evicted:
+                self._retire_speech_handle(evicted_handle_id)
+            # LiveKit 1.6.5 emits this public event synchronously before it
+            # creates the handle's pipeline task. The task therefore inherits
+            # this exact handle identity through Python's public task context.
+            self._current_generation_handle.set(handle_id)
         except Exception as error:
             self._disable(error)
 
@@ -230,21 +266,32 @@ class InterviewControllerAdapter:
         state = self._state
         if not self.enabled or state is None:
             return True
+        handle_id = self._current_generation_handle.get()
+        if (
+            not isinstance(handle_id, str)
+            or handle_id in self._speech_move_ids
+            or handle_id not in self._created_speech_handles
+        ):
+            return False
+        self._created_speech_handles.pop(handle_id, None)
         if (
             not isinstance(finalized_turn_id, str)
             or not finalized_turn_id
             or not isinstance(move_id, str)
             or not move_id
         ):
+            self._retire_speech_handle(handle_id)
             return False
         try:
             if state.terminal or state.pending_move_id != move_id:
+                self._retire_speech_handle(handle_id)
                 return False
             pending_move = _find_move(state, move_id)
             if (
                 pending_move.source_turn_id != finalized_turn_id
                 or pending_move.stage != "admitted"
             ):
+                self._retire_speech_handle(handle_id)
                 return False
             current_ms = _monotonic_ms(monotonic_ms)
             state = reduce_controller(
@@ -256,6 +303,7 @@ class InterviewControllerAdapter:
             ).state
             self._state = state
             if state.terminal or state.pending_move_id != move_id:
+                self._retire_speech_handle(handle_id)
                 return False
             self._state = reduce_controller(
                 state,
@@ -266,8 +314,17 @@ class InterviewControllerAdapter:
                     monotonic_ms=current_ms,
                 ),
             ).state
+            evicted = put_bounded_correlation(
+                self._speech_move_ids,
+                handle_id,
+                move_id,
+                limit=MAX_PENDING_CORRELATIONS,
+            )
+            for evicted_handle_id in evicted:
+                self._retire_speech_handle(evicted_handle_id)
             return True
         except Exception as error:
+            self._retire_speech_handle(handle_id)
             self._disable(error)
             return True
 
@@ -282,7 +339,9 @@ class InterviewControllerAdapter:
         monotonic_ms: int | None = None,
     ) -> None:
         state = self._state
+        self._created_speech_handles.pop(handle_id, None)
         move_id = self._speech_move_ids.pop(handle_id, None)
+        self._retire_speech_handle(handle_id)
         if not self.enabled or state is None or move_id is None:
             return
         try:
@@ -492,13 +551,29 @@ class InterviewControllerAdapter:
 
     @staticmethod
     def _bounded_put(target: dict, key: str, value: object) -> None:
-        target[key] = value
-        while len(target) > MAX_PENDING_CORRELATIONS:
-            target.pop(next(iter(target)))
+        put_bounded_correlation(
+            target,
+            key,
+            value,
+            limit=MAX_PENDING_CORRELATIONS,
+        )
+
+    def _retire_speech_handle(self, handle_id: str) -> None:
+        if handle_id in self._speech_move_ids:
+            return
+        put_bounded_correlation(
+            self._retired_speech_handles,
+            handle_id,
+            None,
+            limit=MAX_PENDING_CORRELATIONS,
+        )
 
     def _disable(self, error: Exception) -> None:
         self._state = None
+        self._current_generation_handle.set(None)
+        self._created_speech_handles.clear()
         self._speech_move_ids.clear()
+        self._retired_speech_handles.clear()
         self._transcript_move_ids.clear()
         self._interruption_move_ids.clear()
         self._persisted_interviewer_events.clear()
@@ -506,6 +581,23 @@ class InterviewControllerAdapter:
         self._failure_reason = (
             error.code if isinstance(error, ControllerError) else "adapter_failure"
         )
+
+
+def put_bounded_correlation(
+    target: dict,
+    key: str,
+    value: object,
+    *,
+    limit: int,
+) -> tuple[str, ...]:
+    """Insert one runtime correlation and report deterministic evictions."""
+    target[key] = value
+    evicted: list[str] = []
+    while len(target) > limit:
+        oldest = next(iter(target))
+        target.pop(oldest)
+        evicted.append(oldest)
+    return tuple(evicted)
 
 
 def controller_feature_enabled(env: Mapping[str, str]) -> bool:
