@@ -7,6 +7,12 @@ import {
   type QuestionPreference,
   type RoundType,
 } from "@meelni/core";
+import {
+  isInterviewBriefV2,
+  hasNonIntegerJsonNumberToken,
+  resolveOptionalInterviewBriefV2,
+  type InterviewBriefV2,
+} from "./interviewer-contracts";
 
 export type InterviewFeedbackMode = "real_time" | "end_only" | "silent";
 
@@ -52,6 +58,7 @@ export interface InterviewRoomMetadata {
   mode?: InterviewMode;
   config: InterviewRuntimeConfig;
   question: InterviewRoomQuestion | null;
+  interview_brief?: InterviewBriefV2;
 }
 
 export type InterviewRoomMetadataInput = Omit<
@@ -73,6 +80,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_transcript_ingest_url"
       | "invalid_deadline"
       | "invalid_round_type"
+      | "invalid_interview_brief"
   ) {
     super(`Invalid interview room metadata: ${code}`);
     this.name = "InterviewRoomMetadataError";
@@ -191,18 +199,39 @@ export function buildInterviewRoomMetadata(
     metadata.transcript_ingest_url
   );
 
+  const normalizedQuestion = metadata.question
+    ? normalizeQuestion(metadata.question)
+    : null;
+  const normalizedDeadline = normalizeDeadlineAt(metadata.deadline_at);
+  const normalizedConfig = {
+    ...metadata.config,
+    feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+  };
+  const interviewBrief = metadata.interview_brief;
+  if (
+    interviewBrief !== undefined &&
+    (!isInterviewBriefV2(interviewBrief) ||
+      !isInterviewBriefCompatibleWithRoom(interviewBrief, {
+        session_id: metadata.session_id,
+        deadline_at: normalizedDeadline,
+        round_type: metadata.round_type,
+        config: normalizedConfig,
+        question: normalizedQuestion,
+      }))
+  ) {
+    throw new InterviewRoomMetadataError("invalid_interview_brief");
+  }
+
   return {
     ...metadata,
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: metadata.session_id,
     candidate_identity: metadata.candidate_identity?.trim(),
     transcript_ingest_url: transcriptIngestUrl,
-    deadline_at: normalizeDeadlineAt(metadata.deadline_at),
-    config: {
-      ...metadata.config,
-      feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
-    },
-    question: metadata.question ? normalizeQuestion(metadata.question) : null,
+    deadline_at: normalizedDeadline,
+    config: normalizedConfig,
+    question: normalizedQuestion,
+    ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
   };
 }
 
@@ -223,7 +252,10 @@ export function parseInterviewRoomMetadata(
   if (!isRecord(parsed)) {
     throw new InterviewRoomMetadataError("invalid_json");
   }
-  if (parsed.contract_version !== INTERVIEW_ROOM_METADATA_CONTRACT_VERSION) {
+  if (
+    hasNonCanonicalTopLevelInteger(rawMetadata, "contract_version") ||
+    parsed.contract_version !== INTERVIEW_ROOM_METADATA_CONTRACT_VERSION
+  ) {
     throw new InterviewRoomMetadataError("unsupported_contract");
   }
   if (!isNonEmptyString(parsed.session_id)) {
@@ -239,6 +271,28 @@ export function parseInterviewRoomMetadata(
     throw new InterviewRoomMetadataError("invalid_round_type");
   }
 
+  const normalizedDeadline = normalizeDeadlineAt(parsed.deadline_at);
+  const normalizedConfig = normalizeInterviewRuntimeConfig(
+    isRecord(parsed.config) ? parsed.config : undefined
+  );
+  const normalizedQuestion = isRecord(parsed.question)
+    ? normalizeQuestion(parsed.question)
+    : null;
+  const briefResolution = hasNonCanonicalBriefNumber(rawMetadata)
+    ? { mode: "room_metadata_v1" as const, reason: "invalid_payload" as const }
+    : resolveOptionalInterviewBriefV2(parsed.interview_brief);
+  const interviewBrief =
+    briefResolution.mode === "brief_v2" &&
+    isInterviewBriefCompatibleWithRoom(briefResolution.brief, {
+      session_id: parsed.session_id,
+      deadline_at: normalizedDeadline,
+      round_type: parsed.round_type,
+      config: normalizedConfig,
+      question: normalizedQuestion,
+    })
+      ? briefResolution.brief
+      : undefined;
+
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: parsed.session_id,
@@ -248,19 +302,132 @@ export function parseInterviewRoomMetadata(
     transcript_ingest_url: normalizeTranscriptIngestUrl(
       parsed.transcript_ingest_url
     ),
-    deadline_at: normalizeDeadlineAt(parsed.deadline_at),
+    deadline_at: normalizedDeadline,
     round_type: parsed.round_type,
     mode:
       parsed.mode === "text" || parsed.mode === "voice_video"
         ? parsed.mode
         : undefined,
-    config: normalizeInterviewRuntimeConfig(
-      isRecord(parsed.config) ? parsed.config : undefined
-    ),
-    question: isRecord(parsed.question)
-      ? normalizeQuestion(parsed.question)
-      : null,
+    config: normalizedConfig,
+    question: normalizedQuestion,
+    ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
   });
+}
+
+function hasNonCanonicalBriefNumber(rawMetadata: string): boolean {
+  const rawBrief = extractRawTopLevelJsonProperty(
+    rawMetadata,
+    "interview_brief"
+  );
+  return (
+    rawBrief.status === "duplicate" ||
+    (rawBrief.status === "unique" &&
+      hasNonIntegerJsonNumberToken(rawBrief.value))
+  );
+}
+
+function hasNonCanonicalTopLevelInteger(
+  rawMetadata: string,
+  propertyName: string
+): boolean {
+  const rawValue = extractRawTopLevelJsonProperty(rawMetadata, propertyName);
+  return (
+    rawValue.status === "duplicate" ||
+    (rawValue.status === "unique" && !/^-?(?:0|[1-9]\d*)$/.test(rawValue.value))
+  );
+}
+
+function extractRawTopLevelJsonProperty(
+  raw: string,
+  propertyName: string
+):
+  | { status: "absent" }
+  | { status: "duplicate" }
+  | { status: "unique"; value: string } {
+  let cursor = 0;
+  while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+  if (raw[cursor] !== "{") return { status: "absent" };
+  cursor += 1;
+  let value: string | null = null;
+  let matches = 0;
+
+  while (cursor < raw.length) {
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] === "}") break;
+    if (raw[cursor] !== '"') return { status: "absent" };
+    const keyEnd = findJsonStringEnd(raw, cursor);
+    if (keyEnd === null) return { status: "absent" };
+    let key: unknown;
+    try {
+      key = JSON.parse(raw.slice(cursor, keyEnd + 1));
+    } catch {
+      return { status: "absent" };
+    }
+    cursor = keyEnd + 1;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] !== ":") return { status: "absent" };
+    cursor += 1;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    const valueEnd = findJsonValueEnd(raw, cursor);
+    if (valueEnd === null) return { status: "absent" };
+    if (key === propertyName) {
+      matches += 1;
+      value = raw.slice(cursor, valueEnd);
+    }
+    cursor = valueEnd;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] === ",") {
+      cursor += 1;
+      continue;
+    }
+    if (raw[cursor] === "}") break;
+    return { status: "absent" };
+  }
+
+  if (matches === 0) return { status: "absent" };
+  if (matches > 1 || value === null) return { status: "duplicate" };
+  return { status: "unique", value };
+}
+
+function findJsonStringEnd(raw: string, start: number): number | null {
+  let escaped = false;
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const character = raw[index]!;
+    if (escaped) escaped = false;
+    else if (character === "\\") escaped = true;
+    else if (character === '"') return index;
+  }
+  return null;
+}
+
+function findJsonValueEnd(raw: string, start: number): number | null {
+  if (raw[start] === '"') {
+    const end = findJsonStringEnd(raw, start);
+    return end === null ? null : end + 1;
+  }
+  if (raw[start] !== "{" && raw[start] !== "[") {
+    const match = raw.slice(start).match(/^[^,}\]]+/u);
+    return match ? start + match[0].trimEnd().length : null;
+  }
+  const stack = [raw[start]];
+  let inString = false;
+  let escaped = false;
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const character = raw[index]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{" || character === "[") stack.push(character);
+    else if (character === "}" || character === "]") {
+      stack.pop();
+      if (stack.length === 0) return index + 1;
+    }
+  }
+  return null;
 }
 
 export function normalizeInterviewRuntimeConfig(
@@ -318,6 +485,28 @@ function normalizeQuestion(
         ? { askedAt: question.askedAt.toISOString() }
         : {}),
   };
+}
+
+function isInterviewBriefCompatibleWithRoom(
+  brief: InterviewBriefV2,
+  room: Pick<
+    InterviewRoomMetadata,
+    "session_id" | "deadline_at" | "round_type" | "config" | "question"
+  >
+): boolean {
+  return (
+    room.deadline_at !== null &&
+    room.question !== null &&
+    brief.session_id === room.session_id &&
+    brief.deadline_at === room.deadline_at &&
+    brief.round_type === room.round_type &&
+    brief.difficulty === room.config.difficulty &&
+    brief.duration_minutes === room.config.duration &&
+    brief.selected_question.id === room.question.id &&
+    brief.selected_question.text === room.question.text &&
+    brief.selected_question.company === room.question.company &&
+    brief.selected_question.type === room.question.type
+  );
 }
 
 function normalizeDeadlineAt(value: unknown): string | null {

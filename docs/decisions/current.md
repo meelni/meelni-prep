@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Stateful Interviewer Contracts Preserve Existing Authorities](2026-08-18-stateful-interviewer-contracts.md): Keep top-level room metadata v1, add a deterministic independently versioned nested brief, put controller admission between Director advice and speech, and preserve lifecycle/transcript/feedback authority and human-owned rollout.
 - [Require A Total For Every Customer Scorecard](2026-08-17-total-required-scorecards.md): Present exactly Scorecard, Coaching review, or Unable to review; require every scorecard to contain all weighted dimensions and the canonical total; preserve strict integrity failure and immutable historical rows.
 - [Durable Interview-To-Feedback Loop](2026-08-13-durable-interview-to-feedback-loop.md): Persist settlement intent as a durable writer-scoped command, decide score authority per trusted closed answer block, allow frozen-evidence-gated owner recovery from late false-negative skips without a new credit, budget and observe generation end to end, and keep incremental evaluation default-off and non-authoritative. Its partial-scorecard and safe-marker total policy is superseded by the total-required scorecard decision.
 - [Multi-Domain Professional Simulation Direction](2026-08-13-multi-domain-professional-simulation-direction.md): Keep live PM interview practice as the current beachhead while guiding future expansion through validated domain packs, interviewer calibration, and professional skill simulations.
