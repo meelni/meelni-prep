@@ -36,9 +36,18 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 #### Scenario: Generation reaches the public runtime boundary
 
 - **WHEN** a controller-admitted reply reaches the public LiveKit LLM node
+- **THEN** its public chat context must contain the finalized candidate message
+  identity and the exact admitted move snapshot identity
 - **THEN** the adapter observes monotonic time again before provider generation
 - **AND** a non-close move crossing into closing is aborted without speech
 - **AND** any move reaching elapsed is fenced without speech or snapshot
+
+#### Scenario: A stale preemptive generation reaches the boundary
+
+- **WHEN** a preemptive pipeline does not carry the finalized candidate message
+  and exact admitted move snapshot identities
+- **THEN** generation is denied without mutating controller state
+- **AND** the matching finalized pipeline may authorize that move exactly once
 
 #### Scenario: Deadline has elapsed
 
@@ -95,9 +104,11 @@ conversation-item persistence path.
 
 #### Scenario: Candidate explicitly exits before the deadline
 
-- **WHEN** a finalized candidate turn requests exit while time remains
+- **WHEN** a finalized candidate turn makes an unambiguous, bounded
+  stop/end/finish interview request while time remains
 - **THEN** the controller admits one graceful `close` move
 - **AND** terminal state begins only after canonical close delivery
+- **AND** ordinary answer content using those verbs does not request exit
 
 #### Scenario: A legal event replays after terminal
 

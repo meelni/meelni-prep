@@ -18,9 +18,11 @@
    does not claim that the later publisher has already persisted the event.
    One pending move blocks a second admission.
 5. `speech_created` establishes only handle correlation. At the public LLM
-   generation boundary, the adapter projects monotonic time again and admits
-   generation only while the move remains legal. Speech events then advance
-   only lifecycle evidence. The move joins committed
+   generation boundary, the adapter requires the finalized candidate message
+   ID and exact `controller:{move_id}` snapshot identity from the public chat
+   context before projecting monotonic time. A stale preemptive context is
+   denied without state mutation; the matching context may authorize once.
+   Speech events then advance only lifecycle evidence. The move joins committed
    probe history only after a successful canonical transcript write positively
    correlated through the move, speech handle, assistant item, and event ID.
    An optional post-success interruption-marker observer may upgrade a
@@ -52,6 +54,9 @@
   an ambiguity, silence, repetition, or explicit clarification signal. It is
   recorded separately from ordinary probing so repetition prevention remains
   inspectable.
+- Candidate exit intent uses a bounded, anchored stop/end/finish request
+  grammar. Ordinary answer content containing those verbs does not request an
+  exit; an unambiguous match admits the existing graceful close.
 - The controller computes time bands. The model never receives instructions to
   estimate elapsed or remaining time.
 - A canonically delivered transition at the final objective/topic exhausts the

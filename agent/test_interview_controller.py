@@ -113,6 +113,19 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=monotonic_ms,
         )
 
+    def authorize_pending(
+        self,
+        adapter,
+        *,
+        turn_id: str = "turn-1",
+        monotonic_ms: int,
+    ):
+        return adapter.authorize_generation(
+            finalized_turn_id=turn_id,
+            move_id=adapter.state.pending_move_id,
+            monotonic_ms=monotonic_ms,
+        )
+
     def complete_turn(
         self,
         state,
@@ -896,7 +909,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.move_ledger[-1].stage, "admitted")
 
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         self.assertEqual(adapter.state.move_ledger[-1].stage, "generated")
         adapter.speech_finished(
             handle_id="speech-1",
@@ -923,6 +936,174 @@ class InterviewControllerTests(unittest.TestCase):
         )
         self.assertEqual(adapter.state.move_ledger[-1].stage, "spoken")
 
+    def test_stale_preemptive_context_cannot_consume_finalized_move(self):
+        adapter = self.make_adapter()
+        gate = ReplySuppressionGate()
+
+        # Pinned LiveKit creates and starts this handle before the finalized
+        # on_user_turn_completed message and controller directive exist.
+        adapter.speech_created(handle_id="speech-preemptive", monotonic_ms=1_000)
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would focus on the primary user's highest-impact need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        admitted = adapter.state
+        self.assertEqual(admitted.move_ledger[-1].stage, "admitted")
+
+        stale_items = [
+            SimpleNamespace(role="user", id="turn-preemptive-hypothesis"),
+        ]
+        self.assertFalse(
+            allow_controller_generation(
+                adapter,
+                gate,
+                stale_items,
+                monotonic_ms=1_002,
+            )
+        )
+        self.assertIs(adapter.state, admitted)
+        self.assertTrue(adapter.enabled)
+
+        wrong_snapshot_items = [
+            SimpleNamespace(role="user", id="turn-finalized"),
+            SimpleNamespace(role="system", id="controller:move:session-471:stale"),
+        ]
+        self.assertFalse(
+            allow_controller_generation(
+                adapter,
+                gate,
+                wrong_snapshot_items,
+                monotonic_ms=1_002,
+            )
+        )
+        self.assertIs(adapter.state, admitted)
+
+        intended_items = [
+            SimpleNamespace(role="user", id="turn-finalized"),
+            SimpleNamespace(role="system", id=f"controller:{directive.move_id}"),
+        ]
+        adapter.speech_created(handle_id="speech-intended", monotonic_ms=1_003)
+        self.assertTrue(
+            allow_controller_generation(
+                adapter,
+                gate,
+                intended_items,
+                monotonic_ms=1_003,
+            )
+        )
+        generated = adapter.state
+        self.assertEqual(generated.move_ledger[-1].stage, "generated")
+
+        self.assertFalse(
+            allow_controller_generation(
+                adapter,
+                gate,
+                intended_items,
+                monotonic_ms=1_004,
+            )
+        )
+        self.assertIs(adapter.state, generated)
+        self.assertTrue(adapter.enabled)
+
+    def test_adapter_exit_intent_policy_is_bounded_and_graceful(self):
+        positive_phrases = (
+            "I would like to stop now.",
+            "Please stop the interview.",
+            "Can we end the interview?",
+            "Could you finish the session now?",
+            "Let's end here.",
+            "I think we should finish the interview.",
+        )
+        negative_phrases = (
+            "I would stop investing in this segment.",
+            "Please stop users from abandoning checkout.",
+            "Can we end the roadmap discussion with next steps?",
+            "I want to finish defining the success metrics.",
+            "At the end, I would compare the tradeoffs.",
+            "We should stop churn before it starts.",
+            "Do not stop the interview.",
+        )
+
+        for phrase in positive_phrases:
+            with self.subTest(phrase=phrase):
+                adapter = self.make_adapter()
+                directive = adapter.complete_user_turn(
+                    message_id="turn-exit",
+                    transcript_revision="writer-1:turn-exit",
+                    text=phrase,
+                    duration_ms=1_000,
+                    monotonic_ms=1_001,
+                )
+                move = adapter.state.move_ledger[-1]
+                self.assertEqual(move.move_type, "close")
+                self.assertEqual(move.reason_code, "candidate_requested_close")
+                self.assertFalse(directive.suppress_reply)
+
+        for phrase in negative_phrases:
+            with self.subTest(phrase=phrase):
+                adapter = self.make_adapter()
+                adapter.complete_user_turn(
+                    message_id="turn-content",
+                    transcript_revision="writer-1:turn-content",
+                    text=phrase,
+                    duration_ms=8_000,
+                    monotonic_ms=1_001,
+                )
+                self.assertNotEqual(adapter.state.move_ledger[-1].move_type, "close")
+                self.assertTrue(adapter.enabled)
+
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-exit",
+            transcript_revision="writer-1:turn-exit",
+            text="Please stop the interview.",
+            duration_ms=1_000,
+            monotonic_ms=1_001,
+        )
+        adapter.speech_created(handle_id="speech-close", monotonic_ms=1_002)
+        self.assertTrue(
+            allow_controller_generation(
+                adapter,
+                ReplySuppressionGate(),
+                [
+                    SimpleNamespace(
+                        role="system",
+                        id=f"controller:{directive.move_id}",
+                    ),
+                    SimpleNamespace(role="user", id="turn-exit"),
+                ],
+                monotonic_ms=1_002,
+            )
+        )
+        adapter.speech_finished(
+            handle_id="speech-close",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-close",),
+            monotonic_ms=1_003,
+        )
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-close",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 2,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_004,
+        )
+        self.assertTrue(adapter.state.terminal)
+        self.assertEqual(adapter.state.close_state, "speech_fenced")
+        self.assertEqual(
+            adapter.state.move_ledger[-1].stage,
+            "canonically_delivered",
+        )
+
     def test_adapter_rechecks_clock_before_provider_generation(self):
         crossing_closing = self.make_adapter(
             observed_at="2026-08-19T12:29:14.900Z"
@@ -943,7 +1124,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_002,
         )
         self.assertFalse(
-            crossing_closing.authorize_generation(monotonic_ms=1_101)
+            self.authorize_pending(crossing_closing, monotonic_ms=1_101)
         )
         self.assertEqual(crossing_closing.state.clock.band, "closing")
         self.assertEqual(crossing_closing.state.move_ledger[-1].stage, "aborted")
@@ -966,7 +1147,9 @@ class InterviewControllerTests(unittest.TestCase):
             handle_id="speech-close",
             monotonic_ms=1_002,
         )
-        self.assertFalse(crossing_elapsed.authorize_generation(monotonic_ms=1_100))
+        self.assertFalse(
+            self.authorize_pending(crossing_elapsed, monotonic_ms=1_100)
+        )
         self.assertTrue(crossing_elapsed.state.terminal)
         self.assertEqual(crossing_elapsed.state.move_ledger[-1].stage, "aborted")
         self.assertIsNotNone(close.instruction)
@@ -985,7 +1168,9 @@ class InterviewControllerTests(unittest.TestCase):
             handle_id="speech-close",
             monotonic_ms=1_002,
         )
-        self.assertTrue(predeadline_close.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(
+            self.authorize_pending(predeadline_close, monotonic_ms=1_002)
+        )
         self.assertEqual(predeadline_close.state.move_ledger[-1].stage, "generated")
 
     def test_adapter_commits_only_the_persisted_interviewer_transcript(self):
@@ -998,7 +1183,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1034,7 +1219,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1084,7 +1269,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.move_ledger[-1].move_type, "close")
         self.assertFalse(directive.suppress_reply)
         adapter.speech_created(handle_id="speech-close", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-close",
             scheduled=True,
@@ -1156,7 +1341,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.pending_move_id, directive.move_id)
 
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_003)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_003))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_003))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1189,7 +1374,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1255,7 +1440,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
-        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
+        self.assertTrue(self.authorize_pending(adapter, monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
