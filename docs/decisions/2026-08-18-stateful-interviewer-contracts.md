@@ -5,6 +5,20 @@ Status: accepted
 Issue: SAV-466
 Decision owners: engineering contract; Production/default-on remains human-owned
 
+Implementation note (SAV-471): the first provider-free reducer and narrow
+LiveKit adapter implement rules 3 and 5 behind the exact server flag
+`MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED=true`. The absent/default state remains
+off. This implementation does not authorize Preview, Production, rollout, or
+default-on use.
+
+The pinned LiveKit adapter preserves finalized candidate transcript emission by
+returning an empty public-LLM-node result, rather than raising `StopResponse`,
+when a turn projects elapsed or arrives after terminal. Pre-deadline explicit
+exit remains a graceful close completed by canonical delivery. The controller
+also rechecks monotonic time before generation, treats all legal events as exact
+state no-ops after terminal, and closes after the delivered catalog-tail
+transition instead of repeating it.
+
 ## Context
 
 The current full-interview runtime receives version-1 room metadata and relies
