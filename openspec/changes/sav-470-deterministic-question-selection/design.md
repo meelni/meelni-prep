@@ -20,7 +20,9 @@
   owns orchestration and brief compilation.
 - Candidate, history, evidence, and SQL work have explicit upper bounds.
 - Candidate reads use 32 exact type/difficulty buckets capped at 64 rows each,
-  backed by a partial catalog index; history limits through a partial
+  emitted as explicit equality or `IS NULL` branches. Including each fixed
+  difficulty in its local ordering lets the partial catalog index provide the
+  recency/ID order through the bucket limit. History limits through a partial
   user/activation index before joining the selected question.
 - Each logical read uses the existing transaction-local interactive timeout and
   the workflow has the same 5-second outer deadline before safe fallback.

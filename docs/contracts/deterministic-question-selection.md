@@ -30,13 +30,17 @@ has the existing 5-second interactive-read timeout; the workflow also abandons
 ranking for the embedded fallback after 5 seconds so room start does not wait on
 queued work. Candidate SQL uses a fixed 32-bucket matrix (eight stored question
 types by Easy/Medium/Hard/null), reads at most 64 index-ordered rows per bucket,
-materializes at most 2,048 rows, and returns 64. With no requested company, the
-window is ordered by requested round, requested difficulty, source recency, and
-stable question ID. A partial `(question_type, difficulty, asked_at DESC, id)`
-index serves each exact bucket. History first limits sessions through the
-partial `(user_id, activated_at DESC, id)` index and only then joins the one
-question relation. Migration `0042_sav_470_question_ranking_indexes` owns both
-indexes.
+materializes at most 2,048 rows, and returns 64. Each bucket is an explicit SQL
+branch: non-null difficulty uses equality and null difficulty uses `IS NULL`.
+Its local ordering includes the fixed difficulty key before source recency and
+stable ID so PostgreSQL consumes the composite index order through the
+per-bucket limit instead of filtering or sorting the bucket. With no requested
+company, the outer window remains ordered by requested round, requested
+difficulty, source recency, and stable question ID. A partial
+`(question_type, difficulty, asked_at DESC, id)` index serves each exact bucket.
+History first limits sessions through the partial
+`(user_id, activated_at DESC, id)` index and only then joins the one question
+relation. Migration `0042_sav_470_question_ranking_indexes` owns both indexes.
 
 Core independently reapplies the 64/16/8 candidate/history/signal limits before
 scoring. A nullable catalog difficulty remains eligible but neutral and never
@@ -113,6 +117,10 @@ customer data:
 
 - DB seam test: three bounded logical reads, worst-case eleven SQL statements,
   32 candidate buckets, and at most 2,048 bucket rows before the 64-row window;
+- PostgreSQL 17.10 plan test: 32,000 adversarial active/published rows produce
+  32 composite-index scans, each with exact type and difficulty index
+  conditions, 64 rows below its direct limit, no filter removals, and no
+  per-bucket sort;
 - 2,000 selections over 64 synthetic candidates and 16 history rows: p50
   0.060 ms, p95 0.069 ms, maximum 0.277 ms on the local workstation.
 

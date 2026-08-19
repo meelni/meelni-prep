@@ -163,81 +163,9 @@ async function loadBoundedCandidateWindow(
   request: QuestionRankingRequest,
   limit: number
 ): Promise<readonly QuestionRankingCandidate[]> {
-  const boundedLimit = Math.min(
-    limit,
-    QUESTION_RANKING_DB_BOUNDS.candidateRows
+  const rows = await database.execute<QuestionCandidateRow>(
+    buildBoundedCandidateWindowQuery(request, limit)
   );
-  const preferences = createQuestionCandidatePreferenceBuckets(request);
-  const preferenceValues = sql.join(
-    preferences.map(
-      (preference) =>
-        sql`(${preference.questionType}::text, ${preference.difficulty}::text, ${preference.roundPriority}::integer, ${preference.difficultyPriority}::integer)`
-    ),
-    sql`, `
-  );
-  const company = request.company?.trim() || null;
-  const ordering = [
-    sql`"roundPriority" ASC`,
-    ...(company
-      ? [
-          sql`CASE WHEN lower(btrim("company")) = lower(btrim(${company})) THEN 0 ELSE 1 END ASC`,
-        ]
-      : []),
-    sql`"difficultyPriority" ASC`,
-    sql`"askedAt" DESC NULLS LAST`,
-    sql`"id" ASC`,
-  ];
-  const rows = await database.execute<QuestionCandidateRow>(sql`
-    WITH preference(
-      "questionType",
-      "difficulty",
-      "roundPriority",
-      "difficultyPriority"
-    ) AS (
-      VALUES ${preferenceValues}
-    ), bounded_buckets AS (
-      SELECT
-        preference."roundPriority",
-        preference."difficultyPriority",
-        candidate.*
-      FROM preference
-      CROSS JOIN LATERAL (
-        SELECT
-          ${interviewQuestion.id} AS "id",
-          ${interviewQuestion.questionText} AS "text",
-          ${interviewQuestion.company} AS "company",
-          ${interviewQuestion.questionType} AS "questionType",
-          ${interviewQuestion.difficulty} AS "difficulty",
-          ${interviewQuestion.sourceKind} AS "sourceKind",
-          ${interviewQuestion.qualityStatus} AS "qualityStatus",
-          ${interviewQuestion.askedAt} AS "askedAt",
-          ${interviewQuestion.isActive} AS "isActive"
-        FROM ${interviewQuestion}
-        WHERE ${interviewQuestion.isActive} = true
-          AND ${interviewQuestion.qualityStatus} = 'published'
-          AND ${interviewQuestion.questionType} = preference."questionType"
-          AND ${interviewQuestion.difficulty}
-            IS NOT DISTINCT FROM preference."difficulty"
-        ORDER BY
-          ${interviewQuestion.askedAt} DESC NULLS LAST,
-          ${interviewQuestion.id} ASC
-        LIMIT ${boundedLimit}
-      ) AS candidate
-    )
-    SELECT
-      "id",
-      "text",
-      "company",
-      "questionType",
-      "difficulty",
-      "sourceKind",
-      "qualityStatus",
-      "askedAt",
-      "isActive"
-    FROM bounded_buckets
-    ORDER BY ${sql.join(ordering, sql`, `)}
-    LIMIT ${boundedLimit}
-  `);
 
   return rows.flatMap((row) => {
     const roundType = normalizeQuestionRound(row.questionType);
@@ -256,6 +184,83 @@ async function loadBoundedCandidateWindow(
       } satisfies QuestionRankingCandidate,
     ];
   });
+}
+
+export function buildBoundedCandidateWindowQuery(
+  request: QuestionRankingRequest,
+  limit: number
+) {
+  const boundedLimit = Math.min(
+    limit,
+    QUESTION_RANKING_DB_BOUNDS.candidateRows
+  );
+  const preferences = createQuestionCandidatePreferenceBuckets(request);
+  const boundedBucketQueries = preferences.map((preference) => {
+    const difficultyPredicate =
+      preference.difficulty === null
+        ? sql`${interviewQuestion.difficulty} IS NULL`
+        : sql`${interviewQuestion.difficulty} = ${preference.difficulty}`;
+    // Keep the fixed difficulty pathkey so null buckets use the index's
+    // recency/ID order instead of a bitmap scan and per-bucket sort.
+    return sql`
+      SELECT
+        ${preference.roundPriority}::integer AS "roundPriority",
+        ${preference.difficultyPriority}::integer AS "difficultyPriority",
+        candidate.*
+      FROM (
+        SELECT
+          ${interviewQuestion.id} AS "id",
+          ${interviewQuestion.questionText} AS "text",
+          ${interviewQuestion.company} AS "company",
+          ${interviewQuestion.questionType} AS "questionType",
+          ${interviewQuestion.difficulty} AS "difficulty",
+          ${interviewQuestion.sourceKind} AS "sourceKind",
+          ${interviewQuestion.qualityStatus} AS "qualityStatus",
+          ${interviewQuestion.askedAt} AS "askedAt",
+          ${interviewQuestion.isActive} AS "isActive"
+        FROM ${interviewQuestion}
+        WHERE ${interviewQuestion.isActive} = true
+          AND ${interviewQuestion.qualityStatus} = 'published'
+          AND ${interviewQuestion.questionType} = ${preference.questionType}
+          AND ${difficultyPredicate}
+        ORDER BY
+          ${interviewQuestion.difficulty} ASC NULLS LAST,
+          ${interviewQuestion.askedAt} DESC NULLS LAST,
+          ${interviewQuestion.id} ASC
+        LIMIT ${boundedLimit}
+      ) AS candidate
+    `;
+  });
+  const company = request.company?.trim() || null;
+  const ordering = [
+    sql`"roundPriority" ASC`,
+    ...(company
+      ? [
+          sql`CASE WHEN lower(btrim("company")) = lower(btrim(${company})) THEN 0 ELSE 1 END ASC`,
+        ]
+      : []),
+    sql`"difficultyPriority" ASC`,
+    sql`"askedAt" DESC NULLS LAST`,
+    sql`"id" ASC`,
+  ];
+  return sql`
+    WITH bounded_buckets AS (
+      ${sql.join(boundedBucketQueries, sql` UNION ALL `)}
+    )
+    SELECT
+      "id",
+      "text",
+      "company",
+      "questionType",
+      "difficulty",
+      "sourceKind",
+      "qualityStatus",
+      "askedAt",
+      "isActive"
+    FROM bounded_buckets
+    ORDER BY ${sql.join(ordering, sql`, `)}
+    LIMIT ${boundedLimit}
+  `;
 }
 
 async function loadBoundedQuestionHistory(
