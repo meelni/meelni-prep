@@ -32,13 +32,16 @@ Adopt the contracts in
    controller that remains subordinate to lifecycle, deadline, transcript,
    settlement, answer-block, and feedback authorities.
 4. Treat `DirectorRecommendation` as asynchronous advice. The controller
-   validates and admits; the one live interviewer alone speaks.
+   validates the exact active lifecycle, deadline, finalized turn/transcript
+   revision, active question, writer, controller revision, and independent
+   lifecycle version before admission; the one live interviewer alone speaks.
 5. Distinguish recommended, admitted, generated, scheduled, spoken,
    interrupted/aborted, and canonically delivered states. Only durable
    transcript evidence commits delivered history.
 6. Expose only five session-scoped, non-privileged tools with explicit
-   deadlines, CAS, writer fencing, idempotency, typed failures, and immediate
-   fallback.
+   deadlines, dual CAS, canonical mutation digests, writer fencing,
+   idempotency, pending-request result correlation, typed failures, and
+   immediate fallback.
 7. Keep Director and tool content out of canonical transcript, answer blocks,
    and feedback evidence. Identical canonical evidence must produce identical
    evaluator input/authority regardless of operational traces.
@@ -52,6 +55,12 @@ Adopt the contracts in
 - Existing v1 sessions and old readers continue to work.
 - A malformed nested brief degrades to validated v1 behavior rather than
   weakening interview policy or preventing a safe current-runtime start.
+- Cross-runtime brief strings accept Unicode scalars only, so canonical UTF-8
+  hashing is byte-identical and unpaired surrogates fall back as invalid.
+- Canonical brief numbers use integer JSON tokens only; float/exponent duration
+  spellings are rejected before they can hash differently across runtimes.
+- Delivery attribution reuses transcript v2 event ID plus writer/generation and
+  sequence. Transcript v2 remains backward compatible and unchanged.
 - Downstream implementations receive strict TypeScript/Python schemas and one
   golden fixture, but this decision does not authorize runtime influence.
 - The controller must integrate through existing lifecycle and transcript

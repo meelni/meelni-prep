@@ -99,6 +99,7 @@
         "target_turn_ids": ["candidate-turn-0"],
         "updated_at": "2026-08-18T23:08:00.000Z",
         "delivery_evidence": {
+          "evidence_type": "transcript_event",
           "event_id": "interviewer-event-0",
           "writer_id": "writer-contract-1",
           "writer_generation": 3,
@@ -108,6 +109,7 @@
       }
     ],
     "last_finalized_candidate_turn_id": "candidate-turn-1",
+    "last_finalized_candidate_transcript_revision": "transcript-revision-9",
     "interruption_state": "clear",
     "close_state": "open",
     "speech_fenced": false
@@ -120,6 +122,7 @@
     "writer_id": "writer-contract-1",
     "writer_generation": 3,
     "based_on_state_revision": 7,
+    "based_on_lifecycle_version": 2,
     "move_type": "challenge",
     "target": {
       "question_id": "question-contract-1",
@@ -159,7 +162,9 @@
       "writer_id": "writer-contract-1",
       "writer_generation": 3,
       "deadline_at": "2026-08-18T23:10:00.050Z",
-      "expected_state_revision": 7
+      "expected_state_revision": 7,
+      "expected_lifecycle_version": 2,
+      "active_question_id": "question-contract-1"
     },
     {
       "contract_version": "interviewer-tools.v1",
@@ -170,7 +175,9 @@
       "writer_generation": 3,
       "deadline_at": "2026-08-18T23:10:00.050Z",
       "expected_state_revision": 7,
+      "expected_lifecycle_version": 2,
       "idempotency_key": "move-contract-1:7",
+      "request_digest": "sha256:a65adc1d0ed59ba1a1a4cbb4631cd08043a53f755e6d0c1bed5f53323086c11b",
       "move": {
         "contract_version": "interviewer-move.v1",
         "move_id": "move-contract-1",
@@ -179,6 +186,7 @@
         "writer_id": "writer-contract-1",
         "writer_generation": 3,
         "based_on_state_revision": 7,
+        "based_on_lifecycle_version": 2,
         "move_type": "challenge",
         "target": {
           "question_id": "question-contract-1",
@@ -201,7 +209,9 @@
       "writer_generation": 3,
       "deadline_at": "2026-08-18T23:10:00.050Z",
       "expected_state_revision": 7,
+      "expected_lifecycle_version": 2,
       "idempotency_key": "close-contract-1:7",
+      "request_digest": "sha256:8b317eebda78cef18eee372ced59784349a503500e413477db4396000046d218",
       "reason": "deadline"
     }
   ],
@@ -215,6 +225,7 @@
       "writer_generation": 3,
       "status": "ok",
       "observed_state_revision": 7,
+      "observed_lifecycle_version": 2,
       "payload": {
         "state": {
           "contract_version": "interview-runtime-state.v1",
@@ -256,6 +267,7 @@
               "target_turn_ids": ["candidate-turn-0"],
               "updated_at": "2026-08-18T23:08:00.000Z",
               "delivery_evidence": {
+                "evidence_type": "transcript_event",
                 "event_id": "interviewer-event-0",
                 "writer_id": "writer-contract-1",
                 "writer_generation": 3,
@@ -265,6 +277,7 @@
             }
           ],
           "last_finalized_candidate_turn_id": "candidate-turn-1",
+          "last_finalized_candidate_transcript_revision": "transcript-revision-9",
           "interruption_state": "clear",
           "close_state": "open",
           "speech_fenced": false
@@ -282,6 +295,7 @@
       "writer_generation": 3,
       "status": "timeout",
       "observed_state_revision": 7,
+      "observed_lifecycle_version": 2,
       "payload": null,
       "failure_code": "timeout",
       "latency_ms": 25
@@ -295,6 +309,7 @@
     "writer_id": "writer-contract-1",
     "writer_generation": 3,
     "based_on_state_revision": 7,
+    "based_on_lifecycle_version": 2,
     "source_turn_id": "candidate-turn-1",
     "source_transcript_revision": "transcript-revision-9",
     "source_finality": "finalized",
@@ -309,18 +324,125 @@
     "created_at": "2026-08-18T23:10:00.000Z",
     "expires_at": "2026-08-18T23:10:10.000Z"
   },
-  "canonical_transcript": [
+  "unicode_cases": [
     {
-      "eventId": "candidate-event-1",
-      "speaker": "user",
-      "text": "I would prioritize asynchronous decisions for reversible choices.",
-      "deliveryState": "delivered"
+      "name": "lone_high_surrogate",
+      "candidate_practice_goal": "\ud800",
+      "accepted": false,
+      "payload_digest": null
     },
     {
-      "eventId": "interviewer-event-1",
+      "name": "lone_low_surrogate",
+      "candidate_practice_goal": "\udc00",
+      "accepted": false,
+      "payload_digest": null
+    },
+    {
+      "name": "valid_astral_scalar",
+      "candidate_practice_goal": "Practice 🚀 prioritization",
+      "accepted": true,
+      "payload_digest": "sha256:7b0940f6cbb6f7a84490ee2e44652b78db67baefb9b4a63f125eeeec8c5ab90b"
+    },
+    {
+      "name": "escaped_control_character",
+      "candidate_practice_goal": "Practice\nprioritization",
+      "accepted": true,
+      "payload_digest": "sha256:04591c07802e55001f72d5e8d115a6890091417df95b585d970d7fa8466d0bed"
+    }
+  ],
+  "numeric_wire_cases": [
+    {
+      "name": "fractional_lexeme",
+      "duration_lexeme": "30.0"
+    },
+    {
+      "name": "exponent_lexeme",
+      "duration_lexeme": "3e1"
+    },
+    {
+      "name": "non_integral_value",
+      "duration_lexeme": "30.5"
+    }
+  ],
+  "canonical_transcript": [
+    {
+      "contract_version": 2,
+      "event_id": "interviewer-event-0",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "sequence": 6,
+      "session_id": "session-contract-1",
+      "room_name": "room-contract-1",
+      "speaker": "interviewer",
+      "text": "How would you prioritize the decision workflow?",
+      "is_final": true,
+      "started_at": "2026-08-18T23:08:00.000Z",
+      "ended_at": "2026-08-18T23:08:02.000Z",
+      "audio_duration_ms": 2000,
+      "section": "follow_up",
+      "delivery_state": "delivered"
+    },
+    {
+      "contract_version": 2,
+      "event_id": "candidate-event-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "sequence": 7,
+      "session_id": "session-contract-1",
+      "room_name": "room-contract-1",
+      "speaker": "user",
+      "text": "I would prioritize asynchronous decisions for reversible choices.",
+      "is_final": true,
+      "started_at": "2026-08-18T23:09:00.000Z",
+      "ended_at": "2026-08-18T23:09:04.000Z",
+      "audio_duration_ms": 4000,
+      "section": "follow_up",
+      "delivery_state": "delivered"
+    },
+    {
+      "contract_version": 2,
+      "event_id": "interviewer-event-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "sequence": 8,
+      "session_id": "session-contract-1",
+      "room_name": "room-contract-1",
       "speaker": "interviewer",
       "text": "What tradeoff would make you choose synchronous discussion?",
-      "deliveryState": "delivered"
+      "is_final": true,
+      "started_at": "2026-08-18T23:10:00.000Z",
+      "ended_at": "2026-08-18T23:10:03.000Z",
+      "audio_duration_ms": 3000,
+      "section": "follow_up",
+      "delivery_state": "delivered"
     }
-  ]
+  ],
+  "interruption_without_prefix": {
+    "contract_version": 1,
+    "event_type": "integrity_unavailable",
+    "event_id": "interviewer-event-interrupted-1",
+    "writer_id": "writer-contract-1",
+    "writer_generation": 3,
+    "sequence": 9,
+    "session_id": "session-contract-1",
+    "room_name": "room-contract-1",
+    "speaker": "interviewer",
+    "occurred_at": "2026-08-18T23:10:04.000Z",
+    "reason": "no_provider_confirmed_prefix"
+  },
+  "frozen_evidence_authority": {
+    "contractVersion": "frozen-answer-block-authority.v1",
+    "snapshotState": "complete",
+    "cutoffAtMs": 1787094610000,
+    "writers": [
+      {
+        "contractVersion": 1,
+        "writerId": "writer-contract-1",
+        "writerGeneration": 3,
+        "committedSequence": 8,
+        "integrityState": "healthy",
+        "settlementState": "settled"
+      }
+    ]
+  }
 }

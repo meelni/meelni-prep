@@ -198,13 +198,24 @@ export interface InterviewProbeLedgerEntry {
   question_id: string;
   target_turn_ids: string[];
   updated_at: string;
-  delivery_evidence: {
-    event_id: string;
-    writer_id: string;
-    writer_generation: number;
-    sequence: number;
-    delivery_state: "delivered" | "partially_delivered";
-  } | null;
+  delivery_evidence:
+    | {
+        evidence_type: "transcript_event";
+        event_id: string;
+        writer_id: string;
+        writer_generation: number;
+        sequence: number;
+        delivery_state: "delivered" | "partially_delivered";
+      }
+    | {
+        evidence_type: "interruption_marker";
+        event_id: string;
+        writer_id: string;
+        writer_generation: number;
+        sequence: number;
+        reason: "no_provider_confirmed_prefix";
+      }
+    | null;
 }
 
 export interface InterviewRuntimeState {
@@ -228,6 +239,7 @@ export interface InterviewRuntimeState {
   allowed_moves: InterviewerMoveType[];
   probe_ledger: InterviewProbeLedgerEntry[];
   last_finalized_candidate_turn_id: string | null;
+  last_finalized_candidate_transcript_revision: string | null;
   interruption_state: InterviewInterruptionState;
   close_state: InterviewCloseState;
   speech_fenced: boolean;
@@ -248,6 +260,7 @@ export interface InterviewerMove {
   writer_id: string;
   writer_generation: number;
   based_on_state_revision: number;
+  based_on_lifecycle_version: number;
   move_type: InterviewerMoveType;
   target: InterviewerMoveTarget;
   reason_code: InterviewerMoveReasonCode;
@@ -285,13 +298,17 @@ export interface ReadInterviewClockRequest extends InterviewerToolRequestBase {
 export interface GetProbeCandidatesRequest extends InterviewerToolRequestBase {
   tool_name: "get_probe_candidates";
   expected_state_revision: number;
+  expected_lifecycle_version: number;
+  active_question_id: string;
 }
 
 export interface CommitInterviewerMoveRequest
   extends InterviewerToolRequestBase {
   tool_name: "commit_interviewer_move";
   expected_state_revision: number;
+  expected_lifecycle_version: number;
   idempotency_key: string;
+  request_digest: string;
   move: InterviewerMove;
 }
 
@@ -299,7 +316,9 @@ export interface RequestGracefulCloseRequest
   extends InterviewerToolRequestBase {
   tool_name: "request_graceful_close";
   expected_state_revision: number;
+  expected_lifecycle_version: number;
   idempotency_key: string;
+  request_digest: string;
   reason: "deadline" | "candidate_request" | "controller_policy";
 }
 
@@ -342,6 +361,7 @@ export interface InterviewerToolResult {
   writer_generation: number;
   status: InterviewerToolResultStatus;
   observed_state_revision: number;
+  observed_lifecycle_version: number;
   payload: InterviewerToolResultPayload | null;
   failure_code: Exclude<InterviewerToolResultStatus, "ok" | "duplicate"> | null;
   latency_ms: number;
@@ -355,6 +375,7 @@ export interface DirectorRecommendation {
   writer_id: string;
   writer_generation: number;
   based_on_state_revision: number;
+  based_on_lifecycle_version: number;
   source_turn_id: string;
   source_transcript_revision: string;
   source_finality: "speculative" | "finalized";
@@ -373,10 +394,14 @@ export const DIRECTOR_RECOMMENDATION_ELIGIBILITY = [
   "session_mismatch",
   "brief_mismatch",
   "stale_state",
+  "stale_lifecycle",
   "source_not_final",
   "source_turn_mismatch",
+  "source_transcript_revision_mismatch",
+  "question_mismatch",
   "not_yet_valid",
   "expired",
+  "deadline_elapsed",
   "move_not_allowed",
   "lifecycle_not_active",
   "speech_fenced",
@@ -384,6 +409,47 @@ export const DIRECTOR_RECOMMENDATION_ELIGIBILITY = [
 
 export type DirectorRecommendationEligibility =
   (typeof DIRECTOR_RECOMMENDATION_ELIGIBILITY)[number];
+
+export const INTERVIEWER_TOOL_RESULT_CORRELATION = [
+  "matched",
+  "call_id_mismatch",
+  "tool_name_mismatch",
+  "session_mismatch",
+  "writer_mismatch",
+  "writer_generation_mismatch",
+  "request_expired",
+  "state_revision_mismatch",
+  "lifecycle_version_mismatch",
+  "question_mismatch",
+] as const;
+
+export type InterviewerToolResultCorrelation =
+  (typeof INTERVIEWER_TOOL_RESULT_CORRELATION)[number];
+
+export type InterviewerToolRequestAdmission =
+  | "eligible"
+  | "session_mismatch"
+  | "stale_writer"
+  | "stale_state"
+  | "stale_lifecycle"
+  | "question_mismatch"
+  | "request_expired"
+  | "move_expired"
+  | "lifecycle_not_active"
+  | "speech_fenced";
+
+export type InterviewerMutationReplayAssessment =
+  | "duplicate"
+  | "idempotency_conflict"
+  | "different_key";
+
+export type InterviewProbeLedgerAttribution =
+  | "attributed"
+  | "not_required"
+  | "missing_evidence"
+  | "identity_mismatch"
+  | "state_mismatch"
+  | "ambiguous_evidence";
 
 export class InterviewerContractError extends Error {
   constructor(

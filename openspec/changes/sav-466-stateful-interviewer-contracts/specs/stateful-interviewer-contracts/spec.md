@@ -52,6 +52,21 @@ session-start state and SHALL reuse the accepted bytes and digest on replay.
 - **WHEN** any canonical brief field changes
 - **THEN** the digest and derived brief ID change
 
+#### Scenario: Numeric wire spelling is non-canonical
+
+- **WHEN** `duration_minutes` uses a float or exponent token such as `30.0` or
+  `3e1`, or a timestamp is not a canonical UTC string
+- **THEN** TypeScript and Python reject the brief before hashing
+- **AND** optional nested-brief negotiation falls back to validated v1 behavior
+
+#### Scenario: Brief text contains invalid Unicode
+
+- **WHEN** any brief string contains a lone high or low surrogate
+- **THEN** TypeScript and Python reject it as `invalid_payload`
+- **AND** optional room-metadata negotiation falls back to v1 without crashing
+- **AND WHEN** a valid astral Unicode scalar is present
+- **THEN** both runtimes produce the same canonical UTF-8 bytes and digest
+
 ### Requirement: Existing Durable Authorities Remain Primary
 
 The system SHALL keep controller and Director state subordinate to existing
@@ -72,14 +87,24 @@ contracts.
 
 #### Scenario: Canonical delivery arrives
 
-- **WHEN** a durable transcript-v2 event binds the move to writer generation,
-  sequence, and delivered or partially-delivered evidence
+- **WHEN** a durable transcript-v2 event binds the move through its existing
+  event ID, writer ID/generation, sequence, and delivered or
+  partially-delivered evidence
 - **THEN** the controller may mark it `canonically_delivered`
+- **AND** an exact replay produces the same attribution without a second move
+
+#### Scenario: Interruption has no provider-confirmed prefix
+
+- **WHEN** the existing integrity marker matches event ID, writer/generation,
+  and sequence
+- **THEN** the ledger may attribute the interruption marker
+- **AND** no delivered text or feedback evidence is created
 
 ### Requirement: Move Admission Is CAS-Protected And Idempotent
 
-The system SHALL bind mutating decisions to session, writer generation, state
-revision, freshness, and an idempotency key.
+The system SHALL bind mutating decisions to session, writer generation,
+controller state revision, independent lifecycle version, freshness, and an
+idempotency key.
 
 #### Scenario: Exact mutation is retried
 
@@ -92,14 +117,23 @@ revision, freshness, and an idempotency key.
 - **WHEN** an idempotency key is reused with different canonical request bytes
 - **THEN** the request fails as `idempotency_conflict`
 
-#### Scenario: State or writer is stale
+#### Scenario: Mutation request key order changes
 
-- **WHEN** the expected state revision or writer generation is not current
+- **WHEN** commit or close semantic payload fields are identical but object
+  keys are reordered and `call_id` changes for the retry
+- **THEN** TypeScript/Python canonical request digests remain identical
+- **AND** the replay is `duplicate`
+
+#### Scenario: State, lifecycle, or writer is stale
+
+- **WHEN** the expected controller revision, expected positive lifecycle
+  version, or writer generation is not current
 - **THEN** the request fails without mutation
 
-#### Scenario: Exact expiry boundary is reached
+#### Scenario: Exact object-expiry boundary is reached before the session deadline
 
-- **WHEN** current time equals the accepted expiry timestamp
+- **WHEN** current time equals the accepted move or recommendation expiry and
+  the canonical session deadline remains in the future
 - **THEN** the move or recommendation remains eligible
 - **AND WHEN** current time is one millisecond later
 - **THEN** it is expired
@@ -126,6 +160,24 @@ fall back immediately on deadline or failure.
   provider-admin, deployment, Production, or lifecycle access
 - **THEN** no accepted schema or adapter exists for that capability
 
+#### Scenario: Successful result embeds mismatched authority
+
+- **WHEN** an `ok` or `duplicate` state result embeds a different session,
+  active writer, writer generation, or state revision than its envelope
+- **THEN** the whole result is rejected
+- **AND WHEN** a committed move differs from its envelope session or writer, or
+  its source revision plus one differs from `observed_state_revision`
+- **THEN** the whole result is rejected
+
+#### Scenario: Standalone-valid result does not match pending request
+
+- **WHEN** call ID, tool name, session, writer/generation, request deadline, or
+  applicable controller/lifecycle revision differs from the pending request
+- **THEN** adapter-level result assessment rejects it before use
+- **AND WHEN** a probe result contains a question other than the request's
+  active selected question
+- **THEN** assessment returns `question_mismatch`
+
 ### Requirement: Director Advice Never Owns Live Behavior
 
 The system SHALL treat `DirectorRecommendation` as bounded asynchronous advice
@@ -133,10 +185,45 @@ that the controller may reject and the live interviewer never awaits.
 
 #### Scenario: Recommendation is fresh and valid
 
-- **WHEN** session, brief, writer, state, finalized source turn, freshness, and
+- **WHEN** session, brief, writer, controller state, lifecycle version,
+  finalized source turn and transcript revision, active question, freshness,
+  active lifecycle, deadline, and
   allowed-move policy all match
 - **THEN** the controller may admit the move only in an authorized influence
   cohort
+
+#### Scenario: Recommendation targets stale evidence or another question
+
+- **WHEN** the source transcript revision differs from the authoritative
+  finalized-turn revision
+- **THEN** admission returns `source_transcript_revision_mismatch`
+- **AND WHEN** the target question differs from the active selected question
+- **THEN** admission returns `question_mismatch`
+
+#### Scenario: Runtime is reconnecting
+
+- **WHEN** lifecycle is `reconnecting`
+- **THEN** shadow planning may continue but recommendation admission returns
+  `lifecycle_not_active`
+- **AND** a fresh `active` state revision is required before admission
+
+#### Scenario: Canonical deadline is reached
+
+- **WHEN** recommendation admission runs exactly at `deadline_at` or later
+- **THEN** admission returns `deadline_elapsed` independently of recommendation
+  TTL
+
+#### Scenario: Runtime clock projection contradicts its deadline
+
+- **WHEN** observed time, remaining milliseconds, elapsed band, or open/close
+  state disagree with the controller's atomic deadline projection
+- **THEN** the runtime state is rejected
+
+#### Scenario: Runtime state contains contradictory bounded authority
+
+- **WHEN** lifecycle version is not positive, ledger move IDs repeat, probe
+  reason does not match its move type, or closing phase and close state disagree
+- **THEN** TypeScript and Python reject the state or payload
 
 #### Scenario: Recommendation is speculative, stale, late, malformed, or slow
 
@@ -154,6 +241,8 @@ canonical transcript and trusted answer-block evidence.
   evidence but different brief rationale, controller state, move IDs, Director
   output, tool traces, or hidden reasoning
 - **THEN** their evaluator input and allowed feedback outcome are identical
+- **AND** the invariant is measured through the production trusted-answer-block
+  projection and production evaluator-request prompt builder
 
 ### Requirement: Rollout Is Measured, Reversible, And Human-Gated
 
