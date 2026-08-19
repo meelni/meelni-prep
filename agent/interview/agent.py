@@ -207,11 +207,14 @@ class ControlledInterviewAgent(InterviewAgent):
                 id=f"controller:suppress:{message_id}",
             )
             return
-        if directive.instruction is not None:
+        if (
+            directive.instruction is not None
+            and directive.generation_context_id is not None
+        ):
             turn_ctx.add_message(
                 role="system",
                 content=directive.instruction,
-                id=f"controller:{directive.move_id}",
+                id=directive.generation_context_id,
             )
 
     def llm_node(self, chat_ctx, tools, model_settings):

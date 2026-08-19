@@ -33,10 +33,31 @@ Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
 before it creates that handle's pipeline task. The adapter uses Python task
 context to carry the exact candidate handle identity across that public
 ordering boundary. Creation alone grants no move authority. Only a successful
-finalized-turn plus move authorization promotes the handle; denied, evicted,
-duplicate, and replayed handles cannot stage or abort the move and cannot
-correlate transcript or interruption evidence. Candidate, authorized, retired,
-transcript, and interruption correlation maps are deterministically bounded.
+finalized-turn plus move authorization promotes the handle. Authorization also
+requires an opaque, cryptographically random, single-use generation nonce
+minted when that turn's directive is admitted. The nonce is carried only in the
+temporary controller system-message ID and atomically consumed with the
+candidate handle before clock or reducer mutation. An ambient sibling with the
+inherited handle but only predictable turn/move IDs cannot consume authority.
+
+Pinned LiveKit 1.6.5 `generation.py` serializes the temporary chat context into
+`ATTR_CHAT_CTX` immediately before invoking `llm_node`, so that opaque nonce may
+appear in the SDK's pre-node trace. There is no await between node entry and
+nonce consumption. The adapter then redacts the nonce from the temporary item
+ID before provider conversion. It is absent from controller snapshots and
+message content, is not added to the durable conversation or customer
+transcript, and is not written by Meelni application logs. Trace observation
+after synchronous consumption cannot replay authority.
+
+Denied, evicted, duplicate, and replayed handles cannot stage or abort the move
+and cannot correlate transcript or interruption evidence. Candidate,
+authorized, retired, nonce, transcript, and interruption correlation maps are
+deterministically bounded. Every public speech-handle identity is also retained
+in a separate session-lifetime replay ledger capped at 1,000 entries. In-flight
+maps may evict safely because an evicted identity can never re-enter. Reaching
+the session cap disables controller authority before accepting another
+identity and restores the existing interviewer path; replay history is not
+evicted while controller authority remains active.
 
 ## Flag and fallback
 
