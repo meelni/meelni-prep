@@ -26,6 +26,7 @@ from shared.interviewer_contract_errors import InterviewerContractError
 INTERVIEW_BRIEF_V2_CONTRACT_VERSION = "interview-brief.v2"
 INTERVIEW_ROUND_PACK_CONTRACT_VERSION = "pm-round-pack.v1"
 FULL_INTERVIEW_POLICY_CONTRACT_VERSION = "full-interview-policy.v1"
+FULL_INTERVIEW_PROMPT_CONTRACT_VERSION = "full_interview_prompt_v1"
 INTERVIEW_RUNTIME_STATE_CONTRACT_VERSION = "interview-runtime-state.v1"
 INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1"
 INTERVIEWER_TOOL_CONTRACT_VERSION = "interviewer-tools.v1"
@@ -637,7 +638,8 @@ def _full_interview_policy(value: Any) -> bool:
             ),
         )
         and value["contract_version"] == FULL_INTERVIEW_POLICY_CONTRACT_VERSION
-        and _contract_token(value["prompt_contract_version"])
+        and value["prompt_contract_version"]
+        == FULL_INTERVIEW_PROMPT_CONTRACT_VERSION
         and value["interviewer_mode"] == "full_interview"
         and value["coaching"] == "forbidden"
         and value["hints"] == "forbidden"

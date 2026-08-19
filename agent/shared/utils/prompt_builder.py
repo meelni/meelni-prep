@@ -10,6 +10,7 @@ shared_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(shared_dir))
 
 from prompts import get_prompt
+from shared.interviewer_contracts import is_interview_brief_v2
 from shared.mock_interview_opening import (
     build_mock_interview_opening,
     selected_question_text,
@@ -27,6 +28,7 @@ def build_agent_prompt(
     config: Dict[str, Any],
     question: Dict[str, Any] = None,
     prompt_contract: PromptContract = FULL_INTERVIEW_PROMPT_CONTRACT,
+    interview_brief: Dict[str, Any] = None,
 ) -> str:
     """
     Build agent system prompt based on round type and configuration.
@@ -42,6 +44,7 @@ def build_agent_prompt(
             - question_text: The interview question to ask
             - company: Company context (e.g., "Dropbox", "Meta")
             - question_type: Type of question (e.g., "Product design/strategy")
+        interview_brief: Optional brief already validated against room metadata.
 
     Returns:
         Complete system prompt string
@@ -128,14 +131,11 @@ def build_agent_prompt(
 
             question_header += "\n\n" + "=" * 80
             question_header += "\n🚨 CONSTRAINT ENFORCEMENT:"
-            question_header += "\n• You MUST use this exact question as the primary interview question (same meaning, same content)"
+            question_header += "\n• The runtime has used this exact text verbatim as the primary interview question"
             question_header += "\n• You MAY ask adaptive follow-up questions grounded in what the candidate says"
             question_header += "\n• Follow-ups must stay within the scope of the primary question and must not supply an answer"
-            question_header += "\n• ALLOWED natural fixes when speaking:"
-            question_header += "\n  - Expand abbreviations: 'NSM' → 'North Star Metric', '6mo' → '6 months', 'pls' → 'please'"
-            question_header += "\n  - Fix obvious typos: 'teh' → 'the', 'recieve' → 'receive'"
-            question_header += "\n  - Natural grammar: 'What will you do?' sounds natural as-is"
-            question_header += "\n• FORBIDDEN: Changing the question, rephrasing, or adding/removing concepts"
+            question_header += "\n• If the candidate asks for a repeat, repeat the selected question text verbatim"
+            question_header += "\n• FORBIDDEN: Changing, correcting, rephrasing, or adding/removing concepts from the selected question"
             question_header += "\n• Keep all company names, product names, and key terms exactly as written"
             question_header += "\n" + "=" * 80
 
@@ -207,6 +207,9 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
 
     base_prompt += greeting_instruction
 
+    if interview_brief is not None and is_interview_brief_v2(interview_brief):
+        base_prompt += _build_interview_brief_context(interview_brief)
+
     # Add duration context
     base_prompt += f"\n\nInterview Duration: {duration} minutes - pace yourself accordingly."
 
@@ -220,3 +223,38 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
         },
     )
     return base_prompt
+
+
+def _build_interview_brief_context(brief: Dict[str, Any]) -> str:
+    """Project a validated brief into bounded interviewer-only constraints."""
+    round_pack = brief["round_pack"]
+    policy = brief["policy"]
+    objectives = ", ".join(round_pack["objectives"])
+    probe_families = ", ".join(round_pack["probe_families"])
+    transitions = "\n".join(
+        f"- {guidance}" for guidance in round_pack["transition_guidance"]
+    )
+    close = "\n".join(
+        f"- {guidance}" for guidance in round_pack["close_guidance"]
+    )
+    return f"""
+
+## PRECOMPILED INTERVIEW CONSTRAINTS ({brief['contract_version']}):
+
+Use this round pack as a bounded objective and probe-family catalog. It is not
+a script, answer key, rubric, or evaluator. Select follow-ups adaptively from
+the candidate's answer; do not try to exhaust the catalog.
+
+Objectives: {objectives}
+Probe families: {probe_families}
+
+Transition constraints:
+{transitions}
+
+Close constraints:
+{close}
+
+Authoritative policy ({policy['contract_version']}): coaching and hints are
+forbidden, evaluation occurs only after the interview, and each turn asks at
+most one substantive question.
+"""

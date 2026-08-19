@@ -10,6 +10,8 @@ export const INTERVIEW_ROUND_PACK_CONTRACT_VERSION =
   "pm-round-pack.v1" as const;
 export const FULL_INTERVIEW_POLICY_CONTRACT_VERSION =
   "full-interview-policy.v1" as const;
+export const FULL_INTERVIEW_PROMPT_CONTRACT_VERSION =
+  "full_interview_prompt_v1" as const;
 export const INTERVIEW_RUNTIME_STATE_CONTRACT_VERSION =
   "interview-runtime-state.v1" as const;
 export const INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1" as const;
@@ -104,7 +106,7 @@ export interface InterviewRoundPackV1 {
 
 export interface FullInterviewPolicyV1 {
   contract_version: typeof FULL_INTERVIEW_POLICY_CONTRACT_VERSION;
-  prompt_contract_version: string;
+  prompt_contract_version: typeof FULL_INTERVIEW_PROMPT_CONTRACT_VERSION;
   interviewer_mode: "full_interview";
   coaching: "forbidden";
   hints: "forbidden";
