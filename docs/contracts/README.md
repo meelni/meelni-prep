@@ -21,6 +21,7 @@ Good candidates:
 - [total-required three-outcome customer feedback presentation and recovery](./feedback-review-outcomes.md);
 - [privacy-safe owner feedback-quality signals](./feedback-quality-signals.md);
 - [LLM observability and transcript-capture boundaries](./llm-observability.md);
+- [adaptive-interviewer semantic observability, aggregates, and rollback signals](./interviewer-observability.md);
 - [evaluation calibration gold set and report](./evaluation-calibration.md);
 - [synthetic calibration output semantic adjudication](./evaluation-output-semantic-adjudication.md);
 - [dashboard progress evidence](./dashboard-progress.md);
