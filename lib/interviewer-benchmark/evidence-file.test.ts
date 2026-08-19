@@ -13,13 +13,15 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
+  INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH,
   INTERVIEWER_BENCHMARK_EVIDENCE_PATH,
+  readInterviewerBenchmarkAdjudicationApproval,
   readInterviewerBenchmarkEvidence,
   writeInterviewerBenchmarkEvidence,
 } from "./evidence-file";
 
-test("evidence policy accepts only its exact repo-owned regular file", async () => {
-  await withEvidenceRepo(async ({ repoRoot, target }) => {
+test("evidence policy accepts only its exact repo-owned regular files", async () => {
+  await withEvidenceRepo(async ({ approvalTarget, repoRoot, target }) => {
     assert.equal(
       await readInterviewerBenchmarkEvidence(
         repoRoot,
@@ -39,9 +41,35 @@ test("evidence policy accepts only its exact repo-owned regular file", async () 
       ),
       "after\n"
     );
+    assert.equal(
+      await readInterviewerBenchmarkAdjudicationApproval(
+        repoRoot,
+        INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH
+      ),
+      "approval\n"
+    );
     assert.deepEqual(
       (await readdir(resolve(repoRoot, "docs/evidence"))).sort(),
-      [target.split("/").at(-1)!]
+      [approvalTarget.split("/").at(-1)!, target.split("/").at(-1)!].sort()
+    );
+  });
+});
+
+test("baseline and approval readers cannot be swapped", async () => {
+  await withEvidenceRepo(async ({ repoRoot }) => {
+    await assert.rejects(
+      readInterviewerBenchmarkEvidence(
+        repoRoot,
+        INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH
+      ),
+      /interviewer_benchmark_evidence_path_invalid/
+    );
+    await assert.rejects(
+      readInterviewerBenchmarkAdjudicationApproval(
+        repoRoot,
+        INTERVIEWER_BENCHMARK_EVIDENCE_PATH
+      ),
+      /interviewer_benchmark_evidence_path_invalid/
     );
   });
 });
@@ -127,14 +155,23 @@ test("evidence policy rejects a symlinked evidence directory", async () => {
 });
 
 async function withEvidenceRepo(
-  run: (paths: { repoRoot: string; target: string }) => Promise<void>
+  run: (paths: {
+    approvalTarget: string;
+    repoRoot: string;
+    target: string;
+  }) => Promise<void>
 ): Promise<void> {
   const repoRoot = await mkdtemp(join(tmpdir(), "sav-467-evidence-"));
   const target = resolve(repoRoot, INTERVIEWER_BENCHMARK_EVIDENCE_PATH);
+  const approvalTarget = resolve(
+    repoRoot,
+    INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH
+  );
   try {
     await mkdir(resolve(repoRoot, "docs/evidence"), { recursive: true });
     await writeFile(target, "before\n", "utf8");
-    await run({ repoRoot, target });
+    await writeFile(approvalTarget, "approval\n", "utf8");
+    await run({ approvalTarget, repoRoot, target });
   } finally {
     await rm(repoRoot, { recursive: true, force: true });
   }

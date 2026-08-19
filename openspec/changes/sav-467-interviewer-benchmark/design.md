@@ -26,5 +26,13 @@ identical to the reviewed v1 baseline; its input hash changes to bind the v2
 engine sources.
 
 Owner adjudication is a separate authority gate: the exact eight examples are
-identified by a manifest hash and remain agent-authored until the product owner
-records per-example accept/reject outcomes.
+identified by a manifest hash and remain agent-authored inside the candidate
+fixtures. A separately committed v1 JSON artifact binds the exact manifest,
+fixture/suite/judge/rubric versions, and ordered scenario/label/seed decisions.
+The runner accepts the semantic labels only after strict parsing; missing
+approval remains pending and malformed, stale, reordered, duplicated, partial,
+contradictory, or authority-broadening approval fails before judge execution.
+The artifact records direct-message supervisor-task and mirrored Linear
+adjudication provenance without a named human identity or signature. It
+explicitly denies runtime, provider,
+canary, launch, default-on, Production, and SAV-476 GO/NO-GO authority.

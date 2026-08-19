@@ -27,9 +27,16 @@ import {
   createInterviewerBenchmarkJudgeOutputs,
   createInterviewerBenchmarkScenarios,
 } from "@meelni/test-fixtures/interviewer-benchmark";
+import {
+  INTERVIEWER_BENCHMARK_ACCEPTED_ADJUDICATION_STATUS,
+  getInterviewerBenchmarkAdjudicationCandidateManifestSha256,
+  hashInterviewerBenchmarkAdjudicationApproval,
+  parseInterviewerBenchmarkAdjudicationApprovalV1,
+  type InterviewerBenchmarkAdjudicationApprovalV1,
+} from "./adjudication-approval";
 
 export const INTERVIEWER_BENCHMARK_REPORT_VERSION =
-  "meelni.interviewer-benchmark-report.v2" as const;
+  "meelni.interviewer-benchmark-report.v3" as const;
 export const INTERVIEWER_BENCHMARK_REPLAY_CLOCK =
   "2026-08-18T00:00:00.000Z" as const;
 export const INTERVIEWER_BENCHMARK_MAX_PROVIDER_CALLS = 12;
@@ -61,7 +68,7 @@ interface ScenarioReport {
   actionableFailures: InterviewerJudgeFailureV1[];
 }
 
-export interface InterviewerBenchmarkReportV2 {
+export interface InterviewerBenchmarkReportV3 {
   contractVersion: typeof INTERVIEWER_BENCHMARK_REPORT_VERSION;
   recordedAt: typeof INTERVIEWER_BENCHMARK_REPLAY_CLOCK;
   execution: {
@@ -106,8 +113,11 @@ export interface InterviewerBenchmarkReportV2 {
     judgeRuns: number;
     calibrationPairs: number;
     calibrationExamples: number;
-    adjudicationStatus: typeof INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS;
+    adjudicationStatus:
+      | typeof INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS
+      | typeof INTERVIEWER_BENCHMARK_ACCEPTED_ADJUDICATION_STATUS;
     adjudicationManifestSha256: string;
+    adjudicationApprovalSha256: string | null;
   };
   deterministicInvariants: {
     controlsDetected: number;
@@ -143,13 +153,24 @@ export interface InterviewerBenchmarkReportV2 {
     };
   };
   ownerAdjudication: {
-    status: typeof INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS;
+    status:
+      | typeof INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS
+      | typeof INTERVIEWER_BENCHMARK_ACCEPTED_ADJUDICATION_STATUS;
     examples: 8;
-    requiredAction: string;
-    reusedHumanAdjudication: false;
+    acceptedExamples: number;
+    requiredAction: string | null;
+    approval: {
+      contractVersion: InterviewerBenchmarkAdjudicationApprovalV1["contractVersion"];
+      artifactSha256: string;
+      authorityProvenance: InterviewerBenchmarkAdjudicationApprovalV1["authorityProvenance"];
+      authorityScope: InterviewerBenchmarkAdjudicationApprovalV1["authorityScope"];
+    } | null;
+    reusedSav198Adjudication: false;
     note: string;
   };
-  conclusion: "baseline_recorded_owner_adjudication_pending";
+  conclusion:
+    | "baseline_recorded_owner_adjudication_pending"
+    | "baseline_recorded_owner_adjudication_accepted";
   reproducibility: {
     inputSha256: string;
     reportSha256: string;
@@ -206,14 +227,22 @@ export async function runInterviewerBenchmark(
   adapter: InterviewerQualityJudgeAdapterV1,
   runtimeSourceSha256: string,
   benchmarkSourceSha256: string,
-  authorization: InterviewerBenchmarkExecutionAuthorizationV1 = createProviderFreeInterviewerBenchmarkAuthorization()
-): Promise<InterviewerBenchmarkReportV2> {
+  authorization: InterviewerBenchmarkExecutionAuthorizationV1 = createProviderFreeInterviewerBenchmarkAuthorization(),
+  adjudicationApprovalInput: unknown = null
+): Promise<InterviewerBenchmarkReportV3> {
   if (
     !/^[a-f0-9]{64}$/.test(runtimeSourceSha256) ||
     !/^[a-f0-9]{64}$/.test(benchmarkSourceSha256)
   ) {
     throw new Error("interviewer_benchmark_runtime_source_hash_invalid");
   }
+  const adjudicationApproval =
+    adjudicationApprovalInput === null
+      ? null
+      : parseInterviewerBenchmarkAdjudicationApprovalV1(
+          adjudicationApprovalInput
+        );
+  const adjudicationAccepted = adjudicationApproval !== null;
   const scenarios = createInterviewerBenchmarkScenarios();
   const baseline = scenarios.filter(
     ({ fixture_kind: kind }) => kind === "current_runtime_baseline"
@@ -314,20 +343,11 @@ export async function runInterviewerBenchmark(
   const calibrationExamples = INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS.flatMap(
     ({ strong, weak }) => [strong, weak]
   );
-  const adjudicationManifestSha256 = sha256(
-    stableJson(
-      calibrationExamples.map((example) => ({
-        example,
-        scenario: scenarios.find(
-          ({ scenario_id: id }) => id === example.scenario_id
-        ),
-        output: createInterviewerBenchmarkJudgeOutputs().find(
-          ({ scenario_id: id, seed }) =>
-            id === example.scenario_id && seed === example.seed
-        ),
-      }))
-    )
-  );
+  const adjudicationManifestSha256 =
+    getInterviewerBenchmarkAdjudicationCandidateManifestSha256();
+  const adjudicationApprovalSha256 = adjudicationApproval
+    ? hashInterviewerBenchmarkAdjudicationApproval(adjudicationApproval)
+    : null;
   const inputSha256 = sha256(
     stableJson({
       runtimeSourceSha256,
@@ -335,12 +355,13 @@ export async function runInterviewerBenchmark(
       scenarios,
       outputs: createInterviewerBenchmarkJudgeOutputs(),
       calibrationPairs: INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS,
+      adjudicationApproval,
     })
   );
   const latencyCeiling = Math.ceil(
     responseLatency.p95 + Math.max(responseLatency.p95 * 0.15, 250)
   );
-  const reportWithoutHash: InterviewerBenchmarkReportV2 = {
+  const reportWithoutHash: InterviewerBenchmarkReportV3 = {
     contractVersion: INTERVIEWER_BENCHMARK_REPORT_VERSION,
     recordedAt: INTERVIEWER_BENCHMARK_REPLAY_CLOCK,
     execution: {
@@ -388,8 +409,11 @@ export async function runInterviewerBenchmark(
       judgeRuns: reports.reduce((total, report) => total + report.judgeRuns, 0),
       calibrationPairs: INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS.length,
       calibrationExamples: calibrationExamples.length,
-      adjudicationStatus: INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS,
+      adjudicationStatus: adjudicationAccepted
+        ? INTERVIEWER_BENCHMARK_ACCEPTED_ADJUDICATION_STATUS
+        : INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS,
       adjudicationManifestSha256,
+      adjudicationApprovalSha256,
     },
     deterministicInvariants: {
       controlsDetected,
@@ -436,20 +460,38 @@ export async function runInterviewerBenchmark(
         requireOwnerCalibrationApproval: true as const,
         eligible: false as const,
         blockers: [
-          "eight calibration examples require product-owner adjudication",
+          ...(!adjudicationAccepted
+            ? ["eight calibration examples require product-owner adjudication"]
+            : []),
           "provider-backed candidate evidence has not been run",
         ],
       },
     },
     ownerAdjudication: {
-      status: INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS,
+      status: adjudicationAccepted
+        ? INTERVIEWER_BENCHMARK_ACCEPTED_ADJUDICATION_STATUS
+        : INTERVIEWER_BENCHMARK_ADJUDICATION_STATUS,
       examples: 8 as const,
-      requiredAction:
-        "Product owner reviews the four strong/weak pairs in the manifest and records accept or reject for each of the eight examples.",
-      reusedHumanAdjudication: false as const,
-      note: "SAV-198 evidence concerns candidate feedback scoring and does not adjudicate interviewer-quality examples.",
+      acceptedExamples: adjudicationAccepted ? 8 : 0,
+      requiredAction: adjudicationAccepted
+        ? null
+        : "Product owner reviews the four strong/weak pairs in the manifest and records accept or reject for each of the eight examples.",
+      approval: adjudicationApproval
+        ? {
+            contractVersion: adjudicationApproval.contractVersion,
+            artifactSha256: adjudicationApprovalSha256!,
+            authorityProvenance: adjudicationApproval.authorityProvenance,
+            authorityScope: adjudicationApproval.authorityScope,
+          }
+        : null,
+      reusedSav198Adjudication: false as const,
+      note: adjudicationAccepted
+        ? "The exact SAV-467 interviewer-quality labels are accepted; the artifact grants no runtime, provider, canary, launch, default-on, Production, or SAV-476 GO/NO-GO authority."
+        : "SAV-198 evidence concerns candidate feedback scoring and does not adjudicate interviewer-quality examples.",
     },
-    conclusion: "baseline_recorded_owner_adjudication_pending" as const,
+    conclusion: adjudicationAccepted
+      ? ("baseline_recorded_owner_adjudication_accepted" as const)
+      : ("baseline_recorded_owner_adjudication_pending" as const),
     reproducibility: {
       inputSha256,
       reportSha256: "",
@@ -463,7 +505,7 @@ export async function runInterviewerBenchmark(
 }
 
 export function serializeInterviewerBenchmarkReport(
-  report: InterviewerBenchmarkReportV2
+  report: InterviewerBenchmarkReportV3
 ): string {
   return `${JSON.stringify(report, null, 2)}\n`;
 }

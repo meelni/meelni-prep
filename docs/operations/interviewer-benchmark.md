@@ -15,6 +15,11 @@ Print a fresh provider-free report:
 npm run interviewer:benchmark
 ```
 
+The package command supplies the exact repo-owned approval artifact at
+`docs/evidence/sav-467-interviewer-adjudication-approval.json`. A lower-level
+run without `--approval` remains pending; an invalid approval fails before any
+judge call.
+
 Verify that the committed current-runtime baseline matches the source,
 fixtures, frozen judge outputs, and thresholds byte for byte:
 
@@ -30,10 +35,11 @@ npm run interviewer:benchmark:build-baseline
 git diff -- docs/evidence/sav-467-current-interviewer-baseline.json
 ```
 
-Both `--verify` and `--write` accept only the exact repo-relative path shown
-above. Absolute paths, traversal, unrelated files, directories, and symlinks
+Both `--verify` and `--write` accept only the exact baseline path shown above.
+`--approval` accepts only the exact approval path. The readers cannot be
+swapped. Absolute paths, traversal, unrelated files, directories, and symlinks
 fail closed. Writes use an exclusive same-directory temporary file and atomic
-replacement; do not copy the command to target another artifact.
+baseline replacement; the CLI never writes the approval artifact.
 
 The default entrypoint does not read provider credentials, import a provider
 adapter, make network calls, use customer transcripts, or mutate Production.
@@ -53,9 +59,17 @@ credentials or a network-backed adapter to provider-free tests.
 Actionable failures include scenario and interviewer/candidate turn IDs. Use
 those records to design a candidate prompt/runtime change, then compare it
 against the checked regression and shadow-entry thresholds. Do not interpret a
-passing automated report as owner approval.
+passing threshold as an approval artifact or broader rollout authority.
 
-The only pending owner task is to review the eight exact examples under
-the report's `adjudicationManifestSha256` and record accept or reject for each.
-Until then, the report remains
-`baseline_recorded_owner_adjudication_pending` and shadow entry is ineligible.
+The eight exact semantic labels under `adjudicationManifestSha256`
+`312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f`
+are accepted through the committed v1 approval. The baseline conclusion is
+`baseline_recorded_owner_adjudication_accepted`, but shadow entry remains
+ineligible because provider-backed candidate evidence has not been run.
+
+The approval records only the product-owner role, direct-message supervisor
+source task, and mirrored Linear adjudication comment ID/timestamp; it has no
+signature or human identity field.
+Its scope explicitly denies runtime, provider call/spend,
+canary, launch, default-on, Production, and SAV-476 GO/NO-GO authority. Do not
+reuse this artifact as authorization for any of those actions.

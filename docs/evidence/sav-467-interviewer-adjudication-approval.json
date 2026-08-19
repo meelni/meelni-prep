@@ -1,0 +1,79 @@
+{
+  "contractVersion": "meelni.interviewer-benchmark-adjudication-approval.v1",
+  "candidateManifest": {
+    "sha256": "312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f",
+    "fixtureContractVersion": "interviewer-benchmark-scenario.v1",
+    "suiteVersion": "meelni.interviewer-benchmark-suite.v2",
+    "judgeOutputVersion": "interviewer-quality-judge-output.v1",
+    "rubricVersion": "pm-interviewer-quality-rubric.v1"
+  },
+  "authorityProvenance": {
+    "source": "explicit_product_owner_supervisor_chat_decision",
+    "sourceThreadId": "01a016c0-57eb-72c0-a744-92c802d6be0a",
+    "sourceMessageKind": "direct_user_message",
+    "decisionMakerRole": "product_owner",
+    "linearCheckpointCommentId": "b44d551e-d988-498f-94e9-16afdeaaac73",
+    "recordedAt": "2026-08-19T05:53:26.680Z"
+  },
+  "authorityScope": {
+    "semanticGoldSetAdjudicationOnly": true,
+    "launchAuthority": false,
+    "canaryAuthority": false,
+    "defaultOnAuthority": false,
+    "providerCallAuthority": false,
+    "providerSpendAuthorityUsd": null,
+    "productionAuthority": false,
+    "runtimeBehaviorAuthority": false,
+    "sav476GoNoGoAuthority": false
+  },
+  "decisions": [
+    {
+      "scenarioId": "current-product-sense-strong",
+      "expectedLabel": "strong",
+      "seed": 17,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "calibration-product-sense-weak",
+      "expectedLabel": "weak",
+      "seed": 0,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "calibration-execution-strong",
+      "expectedLabel": "strong",
+      "seed": 0,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "current-execution-shallow-silent",
+      "expectedLabel": "weak",
+      "seed": 17,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "calibration-strategy-strong",
+      "expectedLabel": "strong",
+      "seed": 0,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "current-strategy-rambling-contradictory",
+      "expectedLabel": "weak",
+      "seed": 17,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "calibration-behavioral-strong",
+      "expectedLabel": "strong",
+      "seed": 0,
+      "decision": "accepted"
+    },
+    {
+      "scenarioId": "current-behavioral-interrupting",
+      "expectedLabel": "weak",
+      "seed": 17,
+      "decision": "accepted"
+    }
+  ]
+}
