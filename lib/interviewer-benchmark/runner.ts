@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
 
 import {
+  INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION,
+  INTERVIEWER_INVARIANT_CODES,
+  INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION,
   INTERVIEWER_QUALITY_DIMENSIONS,
   buildInterviewerQualityJudgeRequestV1,
   decodeInterviewerQualityJudgeOutputV1,
   evaluateInterviewerInvariants,
+  type InterviewerBenchmarkExecutionAuthorizationV1,
   type InterviewerBenchmarkScenarioV1,
   type InterviewerInvariantViolationV1,
   type InterviewerJudgeFailureV1,
@@ -25,10 +29,11 @@ import {
 } from "@meelni/test-fixtures/interviewer-benchmark";
 
 export const INTERVIEWER_BENCHMARK_REPORT_VERSION =
-  "meelni.interviewer-benchmark-report.v1" as const;
+  "meelni.interviewer-benchmark-report.v2" as const;
 export const INTERVIEWER_BENCHMARK_REPLAY_CLOCK =
   "2026-08-18T00:00:00.000Z" as const;
 export const INTERVIEWER_BENCHMARK_MAX_PROVIDER_CALLS = 12;
+export const INTERVIEWER_BENCHMARK_MAX_TOKENS_PER_CALL = 100_000;
 export const INTERVIEWER_BENCHMARK_MAX_ACTUAL_COST_USD = 1;
 export const INTERVIEWER_BENCHMARK_MAX_DIMENSION_RANGE = 1;
 
@@ -56,16 +61,29 @@ interface ScenarioReport {
   actionableFailures: InterviewerJudgeFailureV1[];
 }
 
-export interface InterviewerBenchmarkReportV1 {
+export interface InterviewerBenchmarkReportV2 {
   contractVersion: typeof INTERVIEWER_BENCHMARK_REPORT_VERSION;
   recordedAt: typeof INTERVIEWER_BENCHMARK_REPLAY_CLOCK;
   execution: {
     kind: InterviewerQualityJudgeAdapterV1["execution_mode"];
+    adapterContractVersion: typeof INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION;
+    authorization: {
+      contractVersion: typeof INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION;
+      kind: InterviewerBenchmarkExecutionAuthorizationV1["authorization"];
+      allowProviderCredentials: boolean;
+      allowProduction: false;
+      maximumProviderCalls: number;
+      maximumInputTokensPerCall: number;
+      maximumOutputTokensPerCall: number;
+      maximumActualCostUsd: number;
+    };
     fullySyntheticOnly: true;
     customerDataUsed: false;
-    providerCredentialRead: false;
-    productionCalled: false;
+    providerCredentialRead: boolean;
+    productionCalled: boolean;
     providerCalls: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
     actualCostUsd: number;
     judgeLatencyMs: NumericDistribution;
     modelVersions: string[];
@@ -75,6 +93,7 @@ export interface InterviewerBenchmarkReportV1 {
     baseline: typeof INTERVIEWER_BENCHMARK_BASELINE_VERSION;
     sourceCommit: typeof INTERVIEWER_BENCHMARK_SOURCE_COMMIT;
     runtimeSourceSha256: string;
+    benchmarkSourceSha256: string;
     promptContract: "full_interview_prompt_v1";
   };
   corpus: {
@@ -143,7 +162,9 @@ export function createProviderFreeInterviewerJudgeAdapter(): InterviewerQualityJ
     outputs.map((output) => [`${output.scenario_id}:${output.seed}`, output])
   );
   return {
+    contract_version: INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION,
     execution_mode: "provider_free_replay",
+    expected_model_version: INTERVIEWER_BENCHMARK_REPLAY_MODEL_VERSION,
     async judge(request) {
       const output = byRun.get(
         `${request.scenario.scenario_id}:${request.seed}`
@@ -159,17 +180,38 @@ export function createProviderFreeInterviewerJudgeAdapter(): InterviewerQualityJ
           input_tokens: null,
           output_tokens: null,
           actual_cost_usd: 0,
+          provider_credential_read: false,
+          production_called: false,
         },
       };
     },
   };
 }
 
+export function createProviderFreeInterviewerBenchmarkAuthorization(): InterviewerBenchmarkExecutionAuthorizationV1 {
+  return {
+    contract_version: INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION,
+    execution_mode: "provider_free_replay",
+    authorization: "provider_free",
+    allow_provider_credentials: false,
+    allow_production: false,
+    maximum_provider_calls: 0,
+    maximum_input_tokens_per_call: 0,
+    maximum_output_tokens_per_call: 0,
+    maximum_actual_cost_usd: 0,
+  };
+}
+
 export async function runInterviewerBenchmark(
   adapter: InterviewerQualityJudgeAdapterV1,
-  runtimeSourceSha256: string
-): Promise<InterviewerBenchmarkReportV1> {
-  if (!/^[a-f0-9]{64}$/.test(runtimeSourceSha256)) {
+  runtimeSourceSha256: string,
+  benchmarkSourceSha256: string,
+  authorization: InterviewerBenchmarkExecutionAuthorizationV1 = createProviderFreeInterviewerBenchmarkAuthorization()
+): Promise<InterviewerBenchmarkReportV2> {
+  if (
+    !/^[a-f0-9]{64}$/.test(runtimeSourceSha256) ||
+    !/^[a-f0-9]{64}$/.test(benchmarkSourceSha256)
+  ) {
     throw new Error("interviewer_benchmark_runtime_source_hash_invalid");
   }
   const scenarios = createInterviewerBenchmarkScenarios();
@@ -178,6 +220,11 @@ export async function runInterviewerBenchmark(
   );
   const controls = scenarios.filter(
     ({ fixture_kind: kind }) => kind === "invariant_control"
+  );
+  validateExecutionAuthorization(
+    adapter,
+    authorization,
+    baseline.length * INTERVIEWER_BENCHMARK_REPLAY_SEEDS.length
   );
   const controlResults = controls.map((scenario) => ({
     scenario,
@@ -188,9 +235,21 @@ export async function runInterviewerBenchmark(
       stableJson(violations.map(({ code }) => code).sort()) ===
       stableJson([...scenario.expected_invariant_codes].sort())
   ).length;
+  const controlFamilies = new Set(
+    controlResults.flatMap(({ scenario }) => scenario.expected_invariant_codes)
+  );
+  const requiredInvariantFamiliesCovered = INTERVIEWER_INVARIANT_CODES.every(
+    (code) => controlFamilies.has(code)
+  );
 
   let providerCalls = 0;
   let actualCostUsd = 0;
+  let providerCredentialRead = false;
+  let productionCalled = false;
+  let inputTokens: number | null =
+    adapter.execution_mode === "provider_free_replay" ? null : 0;
+  let outputTokens: number | null =
+    adapter.execution_mode === "provider_free_replay" ? null : 0;
   const judgeLatencies: number[] = [];
   const modelVersions = new Set<string>();
   const reports: ScenarioReport[] = [];
@@ -201,6 +260,7 @@ export async function runInterviewerBenchmark(
       const result = await adapter.judge(
         buildInterviewerQualityJudgeRequestV1(scenario, seed)
       );
+      validateAdapterResult(result, adapter, authorization);
       const output = decodeInterviewerQualityJudgeOutputV1(result.raw_output);
       if (
         !output ||
@@ -214,16 +274,23 @@ export async function runInterviewerBenchmark(
       ) {
         throw new Error("interviewer_benchmark_judge_output_invalid");
       }
-      validateUsage(result.usage);
       providerCalls += result.usage.provider_calls;
       actualCostUsd =
         Math.round((actualCostUsd + result.usage.actual_cost_usd) * 1_000_000) /
         1_000_000;
       if (
-        providerCalls > INTERVIEWER_BENCHMARK_MAX_PROVIDER_CALLS ||
-        actualCostUsd > INTERVIEWER_BENCHMARK_MAX_ACTUAL_COST_USD
+        providerCalls > authorization.maximum_provider_calls ||
+        actualCostUsd > authorization.maximum_actual_cost_usd
       ) {
         throw new Error("interviewer_benchmark_provider_budget_exceeded");
+      }
+      providerCredentialRead ||= result.usage.provider_credential_read;
+      productionCalled ||= result.usage.production_called;
+      if (inputTokens !== null && result.usage.input_tokens !== null) {
+        inputTokens += result.usage.input_tokens;
+      }
+      if (outputTokens !== null && result.usage.output_tokens !== null) {
+        outputTokens += result.usage.output_tokens;
       }
       judgeLatencies.push(result.usage.latency_ms);
       modelVersions.add(result.model_version);
@@ -264,6 +331,7 @@ export async function runInterviewerBenchmark(
   const inputSha256 = sha256(
     stableJson({
       runtimeSourceSha256,
+      benchmarkSourceSha256,
       scenarios,
       outputs: createInterviewerBenchmarkJudgeOutputs(),
       calibrationPairs: INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS,
@@ -272,16 +340,30 @@ export async function runInterviewerBenchmark(
   const latencyCeiling = Math.ceil(
     responseLatency.p95 + Math.max(responseLatency.p95 * 0.15, 250)
   );
-  const reportWithoutHash: InterviewerBenchmarkReportV1 = {
+  const reportWithoutHash: InterviewerBenchmarkReportV2 = {
     contractVersion: INTERVIEWER_BENCHMARK_REPORT_VERSION,
     recordedAt: INTERVIEWER_BENCHMARK_REPLAY_CLOCK,
     execution: {
       kind: adapter.execution_mode,
+      adapterContractVersion: adapter.contract_version,
+      authorization: {
+        contractVersion: authorization.contract_version,
+        kind: authorization.authorization,
+        allowProviderCredentials: authorization.allow_provider_credentials,
+        allowProduction: authorization.allow_production,
+        maximumProviderCalls: authorization.maximum_provider_calls,
+        maximumInputTokensPerCall: authorization.maximum_input_tokens_per_call,
+        maximumOutputTokensPerCall:
+          authorization.maximum_output_tokens_per_call,
+        maximumActualCostUsd: authorization.maximum_actual_cost_usd,
+      },
       fullySyntheticOnly: true as const,
       customerDataUsed: false as const,
-      providerCredentialRead: false as const,
-      productionCalled: false as const,
+      providerCredentialRead,
+      productionCalled,
       providerCalls,
+      inputTokens,
+      outputTokens,
       actualCostUsd,
       judgeLatencyMs: distribution(judgeLatencies),
       modelVersions: [...modelVersions].sort(),
@@ -291,6 +373,7 @@ export async function runInterviewerBenchmark(
       baseline: INTERVIEWER_BENCHMARK_BASELINE_VERSION,
       sourceCommit: INTERVIEWER_BENCHMARK_SOURCE_COMMIT,
       runtimeSourceSha256,
+      benchmarkSourceSha256,
       promptContract: "full_interview_prompt_v1" as const,
     },
     corpus: {
@@ -313,7 +396,10 @@ export async function runInterviewerBenchmark(
       controlsTotal: controls.length,
       baselineViolations,
       status:
-        controlsDetected === controls.length && baselineViolations === 0
+        controls.length > 0 &&
+        requiredInvariantFamiliesCovered &&
+        controlsDetected === controls.length &&
+        baselineViolations === 0
           ? ("passed" as const)
           : ("failed" as const),
     },
@@ -377,7 +463,7 @@ export async function runInterviewerBenchmark(
 }
 
 export function serializeInterviewerBenchmarkReport(
-  report: InterviewerBenchmarkReportV1
+  report: InterviewerBenchmarkReportV2
 ): string {
   return `${JSON.stringify(report, null, 2)}\n`;
 }
@@ -438,18 +524,160 @@ function deduplicateFailures(
   });
 }
 
-function validateUsage(
-  usage: Awaited<ReturnType<InterviewerQualityJudgeAdapterV1["judge"]>>["usage"]
+function validateExecutionAuthorization(
+  adapter: InterviewerQualityJudgeAdapterV1,
+  authorization: InterviewerBenchmarkExecutionAuthorizationV1,
+  requiredJudgeRuns: number
 ): void {
   if (
-    !Number.isSafeInteger(usage.latency_ms) ||
-    usage.latency_ms < 0 ||
-    (usage.provider_calls !== 0 && usage.provider_calls !== 1) ||
-    !Number.isFinite(usage.actual_cost_usd) ||
-    usage.actual_cost_usd < 0
+    adapter.contract_version !== INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION ||
+    !hasExactKeys(authorization, [
+      "contract_version",
+      "execution_mode",
+      "authorization",
+      "allow_provider_credentials",
+      "allow_production",
+      "maximum_provider_calls",
+      "maximum_input_tokens_per_call",
+      "maximum_output_tokens_per_call",
+      "maximum_actual_cost_usd",
+    ]) ||
+    authorization.contract_version !==
+      INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION ||
+    authorization.execution_mode !== adapter.execution_mode ||
+    authorization.allow_production !== false ||
+    !Number.isSafeInteger(authorization.maximum_provider_calls) ||
+    authorization.maximum_provider_calls < 0 ||
+    authorization.maximum_provider_calls >
+      INTERVIEWER_BENCHMARK_MAX_PROVIDER_CALLS ||
+    !Number.isSafeInteger(authorization.maximum_input_tokens_per_call) ||
+    authorization.maximum_input_tokens_per_call < 0 ||
+    authorization.maximum_input_tokens_per_call >
+      INTERVIEWER_BENCHMARK_MAX_TOKENS_PER_CALL ||
+    !Number.isSafeInteger(authorization.maximum_output_tokens_per_call) ||
+    authorization.maximum_output_tokens_per_call < 0 ||
+    authorization.maximum_output_tokens_per_call >
+      INTERVIEWER_BENCHMARK_MAX_TOKENS_PER_CALL ||
+    !Number.isFinite(authorization.maximum_actual_cost_usd) ||
+    authorization.maximum_actual_cost_usd < 0 ||
+    authorization.maximum_actual_cost_usd >
+      INTERVIEWER_BENCHMARK_MAX_ACTUAL_COST_USD ||
+    !isVersionedModelIdentity(adapter.expected_model_version)
+  ) {
+    throw new Error("interviewer_benchmark_execution_authorization_invalid");
+  }
+
+  if (adapter.execution_mode === "provider_free_replay") {
+    if (
+      authorization.authorization !== "provider_free" ||
+      authorization.allow_provider_credentials !== false ||
+      authorization.maximum_provider_calls !== 0 ||
+      authorization.maximum_input_tokens_per_call !== 0 ||
+      authorization.maximum_output_tokens_per_call !== 0 ||
+      authorization.maximum_actual_cost_usd !== 0
+    ) {
+      throw new Error("interviewer_benchmark_execution_authorization_invalid");
+    }
+    return;
+  }
+
+  if (
+    adapter.execution_mode !== "provider_backed_explicit_opt_in" ||
+    authorization.authorization !== "explicit_provider_opt_in" ||
+    authorization.allow_provider_credentials !== true ||
+    authorization.maximum_provider_calls < requiredJudgeRuns ||
+    authorization.maximum_input_tokens_per_call === 0 ||
+    authorization.maximum_output_tokens_per_call === 0
+  ) {
+    throw new Error("interviewer_benchmark_execution_authorization_invalid");
+  }
+}
+
+function validateAdapterResult(
+  result: Awaited<ReturnType<InterviewerQualityJudgeAdapterV1["judge"]>>,
+  adapter: InterviewerQualityJudgeAdapterV1,
+  authorization: InterviewerBenchmarkExecutionAuthorizationV1
+): void {
+  if (
+    !hasExactKeys(result, ["raw_output", "model_version", "usage"]) ||
+    !isVersionedModelIdentity(result.model_version) ||
+    result.model_version !== adapter.expected_model_version ||
+    !hasExactKeys(result.usage, [
+      "latency_ms",
+      "provider_calls",
+      "input_tokens",
+      "output_tokens",
+      "actual_cost_usd",
+      "provider_credential_read",
+      "production_called",
+    ]) ||
+    !Number.isSafeInteger(result.usage.latency_ms) ||
+    result.usage.latency_ms < 0 ||
+    (result.usage.provider_calls !== 0 && result.usage.provider_calls !== 1) ||
+    !Number.isFinite(result.usage.actual_cost_usd) ||
+    result.usage.actual_cost_usd < 0 ||
+    result.usage.actual_cost_usd > authorization.maximum_actual_cost_usd ||
+    typeof result.usage.provider_credential_read !== "boolean" ||
+    typeof result.usage.production_called !== "boolean" ||
+    result.usage.production_called ||
+    (result.usage.provider_credential_read &&
+      !authorization.allow_provider_credentials)
   ) {
     throw new Error("interviewer_benchmark_judge_usage_invalid");
   }
+
+  if (adapter.execution_mode === "provider_free_replay") {
+    if (
+      result.usage.provider_calls !== 0 ||
+      result.usage.input_tokens !== null ||
+      result.usage.output_tokens !== null ||
+      result.usage.actual_cost_usd !== 0 ||
+      result.usage.provider_credential_read ||
+      result.usage.production_called
+    ) {
+      throw new Error("interviewer_benchmark_judge_usage_invalid");
+    }
+    return;
+  }
+
+  if (
+    result.usage.provider_calls !== 1 ||
+    !isNonnegativeSafeInteger(result.usage.input_tokens) ||
+    !isNonnegativeSafeInteger(result.usage.output_tokens) ||
+    result.usage.input_tokens > authorization.maximum_input_tokens_per_call ||
+    result.usage.output_tokens > authorization.maximum_output_tokens_per_call ||
+    !result.usage.provider_credential_read ||
+    result.usage.production_called
+  ) {
+    throw new Error("interviewer_benchmark_judge_usage_invalid");
+  }
+}
+
+function isVersionedModelIdentity(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[a-z0-9][a-z0-9._:/-]{0,199}$/i.test(value) &&
+    /(?:^|[._:/-])(?:v\d+|\d+)(?:$|[._:/-])/i.test(value)
+  );
+}
+
+function isNonnegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function hasExactKeys(
+  value: unknown,
+  keys: readonly string[]
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
 }
 
 function distribution(values: number[]): NumericDistribution {

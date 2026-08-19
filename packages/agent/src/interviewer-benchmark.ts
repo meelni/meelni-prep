@@ -13,6 +13,10 @@ export const INTERVIEWER_QUALITY_JUDGE_OUTPUT_VERSION =
   "interviewer-quality-judge-output.v1" as const;
 export const INTERVIEWER_QUALITY_RUBRIC_VERSION =
   "pm-interviewer-quality-rubric.v1" as const;
+export const INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION =
+  "interviewer-quality-judge-adapter.v1" as const;
+export const INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION =
+  "interviewer-benchmark-execution-authorization.v1" as const;
 
 export const INTERVIEWER_BENCHMARK_FIXTURE_KINDS = [
   "current_runtime_baseline",
@@ -152,6 +156,8 @@ export interface InterviewerQualityJudgeUsageV1 {
   input_tokens: number | null;
   output_tokens: number | null;
   actual_cost_usd: number;
+  provider_credential_read: boolean;
+  production_called: boolean;
 }
 
 export interface InterviewerQualityJudgeAdapterResultV1 {
@@ -161,10 +167,24 @@ export interface InterviewerQualityJudgeAdapterResultV1 {
 }
 
 export interface InterviewerQualityJudgeAdapterV1 {
+  contract_version: typeof INTERVIEWER_QUALITY_JUDGE_ADAPTER_VERSION;
   execution_mode: "provider_free_replay" | "provider_backed_explicit_opt_in";
+  expected_model_version: string;
   judge(
     request: InterviewerQualityJudgeRequestV1
   ): Promise<InterviewerQualityJudgeAdapterResultV1>;
+}
+
+export interface InterviewerBenchmarkExecutionAuthorizationV1 {
+  contract_version: typeof INTERVIEWER_BENCHMARK_EXECUTION_AUTHORIZATION_VERSION;
+  execution_mode: InterviewerQualityJudgeAdapterV1["execution_mode"];
+  authorization: "provider_free" | "explicit_provider_opt_in";
+  allow_provider_credentials: boolean;
+  allow_production: false;
+  maximum_provider_calls: number;
+  maximum_input_tokens_per_call: number;
+  maximum_output_tokens_per_call: number;
+  maximum_actual_cost_usd: number;
 }
 
 const INVARIANT_EXPECTATIONS: Record<InterviewerInvariantCode, string> = {
@@ -175,7 +195,7 @@ const INVARIANT_EXPECTATIONS: Record<InterviewerInvariantCode, string> = {
   multiple_questions:
     "Ask exactly one substantive question in an interviewer turn.",
   repeated_probe:
-    "Do not repeat the same move against the same target after it has already been delivered.",
+    "Do not repeat normalized probe text after it has already been delivered, regardless of caller-supplied move labels.",
   deadline_violation:
     "Do not begin interviewer speech at or after the canonical session deadline.",
   post_close_speech:
@@ -183,20 +203,22 @@ const INVARIANT_EXPECTATIONS: Record<InterviewerInvariantCode, string> = {
 };
 
 const COACHING_PATTERNS = [
-  /\byou should\b/i,
-  /\btry (?:to|using)\b/i,
-  /\ba good answer\b/i,
-  /\bconsider (?:starting|using|adding|mentioning)\b/i,
-  /\buse the\b.{0,30}\bframework\b/i,
-  /\byour answer would be stronger\b/i,
+  /\b(?:i recommend|i suggest|i advise|my recommendation is|my suggestion is)\b/,
+  /\byou (?:should|could|need to|might want to|may want to)\b/,
+  /\btry (?:to|using)\b/,
+  /\bconsider (?:starting|using|adding|mentioning|including|applying)\b/,
+  /\b(?:a|one) (?:good|useful|better) (?:way|approach) (?:is|would be) to\b/,
+  /\byour answer would be stronger\b/,
 ];
 
 const MID_SESSION_EVALUATION_PATTERNS = [
-  /\b(?:[0-9]|10)\s*\/\s*10\b/i,
-  /\bi(?:'d| would) (?:give|score|rate)\b/i,
-  /\b(?:strong|weak|excellent|poor) answer\b/i,
-  /\byou (?:did|are doing) (?:well|poorly|great)\b/i,
-  /\bthat(?:'s| is) (?:correct|incorrect)\b/i,
+  /\b(?:[0-9]|10)\s*\/\s*10\b/,
+  /\bi(?:'d| would) (?:give|score|rate)\b/,
+  /(?:^|[.!?]\s+)(?:good|great|strong|excellent|solid|weak|poor|bad) (?:answer|response)(?:[.!?]|$)/,
+  /(?:^|[.!?]\s+)(?:that|this) (?:is|was|sounds|seems) (?:a )?(?:good|great|strong|excellent|solid|weak|poor|bad|correct|incorrect|insightful|impressive)(?: (?:answer|response))?(?:[.!?]|$)/,
+  /(?:^|[.!?]\s+)your (?:answer|response) (?:is|was|sounds|seems) (?:good|great|strong|excellent|solid|weak|poor|bad|correct|incorrect|insightful|impressive)(?:[.!?]|$)/,
+  /\byou (?:did|are doing) (?:well|poorly|great)\b/,
+  /(?:^|[.!?]\s+)(?:well done|nice job|great job|excellent work)(?:[.!?]|$)/,
 ];
 
 export function decodeInterviewerBenchmarkScenarioV1(
@@ -395,7 +417,7 @@ export function evaluateInterviewerInvariants(
 
   const violations: InterviewerInvariantViolationV1[] = [];
   const deliveredMoves: InterviewerMoveType[] = [];
-  const seenProbeKeys = new Map<string, string>();
+  const seenProbeText = new Map<string, string>();
   let closeTurnId: string | null = null;
 
   for (const turn of decoded.turns) {
@@ -414,13 +436,16 @@ export function evaluateInterviewerInvariants(
         invariantViolation("deadline_violation", [turn.turn_id], deliveredMoves)
       );
     }
-    if (COACHING_PATTERNS.some((pattern) => pattern.test(turn.text))) {
+    const normalizedText = normalizeInvariantText(turn.text);
+    if (COACHING_PATTERNS.some((pattern) => pattern.test(normalizedText))) {
       violations.push(
         invariantViolation("coaching", [turn.turn_id], deliveredMoves)
       );
     }
     if (
-      MID_SESSION_EVALUATION_PATTERNS.some((pattern) => pattern.test(turn.text))
+      MID_SESSION_EVALUATION_PATTERNS.some((pattern) =>
+        pattern.test(normalizedText)
+      )
     ) {
       violations.push(
         invariantViolation(
@@ -430,33 +455,32 @@ export function evaluateInterviewerInvariants(
         )
       );
     }
-    if ((turn.text.match(/\?/g) ?? []).length > 1) {
+    if (hasMultipleQuestionClauses(normalizedText)) {
       violations.push(
         invariantViolation("multiple_questions", [turn.turn_id], deliveredMoves)
       );
     }
 
-    if (turn.move) {
-      const { move_type: moveType, target_topic: targetTopic } = turn.move;
-      if (
-        moveType === "probe" ||
-        moveType === "clarify" ||
-        moveType === "challenge"
-      ) {
-        const key = `${moveType}:${normalizeTopic(targetTopic)}`;
-        const firstTurnId = seenProbeKeys.get(key);
-        if (firstTurnId) {
-          violations.push(
-            invariantViolation(
-              "repeated_probe",
-              [firstTurnId, turn.turn_id],
-              [...deliveredMoves, moveType]
-            )
-          );
-        } else {
-          seenProbeKeys.set(key, turn.turn_id);
-        }
+    const probeTextKey = normalizeProbeText(turn.text);
+    if (probeTextKey.length > 0) {
+      const firstTurnId = seenProbeText.get(probeTextKey);
+      if (firstTurnId) {
+        violations.push(
+          invariantViolation(
+            "repeated_probe",
+            [firstTurnId, turn.turn_id],
+            turn.move
+              ? [...deliveredMoves, turn.move.move_type]
+              : deliveredMoves
+          )
+        );
+      } else {
+        seenProbeText.set(probeTextKey, turn.turn_id);
       }
+    }
+
+    if (turn.move) {
+      const { move_type: moveType } = turn.move;
       deliveredMoves.push(moveType);
       if (moveType === "close") closeTurnId = turn.turn_id;
     }
@@ -565,8 +589,37 @@ function deduplicateViolations(
   });
 }
 
-function normalizeTopic(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+function normalizeInvariantText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/[‘’]/g, "'")
+    .replace(/[‐‑‒–—]/g, "-")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeProbeText(value: string): string {
+  return normalizeInvariantText(value)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function hasMultipleQuestionClauses(value: string): boolean {
+  if ((value.match(/\?/g) ?? []).length > 1) return true;
+  const withoutDiscourseMarker = value.replace(
+    /^(?:okay|now|next|first|finally|briefly|specifically)[,:]\s+/,
+    ""
+  );
+  const clauseBoundary = "(?:^|[?!.;:]\\s+|\\b(?:and then|and|then|also)\\s+)";
+  const interrogative =
+    "(?:what|who|whom|whose|which|when|where|why|how|would|could|should|will|can|may|do|does|did|is|are|was|were|have|has)\\b";
+  const directive =
+    "(?:describe|explain|compare|identify|name|outline|quantify|define|tell me|walk me through)\\b";
+  const clauses = withoutDiscourseMarker.match(
+    new RegExp(`${clauseBoundary}(?:${interrogative}|${directive})`, "g")
+  );
+  return (clauses?.length ?? 0) > 1;
 }
 
 function isRoundType(value: unknown): value is RoundType {

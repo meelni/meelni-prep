@@ -16,9 +16,9 @@ import {
 import type { RoundType } from "@meelni/core";
 
 export const INTERVIEWER_BENCHMARK_SUITE_VERSION =
-  "meelni.interviewer-benchmark-suite.v1" as const;
+  "meelni.interviewer-benchmark-suite.v2" as const;
 export const INTERVIEWER_BENCHMARK_BASELINE_VERSION =
-  "meelni.current-interviewer-baseline.v1" as const;
+  "meelni.current-interviewer-baseline.v2" as const;
 export const INTERVIEWER_BENCHMARK_SOURCE_COMMIT =
   "1b86ff1d4207aed5ea216a246d6b236c74be66d4" as const;
 export const INTERVIEWER_BENCHMARK_REPLAY_MODEL_VERSION =

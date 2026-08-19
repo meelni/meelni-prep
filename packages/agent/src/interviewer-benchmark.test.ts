@@ -147,6 +147,109 @@ test("deterministic interviewer invariants catch every accepted failure family",
   }
 });
 
+test("deterministic invariants reject semantic coaching and evaluation evasions", () => {
+  const coachingVariants = [
+    "I recommend you start by using the RICE framework.",
+    "One useful approach would be to segment users by urgency.",
+    "You might want to quantify the opportunity before proceeding.",
+  ];
+  const evaluationVariants = [
+    "Good answer.",
+    "Your response is insightful.",
+    "Nice job.",
+  ];
+
+  for (const [index, text] of coachingVariants.entries()) {
+    assertInvariantDetected("coaching", text, `coaching-${index}`);
+  }
+  for (const [index, text] of evaluationVariants.entries()) {
+    assertInvariantDetected(
+      "mid_session_evaluation",
+      text,
+      `evaluation-${index}`
+    );
+  }
+});
+
+test("deterministic invariants reject compound questions and label-swapped repeated probes", () => {
+  assertInvariantDetected(
+    "multiple_questions",
+    "Who is the primary user and what outcome matters most?",
+    "compound-question"
+  );
+  assertInvariantDetected(
+    "multiple_questions",
+    "Describe the first segment; how will you validate its need?",
+    "compound-directive"
+  );
+
+  const repeated = createScenario([
+    interviewer("i-2", "Why this segment?", 20_000, "probe", "segment"),
+    candidate("c-2", "It has the highest unmet need.", 30_000),
+    interviewer(
+      "i-3",
+      "  WHY this segment! ",
+      40_000,
+      "transition",
+      "market size"
+    ),
+  ]);
+  assert.ok(
+    evaluateInterviewerInvariants(repeated).some(
+      ({ code }) => code === "repeated_probe"
+    )
+  );
+});
+
+test("deterministic invariant controls avoid neutral interviewer false positives", () => {
+  const neutralTurns = [
+    interviewer(
+      "i-2",
+      "Could you explain why you used the RICE framework?",
+      20_000,
+      "probe",
+      "reasoning"
+    ),
+    candidate("c-2", "It balances reach and effort.", 30_000),
+    interviewer(
+      "i-3",
+      "What would you recommend we do next?",
+      40_000,
+      "probe",
+      "recommendation"
+    ),
+    candidate("c-3", "Validate the riskiest assumption.", 50_000),
+    interviewer(
+      "i-4",
+      "How would you identify and prioritize the highest-risk assumption?",
+      60_000,
+      "challenge",
+      "prioritization"
+    ),
+    candidate("c-4", "By uncertainty and impact.", 70_000),
+    interviewer(
+      "i-5",
+      "Would you prioritize retention or acquisition?",
+      80_000,
+      "clarify",
+      "growth"
+    ),
+    candidate("c-5", "Retention.", 90_000),
+    interviewer(
+      "i-6",
+      "Why is this segment urgent?",
+      100_000,
+      "probe",
+      "segment"
+    ),
+  ];
+
+  assert.deepEqual(
+    evaluateInterviewerInvariants(createScenario(neutralTurns)),
+    []
+  );
+});
+
 test("clean interviewer sequence preserves one-question and post-close policy", () => {
   const scenario = createScenario([
     interviewer(
@@ -201,6 +304,22 @@ function createScenario(
     ],
     expected_invariant_codes: expectedInvariantCodes,
   };
+}
+
+function assertInvariantDetected(
+  expected: InterviewerInvariantCode,
+  text: string,
+  suffix: string
+): void {
+  const scenario = createScenario([
+    interviewer(`i-${suffix}`, text, 20_000, "probe", suffix),
+  ]);
+  assert.ok(
+    evaluateInterviewerInvariants(scenario).some(
+      ({ code }) => code === expected
+    ),
+    `${expected}: ${text}`
+  );
 }
 
 function interviewer(

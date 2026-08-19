@@ -79,7 +79,7 @@
     "stripe:webhook-events": "tsx scripts/stripe-webhook-event-contract.ts",
     "sync:questions": "tsx scripts/run-question-sync.ts",
     "test:agent": "tsx --test packages/agent/src/*.test.ts",
-    "test:interviewer-benchmark": "tsx --test packages/agent/src/interviewer-benchmark.test.ts packages/test-fixtures/src/interviewer-benchmark.test.ts lib/interviewer-benchmark/runner.test.ts",
+    "test:interviewer-benchmark": "tsx --test packages/agent/src/interviewer-benchmark.test.ts packages/test-fixtures/src/interviewer-benchmark.test.ts lib/interviewer-benchmark/evidence-file.test.ts lib/interviewer-benchmark/runner.test.ts",
     "test:core": "tsx --test packages/core/src/*.test.ts",
     "test:integrations": "tsx --test packages/integrations/src/*.test.ts",
     "test:database-migrations": "tsx scripts/test-database-migrations.ts",

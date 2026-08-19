@@ -11,7 +11,27 @@ the same source and fixture inputs without credentials or provider calls.
 
 - **WHEN** CI runs the baseline verification command
 - **THEN** it validates the checked artifact byte for byte and reports zero
-  provider calls and zero actual cost.
+  provider calls, zero actual cost, null token counts, no credential read, and
+  no Production call.
+
+#### Scenario: evidence path attack
+
+- **WHEN** a caller supplies an absolute, traversal, unrelated, non-regular, or
+  symlink path to the evidence CLI
+- **THEN** the command rejects the path without reading or replacing its target.
+
+### Requirement: truthful bounded provider execution evidence
+
+The system SHALL require an exact versioned execution authorization before any
+provider-backed judge invocation and SHALL fail closed on malformed or
+contradictory result evidence.
+
+#### Scenario: contradictory usage
+
+- **WHEN** a result reports invalid tokens, mismatched model identity, calls or
+  cost outside its mode/budget, credential use without authorization, or any
+  Production call
+- **THEN** the run fails without emitting a successful attestation.
 
 ### Requirement: representative adaptive sessions
 
@@ -33,6 +53,13 @@ questions, repeated probes, deadline violations, and post-close speech.
 
 - **WHEN** one policy violation is injected
 - **THEN** the deterministic engine identifies that declared invariant family.
+
+#### Scenario: semantic evasion and false-positive control
+
+- **WHEN** advice/praise is paraphrased, a compound question uses one question
+  mark, or a repeated probe changes its caller-supplied labels
+- **THEN** normalized deterministic checks still reject it while neutral
+  framework, recommendation, and single-question turns remain accepted.
 
 ### Requirement: human-owned calibration authority
 
