@@ -6,7 +6,7 @@ import math
 import os
 import re
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any, Literal, TypeAlias
 from uuid import uuid4
@@ -21,6 +21,15 @@ DIRECTOR_RECOMMENDATION_CONTRACT_VERSION = "director-recommendation.v1"
 RolloutCohort: TypeAlias = Literal["current", "shadow", "canary"]
 
 _ROLLOUT_COHORTS = {"current", "shadow", "canary"}
+_RUNTIME_VERSIONS = {
+    "current-prompt.v1",
+    "director-shadow.v1",
+    "adaptive-canary.v1",
+}
+_CORRELATION_UUID_PATTERN = (
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+_MAX_LATENCY_MS = 86_400_000
 _EVENT_KINDS = {
     "phase",
     "move",
@@ -185,6 +194,25 @@ def safe_semantic_attribute_names() -> frozenset[str]:
     return _SAFE_SEMANTIC_ATTRIBUTE_NAMES
 
 
+def is_interviewer_observability_session(value: object) -> bool:
+    """Validate the exact content-free semantic session envelope."""
+    return (
+        isinstance(value, dict)
+        and set(value)
+        == {
+            "contract_version",
+            "runtime_correlation_id",
+            "runtime_version",
+            "rollout_cohort",
+        }
+        and value.get("contract_version")
+        == INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION
+        and _runtime_correlation_id(value.get("runtime_correlation_id"))
+        and value.get("runtime_version") in _RUNTIME_VERSIONS
+        and value.get("rollout_cohort") in _ROLLOUT_COHORTS
+    )
+
+
 def is_interviewer_observability_event(value: object) -> bool:
     """Validate an exact content-free semantic event shape."""
     if not isinstance(value, dict):
@@ -195,9 +223,9 @@ def is_interviewer_observability_event(value: object) -> bool:
     if (
         value.get("contract_version")
         != INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION
-        or not _bounded_label(value.get("runtime_correlation_id"))
-        or not _nullable_label(value.get("turn_correlation_id"))
-        or not _bounded_label(value.get("runtime_version"))
+        or not _runtime_correlation_id(value.get("runtime_correlation_id"))
+        or not _nullable_turn_correlation_id(value.get("turn_correlation_id"))
+        or value.get("runtime_version") not in _RUNTIME_VERSIONS
         or value.get("rollout_cohort") not in _ROLLOUT_COHORTS
         or not _canonical_timestamp(value.get("emitted_at"))
     ):
@@ -211,7 +239,7 @@ def is_interviewer_observability_event(value: object) -> bool:
             == INTERVIEWER_MOVE_CONTRACT_VERSION
             and value.get("move_stage") in _MOVE_STAGES
             and value.get("move_type") in _MOVE_TYPES
-            and _nullable_label(value.get("probe_target_id"))
+            and _nullable_probe_target_id(value.get("probe_target_id"))
         )
     if event_kind == "tool":
         return (
@@ -286,7 +314,7 @@ def resolve_interviewer_observability_identity(
         default_version, cohort = "current-prompt.v1", "current"
     configured_version = env.get("MEELNI_INTERVIEW_RUNTIME_VERSION", "").strip()
     return (
-        configured_version if _bounded_label(configured_version) else default_version,
+        configured_version if configured_version in _RUNTIME_VERSIONS else default_version,
         cohort,
     )
 
@@ -566,6 +594,21 @@ class InterviewerTurnLatencyTracker:
             return
 
 
+async def drain_transcript_before_observability_close(
+    *,
+    drain: Callable[[], Awaitable[None]],
+    close: Callable[[], None],
+) -> None:
+    """Run telemetry close only after the authoritative transcript drain settles."""
+    try:
+        await drain()
+    finally:
+        try:
+            close()
+        except Exception:  # noqa: BLE001 - telemetry cannot affect shutdown
+            pass
+
+
 def _canonical_time(value: float) -> str:
     if not _positive_time(value):
         raise ValueError("invalid observability time")
@@ -582,20 +625,38 @@ def _canonical_timestamp(value: object) -> bool:
     ):
         return False
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if not 1 <= parsed.year <= 9999:
+            return False
         return True
     except ValueError:
         return False
 
 
-def _bounded_label(value: object) -> bool:
+def _runtime_correlation_id(value: object) -> bool:
     return isinstance(value, str) and bool(
-        re.fullmatch(r"[a-zA-Z0-9._:/-]{1,120}", value)
+        re.fullmatch(rf"run:{_CORRELATION_UUID_PATTERN}", value)
     )
 
 
-def _nullable_label(value: object) -> bool:
-    return value is None or _bounded_label(value)
+def _turn_correlation_id(value: object) -> bool:
+    return isinstance(value, str) and bool(
+        re.fullmatch(rf"turn:{_CORRELATION_UUID_PATTERN}", value)
+    )
+
+
+def _nullable_turn_correlation_id(value: object) -> bool:
+    return value is None or _turn_correlation_id(value)
+
+
+def _probe_target_id(value: object) -> bool:
+    return isinstance(value, str) and bool(
+        re.fullmatch(r"probe:[0-9a-f]{32,64}", value)
+    )
+
+
+def _nullable_probe_target_id(value: object) -> bool:
+    return value is None or _probe_target_id(value)
 
 
 def _latency(value: object) -> bool:
@@ -603,7 +664,7 @@ def _latency(value: object) -> bool:
         isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(value)
-        and value >= 0
+        and 0 <= value <= _MAX_LATENCY_MS
     )
 
 
@@ -612,7 +673,12 @@ def _nullable_latency(value: object) -> bool:
 
 
 def _positive_time(value: object) -> bool:
-    return _latency(value) and float(value) > 0
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value > 0
+    )
 
 
 def _is_true(value: str | None) -> bool:

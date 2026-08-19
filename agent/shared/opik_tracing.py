@@ -50,6 +50,15 @@ _CONTENT_FREE_SPAN_NAMES = {
     "interviewer_semantic_event",
 }
 
+_INTERVIEWER_SEMANTIC_PREFIX = "meelni.interviewer."
+_NULLABLE_INTERVIEWER_EVENT_FIELDS = {
+    "turn_correlation_id",
+    "probe_target_id",
+    "ready_latency_ms",
+    "recommendation_age_ms",
+    "recovery_latency_ms",
+}
+
 _SAFE_ATTRIBUTES = {
     "gen_ai.operation.name",
     "gen_ai.provider.name",
@@ -226,6 +235,8 @@ class ContentControlledSpanExporter:
         sanitized_spans = []
         for span in spans:
             sanitized_span = sanitize_livekit_span(span, self._capture_content)
+            if sanitized_span is None:
+                continue
             trace_id = livekit_trace_id(span)
             content = (
                 trace_content.get((trace_id, span.name))
@@ -434,7 +445,7 @@ def read_opik_tracing_config(
 
 def sanitize_livekit_span(
     span: Any, capture_content: bool
-) -> Any:
+) -> Any | None:
     allowed_attributes = (
         {
             key
@@ -442,7 +453,11 @@ def sanitize_livekit_span(
             if key.startswith("meelni.interviewer.")
         }
         if span.name in _CONTENT_FREE_SPAN_NAMES
-        else set(_SAFE_ATTRIBUTES)
+        else {
+            key
+            for key in _SAFE_ATTRIBUTES
+            if not key.startswith(_INTERVIEWER_SEMANTIC_PREFIX)
+        }
     )
     content_allowed = (
         capture_content and span.name not in _CONTENT_FREE_SPAN_NAMES
@@ -450,11 +465,16 @@ def sanitize_livekit_span(
     if content_allowed:
         allowed_attributes.update(_CONTENT_ATTRIBUTES)
 
-    attributes = {
-        key: value
-        for key, value in span.attributes.items()
-        if key in allowed_attributes
-    }
+    if span.name in _CONTENT_FREE_SPAN_NAMES:
+        attributes = sanitize_interviewer_semantic_attributes(span)
+        if attributes is None:
+            return None
+    else:
+        attributes = {
+            key: value
+            for key, value in span.attributes.items()
+            if key in allowed_attributes
+        }
     if content_allowed:
         attributes = project_opik_content(attributes)
     resource = type(span.resource)(
@@ -484,6 +504,47 @@ def sanitize_livekit_span(
         end_time=span.end_time,
         instrumentation_scope=span.instrumentation_scope,
     )
+
+
+def sanitize_interviewer_semantic_attributes(
+    span: Any,
+) -> dict[str, str | float] | None:
+    """Reconstruct one exact semantic envelope or reject the whole span."""
+    from shared.interviewer_observability import (
+        is_interviewer_observability_event,
+        is_interviewer_observability_session,
+        semantic_event_attributes,
+    )
+
+    envelope = {
+        key.removeprefix(_INTERVIEWER_SEMANTIC_PREFIX): value
+        for key, value in span.attributes.items()
+        if key.startswith(_INTERVIEWER_SEMANTIC_PREFIX)
+    }
+    if span.name == "interviewer_observability_session":
+        if not is_interviewer_observability_session(envelope):
+            return None
+        return {
+            f"{_INTERVIEWER_SEMANTIC_PREFIX}{key}": value
+            for key, value in envelope.items()
+            if isinstance(value, str)
+        }
+    if span.name != "interviewer_semantic_event":
+        return None
+
+    event_kind = envelope.get("event_kind")
+    nullable_fields = {"turn_correlation_id"}
+    if event_kind == "move":
+        nullable_fields.add("probe_target_id")
+    elif event_kind == "director":
+        nullable_fields.update({"ready_latency_ms", "recommendation_age_ms"})
+    elif event_kind == "interruption":
+        nullable_fields.add("recovery_latency_ms")
+    for field in nullable_fields & _NULLABLE_INTERVIEWER_EVENT_FIELDS:
+        envelope.setdefault(field, None)
+    if not is_interviewer_observability_event(envelope):
+        return None
+    return semantic_event_attributes(envelope)
 
 
 def project_opik_content(attributes: Mapping[str, Any]) -> dict[str, Any]:

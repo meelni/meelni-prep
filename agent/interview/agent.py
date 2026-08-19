@@ -41,6 +41,7 @@ from shared.dispatch import resolve_cli_dispatch_name
 from shared.interviewer_observability import (
     InterviewerTurnLatencyTracker,
     create_interviewer_observability,
+    drain_transcript_before_observability_close,
 )
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
@@ -198,7 +199,7 @@ async def entrypoint(ctx: JobContext):
     turn_observability = InterviewerTurnLatencyTracker(semantic_observability)
     runtime_close_reason = "runtime_closed"
 
-    async def close_interviewer_observability() -> None:
+    def close_interviewer_observability() -> None:
         turn_observability.mark_unrecovered()
         semantic_observability.record_phase("closed")
         semantic_observability.record_close(
@@ -209,7 +210,18 @@ async def entrypoint(ctx: JobContext):
         )
         semantic_observability.close()
 
-    ctx.add_shutdown_callback(close_interviewer_observability)
+    async def no_transcript_shutdown_drain() -> None:
+        return None
+
+    transcript_shutdown_drain = no_transcript_shutdown_drain
+
+    async def shutdown_interview_runtime() -> None:
+        await drain_transcript_before_observability_close(
+            drain=transcript_shutdown_drain,
+            close=close_interviewer_observability,
+        )
+
+    ctx.add_shutdown_callback(shutdown_interview_runtime)
 
     if deadline_at is not None and is_deadline_reached(deadline_at):
         runtime_close_reason = "time_limit"
@@ -691,7 +703,7 @@ async def entrypoint(ctx: JobContext):
                 },
             )
 
-    ctx.add_shutdown_callback(drain_transcript_queue)
+    transcript_shutdown_drain = drain_transcript_queue
 
     async def persist_runtime_settlement(
         state: str,

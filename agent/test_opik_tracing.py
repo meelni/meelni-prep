@@ -257,6 +257,85 @@ class OpikTracingTests(unittest.TestCase):
         self.assertNotIn("lk.user_input", exported_semantic.attributes)
         self.assertNotIn("lk.response.text", exported_semantic.attributes)
 
+    def test_malformed_semantic_envelopes_are_dropped_in_both_content_modes(self):
+        for capture_content in (False, True):
+            with self.subTest(capture_content=capture_content):
+                delegate = CapturingExporter()
+                exporter = ContentControlledSpanExporter(
+                    delegate, capture_content=capture_content
+                )
+                identity_in_runtime_id = private_interviewer_semantic_span()
+                identity_in_runtime_id.attributes[
+                    "meelni.interviewer.runtime_correlation_id"
+                ] = "run:alice-private-identity"
+                identity_in_probe_id = private_interviewer_move_span(
+                    probe_target_id="probe:alice-private-identity"
+                )
+                year_zero = private_interviewer_semantic_span()
+                year_zero.attributes[
+                    "meelni.interviewer.emitted_at"
+                ] = "0000-08-19T01:20:00.000Z"
+                unbounded_latency = private_interviewer_semantic_span()
+                unbounded_latency.attributes[
+                    "meelni.interviewer.latency_ms"
+                ] = 86_400_001
+                open_enum = private_interviewer_semantic_span()
+                open_enum.attributes[
+                    "meelni.interviewer.tool_outcome"
+                ] = "alice-private-identity"
+                malformed_session = private_interviewer_session_span()
+                malformed_session.attributes[
+                    "meelni.interviewer.runtime_correlation_id"
+                ] = "run:alice-private-identity"
+                conversation_span = private_agent_turn_span()
+                conversation_span.attributes[
+                    "meelni.interviewer.runtime_correlation_id"
+                ] = "run:alice-private-identity"
+
+                exporter.export(
+                    [
+                        conversation_span,
+                        identity_in_runtime_id,
+                        identity_in_probe_id,
+                        year_zero,
+                        unbounded_latency,
+                        open_enum,
+                        malformed_session,
+                    ]
+                )
+
+                self.assertEqual(len(delegate.spans), 1)
+                exported_turn = delegate.spans[0]
+                self.assertEqual(exported_turn.name, "agent_turn")
+                self.assertNotIn(
+                    "alice-private-identity",
+                    json.dumps(exported_turn.attributes),
+                )
+                if capture_content:
+                    self.assertEqual(
+                        exported_turn.attributes["input"], "candidate answer"
+                    )
+                else:
+                    self.assertNotIn("input", exported_turn.attributes)
+
+    def test_semantic_session_requires_the_exact_content_free_envelope(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=False)
+
+        exporter.export([private_interviewer_session_span()])
+
+        self.assertEqual(len(delegate.spans), 1)
+        self.assertEqual(delegate.spans[0].name, "interviewer_observability_session")
+        self.assertEqual(
+            set(delegate.spans[0].attributes),
+            {
+                "meelni.interviewer.contract_version",
+                "meelni.interviewer.runtime_correlation_id",
+                "meelni.interviewer.runtime_version",
+                "meelni.interviewer.rollout_cohort",
+            },
+        )
+
     def test_content_export_projects_conversation_onto_root_trace(self):
         delegate = CapturingExporter()
         exporter = ContentControlledSpanExporter(delegate, capture_content=True)
@@ -487,8 +566,12 @@ def private_interviewer_semantic_span() -> FakeReadableSpan:
                 "interviewer-observability.v1"
             ),
             "meelni.interviewer.event_kind": "tool",
-            "meelni.interviewer.runtime_correlation_id": "run:synthetic",
-            "meelni.interviewer.turn_correlation_id": "turn:synthetic",
+            "meelni.interviewer.runtime_correlation_id": (
+                "run:11111111-1111-1111-1111-111111111111"
+            ),
+            "meelni.interviewer.turn_correlation_id": (
+                "turn:22222222-2222-2222-2222-222222222222"
+            ),
             "meelni.interviewer.runtime_version": "director-shadow.v1",
             "meelni.interviewer.rollout_cohort": "shadow",
             "meelni.interviewer.emitted_at": "2026-08-19T01:20:00.000Z",
@@ -505,6 +588,47 @@ def private_interviewer_semantic_span() -> FakeReadableSpan:
             "hidden_reasoning": "private plan",
             "lk.user_input": "synthetic candidate answer",
             "lk.response.text": "synthetic interviewer response",
+        },
+        status=FakeStatus("unset"),
+    )
+
+
+def private_interviewer_move_span(*, probe_target_id: str) -> FakeReadableSpan:
+    span = private_interviewer_semantic_span()
+    span.attributes.pop("meelni.interviewer.tool_contract_version")
+    span.attributes.pop("meelni.interviewer.tool_name")
+    span.attributes.pop("meelni.interviewer.tool_outcome")
+    span.attributes.pop("meelni.interviewer.latency_ms")
+    span.attributes.update(
+        {
+            "meelni.interviewer.event_kind": "move",
+            "meelni.interviewer.move_contract_version": "interviewer-move.v1",
+            "meelni.interviewer.move_stage": "planned",
+            "meelni.interviewer.move_type": "probe",
+            "meelni.interviewer.probe_target_id": probe_target_id,
+        }
+    )
+    return span
+
+
+def private_interviewer_session_span() -> FakeReadableSpan:
+    return FakeReadableSpan(
+        name="interviewer_observability_session",
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes={
+            "meelni.interviewer.contract_version": (
+                "interviewer-observability.v1"
+            ),
+            "meelni.interviewer.runtime_correlation_id": (
+                "run:11111111-1111-1111-1111-111111111111"
+            ),
+            "meelni.interviewer.runtime_version": "director-shadow.v1",
+            "meelni.interviewer.rollout_cohort": "shadow",
         },
         status=FakeStatus("unset"),
     )

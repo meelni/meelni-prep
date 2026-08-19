@@ -1,5 +1,7 @@
+import asyncio
 import json
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -11,8 +13,14 @@ from shared.interviewer_observability import (
     INTERVIEWER_TOOL_CONTRACT_VERSION,
     InterviewerTurnLatencyTracker,
     create_interviewer_observability,
+    drain_transcript_before_observability_close,
     is_interviewer_observability_event,
 )
+
+
+RUNTIME_UUID = "11111111-1111-1111-1111-111111111111"
+TURN_UUID = "22222222-2222-2222-2222-222222222222"
+RECOVERY_UUID = "33333333-3333-3333-3333-333333333333"
 
 
 def configured_env(**overrides):
@@ -55,8 +63,8 @@ class InterviewerObservabilityTests(unittest.TestCase):
         safe = {
             "contract_version": INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION,
             "event_kind": "tool",
-            "runtime_correlation_id": "run:synthetic",
-            "turn_correlation_id": "turn:synthetic",
+            "runtime_correlation_id": f"run:{RUNTIME_UUID}",
+            "turn_correlation_id": f"turn:{TURN_UUID}",
             "runtime_version": "director-shadow.v1",
             "rollout_cohort": "shadow",
             "emitted_at": "2026-08-19T01:20:00.000Z",
@@ -86,13 +94,13 @@ class InterviewerObservabilityTests(unittest.TestCase):
             ),
             tracer=tracer,
             clock=lambda: 1787102400.0,
-            id_factory=lambda: "runtime-1",
+            id_factory=lambda: RUNTIME_UUID,
         )
 
         self.assertTrue(
             observability.record(
                 "tool",
-                turn_correlation_id="turn:one",
+                turn_correlation_id=f"turn:{TURN_UUID}",
                 tool_contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
                 tool_name="read_interview_state",
                 tool_outcome="timeout",
@@ -102,7 +110,7 @@ class InterviewerObservabilityTests(unittest.TestCase):
         self.assertTrue(
             observability.record(
                 "director",
-                turn_correlation_id="turn:one",
+                turn_correlation_id=f"turn:{TURN_UUID}",
                 recommendation_contract_version=(
                     DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
                 ),
@@ -133,9 +141,9 @@ class InterviewerObservabilityTests(unittest.TestCase):
             configured_env(),
             tracer=tracer,
             clock=lambda: 1787102400.0,
-            id_factory=lambda: "runtime-2",
+            id_factory=lambda: RUNTIME_UUID,
         )
-        ids = iter(("turn-1", "turn-2"))
+        ids = iter((TURN_UUID, RECOVERY_UUID))
         tracker = InterviewerTurnLatencyTracker(
             observability, id_factory=lambda: next(ids)
         )
@@ -174,7 +182,7 @@ class InterviewerObservabilityTests(unittest.TestCase):
             configured_env(),
             tracer=tracer,
             clock=lambda: 1787102400.0,
-            id_factory=lambda: "runtime-failure",
+            id_factory=lambda: RUNTIME_UUID,
         )
 
         self.assertFalse(observability.record_phase("opening"))
@@ -185,10 +193,57 @@ class InterviewerObservabilityTests(unittest.TestCase):
 
     def test_tracing_remains_default_off_under_existing_opik_gate(self):
         observability = create_interviewer_observability(
-            {}, id_factory=lambda: "runtime-disabled"
+            {}, id_factory=lambda: RUNTIME_UUID
         )
         self.assertFalse(observability.enabled)
         self.assertFalse(observability.record_phase("opening"))
+
+    def test_shared_wire_parity_rejects_year_zero_and_unicode_case_fold(self):
+        fixtures_path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "interviewer-observability-wire.json"
+        )
+        fixtures = json.loads(fixtures_path.read_text(encoding="utf-8"))
+
+        for fixture in fixtures:
+            with self.subTest(name=fixture["name"]):
+                self.assertEqual(
+                    is_interviewer_observability_event(fixture["event"]),
+                    fixture["valid"],
+                )
+
+    def test_transcript_drain_settles_before_slow_failing_tracer_close(self):
+        sequence = []
+
+        async def drain():
+            sequence.append("drain_started")
+            await asyncio.sleep(0)
+            sequence.append("transcript_settled")
+
+        def slow_failing_tracer_close():
+            sequence.append("tracer_close_started")
+            time.sleep(0.01)
+            sequence.append("tracer_close_failed")
+            raise RuntimeError("synthetic slow tracer failure")
+
+        asyncio.run(
+            drain_transcript_before_observability_close(
+                drain=drain,
+                close=slow_failing_tracer_close,
+            )
+        )
+
+        self.assertEqual(
+            sequence,
+            [
+                "drain_started",
+                "transcript_settled",
+                "tracer_close_started",
+                "tracer_close_failed",
+            ],
+        )
 
 
 if __name__ == "__main__":

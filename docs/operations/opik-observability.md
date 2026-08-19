@@ -99,10 +99,11 @@ and confirm:
 - a telemetry exporter failure leaves synthetic speech, transcript settlement,
   close, and feedback results unchanged.
 
-`MEELNI_INTERVIEW_RUNTIME_VERSION` may supply a bounded server-owned analysis
-label. When omitted, the runtime derives `current-prompt.v1`,
-`director-shadow.v1`, or `adaptive-canary.v1` from the existing rollout flags.
-Room metadata cannot select the label or cohort.
+`MEELNI_INTERVIEW_RUNTIME_VERSION` may select only the closed server-owned
+analysis versions `current-prompt.v1`, `director-shadow.v1`, or
+`adaptive-canary.v1`. Invalid or omitted values fall back to the version
+derived from the existing rollout flags. Room metadata cannot select the label
+or cohort.
 
 Build current/shadow/canary aggregate reports offline from validated semantic
 events with explicit sample and regression thresholds. Treat `pass`, `hold`,
