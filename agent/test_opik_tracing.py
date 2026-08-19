@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.opik_tracing import (
     ContentControlledSpanExporter,
+    interview_contract_trace_attributes,
     read_opik_tracing_config,
 )
 
@@ -28,6 +29,84 @@ class CapturingExporter:
 
 
 class OpikTracingTests(unittest.TestCase):
+    def test_interview_contract_trace_metadata_is_version_only(self):
+        attributes = interview_contract_trace_attributes(
+            {
+                "session_id": "private-session",
+                "question": {"text": "private question"},
+                "interview_brief_resolution": "brief_v2",
+                "interview_brief": {
+                    "contract_version": "interview-brief.v2",
+                    "policy": {
+                        "contract_version": "full-interview-policy.v1"
+                    },
+                    "round_pack": {"contract_version": "pm-round-pack.v1"},
+                },
+            }
+        )
+
+        self.assertEqual(
+            attributes,
+            {
+                "meelni.interview.prompt_contract_version":
+                    "full_interview_prompt_v1",
+                "meelni.interview.brief_resolution": "brief_v2",
+                "meelni.interview.brief_contract_version":
+                    "interview-brief.v2",
+                "meelni.interview.policy_contract_version":
+                    "full-interview-policy.v1",
+                "meelni.interview.round_pack_contract_version":
+                    "pm-round-pack.v1",
+            },
+        )
+        self.assertNotIn("private-session", json.dumps(attributes))
+        self.assertNotIn("private question", json.dumps(attributes))
+
+        self.assertEqual(
+            interview_contract_trace_attributes(
+                {"interview_brief_resolution": "private question"}
+            )["meelni.interview.brief_resolution"],
+            "invalid_payload",
+        )
+
+    def test_sanitizer_retains_contract_versions_without_private_context(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=False)
+        span = private_livekit_span()
+        span.attributes.update(
+            interview_contract_trace_attributes(
+                {
+                    "interview_brief_resolution": "brief_v2",
+                    "interview_brief": {
+                        "contract_version": "interview-brief.v2",
+                        "policy": {
+                            "contract_version": "full-interview-policy.v1"
+                        },
+                        "round_pack": {
+                            "contract_version": "pm-round-pack.v1"
+                        },
+                    },
+                }
+            )
+        )
+
+        exporter.export([span])
+
+        exported = delegate.spans[0]
+        self.assertEqual(
+            exported.attributes["meelni.interview.prompt_contract_version"],
+            "full_interview_prompt_v1",
+        )
+        self.assertEqual(
+            exported.attributes["meelni.interview.policy_contract_version"],
+            "full-interview-policy.v1",
+        )
+        self.assertEqual(
+            exported.attributes["meelni.interview.round_pack_contract_version"],
+            "pm-round-pack.v1",
+        )
+        self.assertNotIn("lk.user_transcript", exported.attributes)
+
     def test_config_is_opt_in_and_requires_all_credentials(self):
         self.assertIsNone(read_opik_tracing_config({}))
         self.assertIsNone(

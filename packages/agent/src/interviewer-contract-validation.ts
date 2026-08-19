@@ -28,6 +28,7 @@ import {
   DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
   DIRECTOR_RECOMMENDATION_MAX_TTL_MS,
   FULL_INTERVIEW_POLICY_CONTRACT_VERSION,
+  FULL_INTERVIEW_PROMPT_CONTRACT_VERSION,
   INTERVIEW_BRIEF_V2_CONTRACT_VERSION,
   INTERVIEW_CLOCK_BANDS,
   INTERVIEW_CLOSE_STATES,
@@ -635,7 +636,7 @@ function isFullInterviewPolicy(value: unknown): value is FullInterviewPolicyV1 {
       "one_substantive_question_per_turn",
     ]) &&
     value.contract_version === FULL_INTERVIEW_POLICY_CONTRACT_VERSION &&
-    isContractToken(value.prompt_contract_version) &&
+    value.prompt_contract_version === FULL_INTERVIEW_PROMPT_CONTRACT_VERSION &&
     value.interviewer_mode === "full_interview" &&
     value.coaching === "forbidden" &&
     value.hints === "forbidden" &&
