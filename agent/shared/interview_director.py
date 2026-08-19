@@ -835,8 +835,9 @@ class _SpeculativeWork:
     observation: DirectorTurnObservation | None
     task: asyncio.Task[None] | None = None
     final_observation: DirectorTurnObservation | None = None
+    final_state: Mapping[str, object] | None = None
+    finalized_available_at: float | None = None
     completed_result: DirectorAdapterResult | None = None
-    ready_latency_ms: float | None = None
 
 
 class InterviewDirectorShadowSession:
@@ -991,6 +992,7 @@ class InterviewDirectorShadowSession:
         *,
         source_turn_id: str | None,
     ) -> str:
+        finalized_available_at = self._monotonic()
         state = self._read_state()
         if not self.enabled or state is None:
             return "disabled"
@@ -1033,7 +1035,11 @@ class InterviewDirectorShadowSession:
             )
             observation.validate(self.config.limits)
             if speaker == "user":
-                return self._observe_candidate(observation, state)
+                return self._observe_candidate(
+                    observation,
+                    state,
+                    finalized_available_at=finalized_available_at,
+                )
             if speaker == "interviewer":
                 self._remember_final(observation)
                 return self._observe_delivered_from_state(transcript_event, state)
@@ -1138,6 +1144,8 @@ class InterviewDirectorShadowSession:
         self,
         observation: DirectorTurnObservation,
         state: Mapping[str, object],
+        *,
+        finalized_available_at: float | None = None,
     ) -> str:
         if self._closed:
             return "settled"
@@ -1175,18 +1183,25 @@ class InterviewDirectorShadowSession:
                 )
                 return task_result
 
+            finalized_available_at = (
+                finalized_available_at
+                if finalized_available_at is not None
+                else self._monotonic()
+            )
             self._remember_final(observation)
             speculative = self._speculative.get(observation.turn_id)
             if speculative is not None:
                 if speculative.digest == digest:
                     speculative.final_observation = observation
+                    speculative.final_state = dict(state)
+                    speculative.finalized_available_at = finalized_available_at
                     speculative.observation = None
                     if speculative.completed_result is not None:
                         self._publish_adapter_result(
                             observation,
                             state,
                             speculative.completed_result,
-                            speculative.ready_latency_ms or 0.0,
+                            finalized_available_at,
                         )
                         self._speculative.pop(observation.turn_id, None)
                     self._emit_outcome("reconciled", freshness="fresh")
@@ -1195,7 +1210,13 @@ class InterviewDirectorShadowSession:
                     speculative.task.cancel()
                 self._speculative.pop(observation.turn_id, None)
                 self._emit_outcome("discarded_revision", freshness="speculative")
-            return self._schedule(self._run_observation(observation, dict(state)))
+            return self._schedule(
+                self._run_observation(
+                    observation,
+                    dict(state),
+                    finalized_available_at=finalized_available_at,
+                )
+            )
         except DirectorError as error:
             outcome = (
                 "capacity"
@@ -1213,37 +1234,42 @@ class InterviewDirectorShadowSession:
         state: Mapping[str, object],
         *,
         work: _SpeculativeWork | None = None,
+        finalized_available_at: float | None = None,
     ) -> None:
         try:
             async with self._semaphore:
                 context = self._build_context(observation, state)
-                result, ready_latency_ms = await self._execute(context)
+                result = await self._execute(context)
                 if work is not None:
                     work.observation = None
                     if work.final_observation is None:
                         work.completed_result = result
-                        work.ready_latency_ms = ready_latency_ms
                         self._emit_outcome(
                             "speculative_ready",
                             freshness="speculative",
-                            ready_latency_ms=ready_latency_ms,
                             estimated_cost_microusd=result.estimated_cost_microusd,
                         )
                         return
                     final_observation = work.final_observation
+                    final_state = work.final_state
+                    final_available = work.finalized_available_at
                     self._speculative.pop(observation.turn_id, None)
+                    if final_state is None or final_available is None:
+                        raise DirectorError("stale_result")
                     self._publish_adapter_result(
                         final_observation,
-                        state,
+                        final_state,
                         result,
-                        ready_latency_ms,
+                        final_available,
                     )
                     return
+                if finalized_available_at is None:
+                    raise DirectorError("stale_result")
                 self._publish_adapter_result(
                     observation,
                     state,
                     result,
-                    ready_latency_ms,
+                    finalized_available_at,
                 )
         except asyncio.TimeoutError:
             self._emit_outcome("timeout", freshness="stale")
@@ -1261,12 +1287,12 @@ class InterviewDirectorShadowSession:
             ):
                 work.observation = None
                 work.final_observation = None
+                work.final_state = None
+                work.finalized_available_at = None
                 if self._speculative.get(observation.turn_id) is work:
                     self._speculative.pop(observation.turn_id, None)
 
-    async def _execute(
-        self, context: DirectorContext
-    ) -> tuple[DirectorAdapterResult, float]:
+    async def _execute(self, context: DirectorContext) -> DirectorAdapterResult:
         adapter = self._adapter
         if adapter is None:
             raise DirectorError("invalid_config")
@@ -1281,7 +1307,7 @@ class InterviewDirectorShadowSession:
                     timeout=self._remaining_runner_time(hard_deadline),
                 )
                 result.validate(self.config.limits)
-                return result, max(0.0, (self._monotonic() - started) * 1_000)
+                return result
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
@@ -1311,7 +1337,7 @@ class InterviewDirectorShadowSession:
         observation: DirectorTurnObservation,
         source_state: Mapping[str, object],
         result: DirectorAdapterResult,
-        ready_latency_ms: float,
+        finalized_available_at: float,
     ) -> None:
         if self._closed or self._store is None:
             return
@@ -1333,7 +1359,7 @@ class InterviewDirectorShadowSession:
             self._emit_outcome(
                 "stale",
                 freshness="stale",
-                ready_latency_ms=ready_latency_ms,
+                ready_latency_ms=self._ready_latency_ms(finalized_available_at),
                 estimated_cost_microusd=result.estimated_cost_microusd,
             )
             return
@@ -1351,6 +1377,7 @@ class InterviewDirectorShadowSession:
             if store_result.outcome == "after_delivery"
             else store_result.outcome
         )
+        ready_latency_ms = self._ready_latency_ms(finalized_available_at)
         self._emit_outcome(
             outcome if outcome in DIRECTOR_OUTCOMES else "stale",
             freshness="fresh" if store_result.outcome in ("ready", "after_delivery") else "stale",
@@ -1364,6 +1391,9 @@ class InterviewDirectorShadowSession:
         )
         if store_result.comparison is not None:
             self._emit_comparison(store_result.comparison)
+
+    def _ready_latency_ms(self, finalized_available_at: float) -> float:
+        return max(0.0, (self._monotonic() - finalized_available_at) * 1_000)
 
     def _materialize_recommendation(
         self,

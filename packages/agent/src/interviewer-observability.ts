@@ -595,15 +595,21 @@ export function aggregateInterviewerObservabilityEvents(
         }
         break;
       case "director":
-        directorResultCount += 1;
-        if (
-          event.recommendation_freshness === "stale" ||
-          event.recommendation_outcome === "stale"
+        if (event.recommendation_comparison === null) {
+          directorResultCount += 1;
+          if (
+            event.recommendation_freshness === "stale" ||
+            event.recommendation_outcome === "stale"
+          ) {
+            staleRecommendationCount += 1;
+          }
+          if (event.ready_latency_ms !== null) {
+            latencies.director.push(event.ready_latency_ms);
+          }
+        } else if (
+          event.recommendation_comparison === "recommendation_expired"
         ) {
           staleRecommendationCount += 1;
-        }
-        if (event.ready_latency_ms !== null) {
-          latencies.director.push(event.ready_latency_ms);
         }
         break;
       case "tool":
@@ -665,6 +671,10 @@ export function aggregateInterviewerObservabilityEvents(
       latencies.recovery.push(state.recoveryLatencyMs);
     }
   }
+  const boundedStaleRecommendationCount = Math.min(
+    staleRecommendationCount,
+    directorResultCount
+  );
 
   return {
     rollout_cohort,
@@ -680,9 +690,9 @@ export function aggregateInterviewerObservabilityEvents(
     tool_failure_count: toolFailureCount,
     tool_failure_rate: rate(toolFailureCount, toolCallCount),
     director_result_count: directorResultCount,
-    stale_recommendation_count: staleRecommendationCount,
+    stale_recommendation_count: boundedStaleRecommendationCount,
     stale_recommendation_rate: rate(
-      staleRecommendationCount,
+      boundedStaleRecommendationCount,
       directorResultCount
     ),
     interruption_count: interruptionCount,

@@ -31,6 +31,8 @@ expiry.
 - **WHEN** speculative work completes and the authoritative final has the same
   content digest
 - **THEN** it is reconciled to the final transcript revision before storage
+- **AND** in-flight work binds to the exact state/lifecycle authority captured
+  when that final turn becomes available, not its speculative state revision
 - **AND** the stored recommendation is labeled finalized
 
 #### Scenario: Interim and final text differ
@@ -101,3 +103,18 @@ readiness, latency/age, cost-estimate, and comparison metadata without content.
   evidence quote, provider/model name, secret, tool payload, or chain of thought
 - **AND** synthetic fixture comparisons establish plumbing only, not a
   real-model quality/cost/readiness threshold
+
+#### Scenario: Readiness and comparison are aggregated
+
+- **WHEN** a finalized turn waits for Director concurrency, builds bounded
+  context, publishes one recommendation, and is later compared as expired
+- **THEN** ready latency includes the queue and context-build interval
+- **AND** the comparison marks the one result stale without adding another
+  result or readiness sample
+
+#### Scenario: Shadow flag is malformed
+
+- **WHEN** the server flag contains whitespace, mixed case, a blank, or any
+  value other than exact lowercase `true`
+- **THEN** both Director execution and observability cohort selection remain
+  disabled/current

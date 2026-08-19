@@ -761,4 +761,4 @@ def _positive_time(value: object) -> bool:
 
 
 def _is_true(value: str | None) -> bool:
-    return bool(value) and value.strip().lower() == "true"
+    return value == "true"

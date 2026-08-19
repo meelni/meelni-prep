@@ -43,6 +43,9 @@ from shared.interviewer_contracts import (  # noqa: E402
     DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
     parse_director_recommendation,
 )
+from shared.interviewer_observability import (  # noqa: E402
+    resolve_interviewer_observability_identity,
+)
 
 
 FIXED_NOW = datetime(2026, 8, 19, 12, 1, tzinfo=timezone.utc).timestamp()
@@ -54,6 +57,17 @@ def iso(offset_seconds: int = 0) -> str:
     ).replace("+00:00", "Z")
 
 
+class ManualMonotonic:
+    def __init__(self, value: float = 100.0) -> None:
+        self.value = value
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
+
+
 class DirectorHarness:
     def __init__(
         self,
@@ -61,6 +75,7 @@ class DirectorHarness:
         adapter=None,
         limits: DirectorLimits | None = None,
         enabled: bool = True,
+        monotonic=None,
     ) -> None:
         self.state = self.make_state()
         self.trace = MemoryDirectorTraceSink()
@@ -76,6 +91,7 @@ class DirectorHarness:
             delivery_topic_provider=self.delivery_topic,
             trace_sink=self.trace,
             clock=lambda: FIXED_NOW,
+            monotonic=monotonic or ManualMonotonic(),
         )
 
     def delivery_topic(self, move_id: str) -> str | None:
@@ -85,8 +101,8 @@ class DirectorHarness:
         )
 
     @staticmethod
-    def make_state():
-        initial = create_controller_state(
+    def make_initial_state():
+        return create_controller_state(
             session_id="session-474",
             brief_id="brief:474",
             writer_id="writer-1",
@@ -101,6 +117,10 @@ class DirectorHarness:
             topic_catalog=("objective_and_scope", "problem_evidence"),
             active_question_id="question-474",
         )
+
+    @staticmethod
+    def make_state():
+        initial = DirectorHarness.make_initial_state()
         return reduce_controller(
             initial,
             CandidateTurnCompleted(
@@ -188,15 +208,36 @@ class InterviewDirectorSchemaAndStoreTests(unittest.TestCase):
 
     def test_config_is_exact_default_off_and_has_hard_caps(self):
         self.assertFalse(resolve_director_shadow_config({}).enabled)
-        self.assertFalse(
-            resolve_director_shadow_config(
-                {DIRECTOR_SHADOW_FEATURE_ENV: "TRUE"}
-            ).enabled
-        )
+        for malformed in ("", "TRUE", "True", " true", "true ", "\ttrue\n", "1"):
+            with self.subTest(malformed=repr(malformed)):
+                env = {DIRECTOR_SHADOW_FEATURE_ENV: malformed}
+                self.assertFalse(resolve_director_shadow_config(env).enabled)
+                self.assertEqual(
+                    resolve_interviewer_observability_identity(env),
+                    ("current-prompt.v1", "current"),
+                )
         self.assertTrue(
             resolve_director_shadow_config(
                 {DIRECTOR_SHADOW_FEATURE_ENV: "true"}
             ).enabled
+        )
+        self.assertEqual(
+            resolve_interviewer_observability_identity(
+                {DIRECTOR_SHADOW_FEATURE_ENV: "true"}
+            ),
+            ("director-shadow.v1", "shadow"),
+        )
+        self.assertEqual(
+            resolve_interviewer_observability_identity(
+                {"MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED": " TRUE "}
+            ),
+            ("current-prompt.v1", "current"),
+        )
+        self.assertEqual(
+            resolve_interviewer_observability_identity(
+                {"MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED": "true"}
+            ),
+            ("adaptive-canary.v1", "canary"),
         )
         with self.assertRaisesRegex(DirectorError, "invalid_config"):
             DirectorLimits(max_concurrency=5)
@@ -493,6 +534,169 @@ class InterviewDirectorRunnerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNotNone(recommendation)
         await harness.session.shutdown()
+
+    async def test_in_flight_speculative_result_rebinds_to_exact_final_authority(self):
+        initial = DirectorHarness.make_initial_state()
+        state = {"value": initial}
+        gate = asyncio.Event()
+        started = asyncio.Event()
+        adapter = DeterministicFakeDirectorAdapter(
+            gates={"turn-1": gate},
+            started_events={"turn-1": started},
+        )
+        trace = MemoryDirectorTraceSink()
+        session = InterviewDirectorShadowSession(
+            config=DirectorShadowConfig(enabled=True),
+            session_id="session-474",
+            adapter=adapter,
+            state_provider=lambda: state["value"].to_runtime_state(),
+            trace_sink=trace,
+            clock=lambda: FIXED_NOW,
+            monotonic=ManualMonotonic(),
+        )
+        final_text = "I would clarify the product goal and first target user."
+        self.assertEqual(
+            session.observe_interim(
+                turn_id="turn-1",
+                transcript_revision="interim:1",
+                sequence=1,
+                text=final_text,
+                observed_at=iso(),
+            ),
+            "scheduled",
+        )
+        await asyncio.wait_for(started.wait(), timeout=0.2)
+        final = reduce_controller(
+            initial,
+            CandidateTurnCompleted(
+                expected_state_revision=initial.state_revision,
+                turn_id="turn-1",
+                transcript_revision="event:user:1",
+                text=final_text,
+                duration_ms=8_000,
+                monotonic_ms=2_000,
+                requested_clarification=False,
+                requested_exit=False,
+            ),
+        ).state
+        state["value"] = final
+        self.assertEqual(
+            session.observe_persisted_transcript(
+                {
+                    "contract_version": 2,
+                    "event_id": "event:user:1",
+                    "session_id": "session-474",
+                    "speaker": "user",
+                    "text": final_text,
+                    "is_final": True,
+                    "delivery_state": "delivered",
+                    "sequence": 1,
+                    "writer_id": "writer-1",
+                    "writer_generation": 1,
+                    "ended_at": iso(),
+                },
+                source_turn_id="turn-1",
+            ),
+            "reconciled",
+        )
+        gate.set()
+        self.assertTrue(await session.wait_idle())
+        assert session.store is not None
+        recommendation = session.store.latest_valid(
+            session_id="session-474",
+            source_turn_id="turn-1",
+            source_transcript_revision="event:user:1",
+            now=iso(),
+        )
+        self.assertIsNotNone(recommendation)
+        assert recommendation is not None
+        self.assertEqual(
+            recommendation["based_on_state_revision"], final.state_revision
+        )
+        self.assertTrue(any(event["outcome"] == "ready" for event in trace.events))
+        await session.shutdown()
+
+    async def test_ready_latency_includes_concurrency_queue_and_context_build(self):
+        monotonic = ManualMonotonic()
+        state = {"value": DirectorHarness.make_state().to_runtime_state()}
+        first_gate = asyncio.Event()
+        first_started = asyncio.Event()
+        adapter = DeterministicFakeDirectorAdapter(
+            gates={"turn-1": first_gate},
+            started_events={"turn-1": first_started},
+        )
+        trace = MemoryDirectorTraceSink()
+        session = InterviewDirectorShadowSession(
+            config=DirectorShadowConfig(
+                enabled=True,
+                limits=DirectorLimits(max_concurrency=1),
+            ),
+            session_id="session-474",
+            adapter=adapter,
+            state_provider=lambda: state["value"],
+            trace_sink=trace,
+            clock=lambda: FIXED_NOW,
+            monotonic=monotonic,
+        )
+        original_build_context = session._build_context
+
+        def build_context_with_measured_work(observation, source_state):
+            if observation.turn_id == "turn-2":
+                monotonic.advance(0.025)
+            return original_build_context(observation, source_state)
+
+        session._build_context = build_context_with_measured_work
+        first_event = {
+            "contract_version": 2,
+            "event_id": "event:user:1",
+            "session_id": "session-474",
+            "speaker": "user",
+            "text": "I would clarify the product goal and first target user.",
+            "is_final": True,
+            "delivery_state": "delivered",
+            "sequence": 1,
+            "writer_id": "writer-1",
+            "writer_generation": 1,
+            "ended_at": iso(),
+        }
+        self.assertEqual(
+            session.observe_persisted_transcript(
+                first_event,
+                source_turn_id="turn-1",
+            ),
+            "scheduled",
+        )
+        await asyncio.wait_for(first_started.wait(), timeout=0.2)
+
+        next_state = copy.deepcopy(state["value"])
+        next_state["state_revision"] += 1
+        next_state["last_finalized_candidate_turn_id"] = "turn-2"
+        next_state["last_finalized_candidate_transcript_revision"] = "event:user:2"
+        state["value"] = next_state
+        monotonic.advance(0.040)
+        self.assertEqual(
+            session.observe_persisted_transcript(
+                {
+                    **first_event,
+                    "event_id": "event:user:2",
+                    "text": "I would next validate the strongest problem evidence.",
+                    "sequence": 2,
+                },
+                source_turn_id="turn-2",
+            ),
+            "scheduled",
+        )
+        monotonic.advance(0.125)
+        first_gate.set()
+        self.assertTrue(await session.wait_idle())
+        ready = [
+            event
+            for event in trace.events
+            if event["event_kind"] == "outcome" and event["outcome"] == "ready"
+        ]
+        self.assertEqual(len(ready), 1)
+        self.assertAlmostEqual(ready[0]["ready_latency_ms"], 150.0)
+        await session.shutdown()
 
     async def test_speculative_work_reconciles_or_discards_without_persisting_interim(self):
         adapter = DeterministicFakeDirectorAdapter()

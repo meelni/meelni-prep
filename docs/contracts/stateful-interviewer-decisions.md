@@ -615,6 +615,11 @@ version. Independent of those future numbers, the Director is never a
 synchronous dependency and a tool deadline always falls back without blocking
 the live response.
 
+The Director-ready interval starts at finalized-turn availability before its
+concurrency semaphore and context builder. Matching in-flight speculative work
+rebinds to the exact final controller/lifecycle snapshot before publication;
+its earlier speculative state revision is never published as final authority.
+
 ## Rollout and rollback
 
 All new behavior is server-owned and default off behind these versioned flag
@@ -625,6 +630,10 @@ names:
 - `MEELNI_INTERVIEW_TOOLS_V1_ENABLED`
 - `MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED`
 - `MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED`
+
+Every flag accepts only the exact lowercase token `true`. Whitespace, mixed
+case, blanks, and all other values are disabled in both runtime construction
+and observability cohort selection.
 
 Rollout order is reader-first contract support, synthetic fixtures and
 benchmark, controller/tools disabled, Director read-only shadow, owner-controlled

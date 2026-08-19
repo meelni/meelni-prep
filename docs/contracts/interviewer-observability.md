@@ -77,8 +77,9 @@ outside canonical years 0001–9999, or non-finite/negative latency above
 - Tool latency begins at local adapter invocation and ends at its typed result,
   including timeout or unavailable.
 - Director-ready latency begins when the source finalized turn is available
-  and ends when the recommendation is published. Recommendation age is
-  measured at admission or rejection.
+  and ends when the recommendation is published, including concurrency queue
+  time and bounded context construction. Speculative readiness is not included.
+  Recommendation age is measured at admission or rejection.
 - Director shadow comparison is a closed category only. Estimated cost is a
   bounded non-negative integer in micro-USD supplied by the adapter contract;
   neither field contains prompt, transcript, recommendation prose, or provider
@@ -112,6 +113,13 @@ cohort. It reports runtime and measured-turn counts; p50/p95 user-speech to
 first-audio, Director-ready, tool, and interruption-recovery latency; repeated
 canonically delivered probes; fallback and tool-failure rates; stale Director
 recommendations; interruption recovery; and canonical completion.
+
+Director result events and comparison events are reduced separately. A
+comparison does not increment `director_result_count` or add another ready
+latency sample. If a previously ready recommendation is later compared as
+`recommendation_expired`, the comparison contributes one stale result against
+the existing result denominator, so ready-then-expired is one result with a
+stale rate of `1.0`.
 
 Completion counts only `close` events whose authority is
 `canonical_lifecycle`. A runtime-observed close has `completion_status=unknown`
