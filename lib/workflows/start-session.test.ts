@@ -10,7 +10,11 @@ import {
   type StableInterviewStartInput,
 } from "@/lib/db/interview-starts";
 import type { ReserveCreditInput } from "@/lib/billing/credit-ledger-contracts";
-import { resolveInterviewRuntimeConfig } from "@meelni/agent";
+import {
+  INTERVIEW_BRIEF_V2_START_CONFIG_KEY,
+  parseInterviewBriefV2,
+  resolveInterviewRuntimeConfig,
+} from "@meelni/agent";
 
 import {
   buildInterviewReservationKey,
@@ -49,6 +53,52 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
   assert.equal(fixture.calls.filter((call) => call === "schedule").length, 1);
   assert.equal(fixture.releases.length, 0);
   assert.equal(fixture.metadata?.candidate_identity, USER_ID);
+  assert.equal("interview_brief" in (fixture.metadata ?? {}), false);
+  assert.equal(
+    typeof fixture.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY],
+    "string"
+  );
+});
+
+test("brief v2 reaches LiveKit with exact selected-question authority and minimized context", async () => {
+  const fixture = createFixture();
+  fixture.deps.interviewBriefV2Enabled = true;
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, true);
+  const brief = parseInterviewBriefV2(fixture.metadata?.interview_brief);
+  assert.deepEqual(brief.selected_question, {
+    id: QUESTION_ID,
+    text: "How would you improve Acme?",
+    company: "Acme",
+    type: "Product Sense",
+  });
+  assert.equal(brief.company_context, null);
+  assert.equal(brief.candidate_practice_goal, null);
+  assert.equal(JSON.stringify(brief).includes(USER_ID), false);
+  assert.equal(JSON.stringify(brief).includes("@"), false);
+});
+
+test("retry reuses the exact persisted brief bytes before room entry", async () => {
+  const fixture = createFixture({ providerFailures: 1 });
+  fixture.deps.interviewBriefV2Enabled = true;
+
+  const first = await startInterviewSessionWorkflow(input(), fixture.deps);
+  const firstWire =
+    fixture.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY];
+  const replay = await startInterviewSessionWorkflow(input(), fixture.deps);
+  const replayWire =
+    fixture.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY];
+
+  assert.equal(first.ok, false);
+  assert.equal(replay.ok, true);
+  assert.equal(typeof firstWire, "string");
+  assert.equal(replayWire, firstWire);
+  assert.deepEqual(
+    fixture.metadata?.interview_brief,
+    parseInterviewBriefV2(String(firstWire))
+  );
 });
 
 test("cold start reports content-free timings for every owned stage", async () => {

@@ -5,14 +5,29 @@ app and Python LiveKit agents.
 
 ## Optional stateful-interviewer brief
 
-Top-level room metadata remains contract version `1`. A future reader-first
-rollout may include an optional `interview_brief` whose independent version is
-`interview-brief.v2`; it does not create room-metadata version 2. New readers
+Top-level room metadata remains contract version `1`. The reader-first rollout
+may include an optional `interview_brief` whose independent version is
+`interview-brief.v2`; it does not create room-metadata version 2. Readers
 accept that nested brief only after its digest and its session, deadline,
 round, difficulty, duration, and exact selected-question correlation all pass.
 Absent, unknown, malformed, or mismatched nested briefs use the validated v1
 prompt-led path. Current readers continue to reject any top-level metadata
 version other than `1`.
+
+For each new accepted stable start, TypeScript compiles a complete brief before
+LiveKit room entry and stores its exact JSON wire string in the existing
+session-config JSON. Replays reuse that string. The writer attaches the parsed
+brief only when `MEELNI_INTERVIEW_BRIEF_V2_ENABLED` is exactly `true`; disabling
+the flag restores v1 emission without altering the stable start. Starts created
+before this compiler have no stored brief and remain on v1.
+
+The production start path supplies `null` company context and candidate
+practice goal until a trusted, versioned source is accepted. The brief contains
+the session correlation, deadline, selected question, round/difficulty/
+duration, static round pack, and fixed full-interview policy. It contains no
+candidate identity, email, transcript, feedback, credential, or provider
+tuning. Compilation and prompt construction add no speech-path database or
+network read.
 
 The full negotiation, authority, and rollback rules are in
 [`stateful-interviewer-decisions.md`](./stateful-interviewer-decisions.md).
@@ -153,6 +168,17 @@ in-session teaching experience. For every supported round type it:
   the interview; and
 - leaves strengths, improvements, scores, and recommendations to the durable
   post-interview feedback workflow.
+
+When a correlated v2 brief is present, Python adds its round pack to the system
+prompt as a bounded objective/probe-family catalog with transition and close
+constraints. The pack is not a script, answer key, rubric, or evaluator, and
+the interviewer need not exhaust it. Its fixed forbidden behaviors and policy
+cannot enable coaching, hints, or mid-session evaluation. Unsupported brief,
+round-pack, policy, or prompt contract versions fall back to the v1 path.
+
+Tracing may carry only the allowlisted brief resolution and brief, prompt,
+policy, and round-pack contract versions. Those attributes exclude question,
+candidate, session, company, transcript, credential, and model/provider values.
 
 Full mock interviews normalize `feedback_mode` to `end_only` and `hintMode` to
 `off` at both the TypeScript and Python boundaries. This includes legacy

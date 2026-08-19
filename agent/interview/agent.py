@@ -39,7 +39,10 @@ from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
 from shared.dispatch import resolve_cli_dispatch_name
 from shared.mock_interview_opening import speak_mock_interview_opening
-from shared.opik_tracing import setup_opik_tracing
+from shared.opik_tracing import (
+    set_interview_contract_trace_attributes,
+    setup_opik_tracing,
+)
 from shared.runtime_config import (
     get_model_config,
     get_tts_config,
@@ -179,6 +182,8 @@ async def entrypoint(ctx: JobContext):
     round_type = metadata["round_type"]
     config = metadata["config"]
     question = metadata.get("question")  # NEW: Extract question from metadata
+    interview_brief = metadata.get("interview_brief")
+    set_interview_contract_trace_attributes(metadata)
     session_id = metadata["session_id"]
     candidate_identity = metadata["candidate_identity"]
     transcript_ingest_url = metadata["transcript_ingest_url"]
@@ -209,7 +214,12 @@ async def entrypoint(ctx: JobContext):
     # Build dynamic prompt based on round type, config, and question
     try:
         # NEW: Pass question to prompt builder
-        instructions = build_agent_prompt(round_type, config, question)
+        instructions = build_agent_prompt(
+            round_type,
+            config,
+            question,
+            interview_brief=interview_brief,
+        )
         logger.info(f"Generated prompt for {round_type} interview (difficulty: {config['difficulty']})")
     except ValueError as error:
         log_exception_class(
@@ -219,7 +229,12 @@ async def entrypoint(ctx: JobContext):
             error,
         )
         # NEW: Pass question to fallback prompt as well
-        instructions = build_agent_prompt("product_sense", config, question)
+        instructions = build_agent_prompt(
+            "product_sense",
+            config,
+            question,
+            interview_brief=None,
+        )
 
     model_config = get_model_config(config)
     tts_config = get_tts_config(config)
