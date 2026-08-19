@@ -99,6 +99,7 @@ class _QueueItem:
     kind: ItemKind
     canonical_payload: bytes
     transcript_event: Dict[str, object] | None
+    interruption_marker: Dict[str, object] | None
     evidence_ended_at: datetime | None = None
     state: ItemState = "pending"
     attempts: int = 0
@@ -1043,6 +1044,7 @@ class TranscriptIngestQueue:
         livekit_api_secret: str | bytes,
         transport: Transport,
         publisher: Publisher,
+        persisted_interruption_observer: Publisher | None = None,
         max_size: int = 1_000,
         hard_evidence_cutoff: float | None = None,
         retry_delay_seconds: float = 0.25,
@@ -1059,13 +1061,22 @@ class TranscriptIngestQueue:
             or retry_delay_seconds < 0
         ):
             raise TranscriptIngestError("retry delay must be non-negative")
-        if not callable(transport) or not callable(publisher) or not callable(sleep):
+        if (
+            not callable(transport)
+            or not callable(publisher)
+            or not callable(sleep)
+            or (
+                persisted_interruption_observer is not None
+                and not callable(persisted_interruption_observer)
+            )
+        ):
             raise TranscriptIngestError("queue adapters must be callable")
 
         self.ingest_url = validate_internal_ingest_url(ingest_url)
         self._signing_key = derive_ingest_signing_key(livekit_api_secret)
         self._transport = transport
         self._publisher = publisher
+        self._persisted_interruption_observer = persisted_interruption_observer
         self._max_size = max_size
         self._data_capacity = max_size - 1
         self._retry_delay_seconds = float(retry_delay_seconds)
@@ -1265,11 +1276,17 @@ class TranscriptIngestQueue:
         frozen_transcript = (
             frozen_envelope["event"] if kind == "transcript" else None
         )
+        frozen_interruption_marker = (
+            frozen_envelope["interruptionMarker"]
+            if kind == "interruption_marker"
+            else None
+        )
         self._items[event_id] = _QueueItem(
             event_id=event_id,
             kind=kind,
             canonical_payload=canonical_payload,
             transcript_event=frozen_transcript,
+            interruption_marker=frozen_interruption_marker,
             evidence_ended_at=evidence_ended_at,
         )
         return True
@@ -1367,6 +1384,10 @@ class TranscriptIngestQueue:
         item.last_status = response.status
         if 200 <= response.status <= 299:
             item.last_error = None
+            if item.kind == "interruption_marker":
+                await self._observe_persisted_interruption(item)
+                item.state = "complete"
+                return False
             if item.kind != "transcript":
                 item.state = "complete"
                 return False
@@ -1386,6 +1407,21 @@ class TranscriptIngestQueue:
         item.state = "permanent"
         item.last_error = f"permanent_http_{response.status}"
         return False
+
+    async def _observe_persisted_interruption(self, item: _QueueItem) -> None:
+        observer = self._persisted_interruption_observer
+        if observer is None:
+            return
+        if item.interruption_marker is None:
+            raise TranscriptIngestError(
+                "persisted interruption item has no marker"
+            )
+        try:
+            await observer(item.interruption_marker)
+        except Exception:
+            # Persistence already succeeded. Controller observation cannot make
+            # transcript settlement retry or fail.
+            return
 
     async def _publish_persisted(self, item: _QueueItem) -> bool:
         if item.transcript_event is None:

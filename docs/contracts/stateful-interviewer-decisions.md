@@ -1,6 +1,7 @@
 # Stateful Interviewer And Decision Contracts
 
-Status: accepted contract for SAV-466; runtime implementation remains disabled
+Status: accepted contract for SAV-466; SAV-471 controller implementation is
+available but disabled by default
 
 ## Purpose
 
@@ -37,6 +38,23 @@ policy in focused internal modules. Both runtimes read the shared
 | Director recommendation   | `director-recommendation.v1` |
 
 Unknown versions are never reinterpreted as a known contract.
+
+SAV-471 also uses two implementation-local versions:
+
+- `deterministic-interview-controller.v1` for immutable reducer state; and
+- `interview-controller-snapshot.v1` for the bounded turn-local model context.
+
+These envelopes are internal to the Python runtime adapter. They project the
+accepted `interview-runtime-state.v1` contract and do not widen its shared
+TypeScript/Python wire shape.
+
+The projection requires an exact durable lifecycle state and positive version
+from a trusted boundary. The current runtime writer-registration response does
+not contain that snapshot, so the SAV-471 entrypoint supplies neither and the
+adapter remains fenced to the existing interviewer even if its controller flag
+is set. Tests may provide an explicit fixture snapshot to exercise the boundary.
+SAV-472 must add an authoritative initial and refresh path before any live
+controller can claim lifecycle CAS.
 
 ## Room-metadata compatibility
 
@@ -178,6 +196,30 @@ Move IDs are unique within the bounded ledger. A `closing` phase requires a
 requested or admitted close, an admitted close requires the `closing` phase,
 and a zero lifecycle version is invalid.
 
+### SAV-471 controller projection
+
+The first controller implementation is a provider-free, immutable reducer with
+closed event, move, lifecycle-stage, and failure vocabularies. Its internal
+ledger retains at most 24 moves and eight candidate-turn fingerprints, then
+projects the accepted runtime-state contract without changing that wire.
+
+The controller anchors the accepted wall-clock deadline to a monotonic start
+value and uses exact integer timedelta arithmetic. Its first disabled-by-default
+policy uses these remaining-time bands: `normal` above 120,000 milliseconds,
+`warning` from 120,000 through 45,001, `closing` from 45,000 through 1, and
+`elapsed` at zero. At elapsed it emits neither a move nor a snapshot. It aborts
+any active undelivered move and fences its operational state; the existing
+hard-deadline watchdog remains the exclusive settlement and termination
+authority.
+
+A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
+candidate message ID plus the canonical transcript event identity assigned to
+that message. This identity is not represented as durably persisted at hook
+time: LiveKit invokes the hook before the normal conversation-item publisher.
+The later persisted publisher reconciles that same identity. Each snapshot is
+limited to 2,048 UTF-8 bytes, includes no more than eight delivered moves, and
+permits one substantive interviewer question.
+
 ### Move lifecycle
 
 The following states are intentionally distinct:
@@ -200,6 +242,20 @@ The following states are intentionally distinct:
 
 Only stage 7 commits delivered history. Generated, scheduled, spoken, aborted,
 and unheard interrupted content never enters answer blocks or feedback.
+
+SAV-471 observes delivery only after `TranscriptIngestQueue.publisher` receives
+a successful response for the canonical event. An interviewer event may commit
+a pending move only when the adapter has positively correlated that move to the
+speech handle, assistant item ID, and canonical event ID. The first such event
+is the sole commit; unrelated events and later correlated items from the same
+speech are ignored at this adapter boundary. Explicit conflicting recommit
+evidence remains an error in the pure reducer.
+
+A persisted no-confirmed-prefix interruption marker may upgrade a correlated
+aborted move to interrupted only after the queue receives a successful
+response and the marker has the active writer, interviewer speaker, and exact
+`no_provider_confirmed_prefix` reason. This observer is operational evidence
+only and cannot settle the queue or session.
 
 ## `InterviewerMove`
 
