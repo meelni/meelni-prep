@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -216,6 +217,10 @@ class InterviewerObservabilityTests(unittest.TestCase):
 
     def test_transcript_drain_settles_before_slow_failing_tracer_close(self):
         sequence = []
+        release_close = threading.Event()
+        close_started = threading.Event()
+        close_finished = threading.Event()
+        close_thread_is_daemon = []
 
         async def drain():
             sequence.append("drain_started")
@@ -224,26 +229,38 @@ class InterviewerObservabilityTests(unittest.TestCase):
 
         def slow_failing_tracer_close():
             sequence.append("tracer_close_started")
-            time.sleep(0.01)
+            close_thread_is_daemon.append(threading.current_thread().daemon)
+            close_started.set()
+            release_close.wait(0.16)
             sequence.append("tracer_close_failed")
+            close_finished.set()
             raise RuntimeError("synthetic slow tracer failure")
 
+        started_at = time.monotonic()
         asyncio.run(
             drain_transcript_before_observability_close(
                 drain=drain,
                 close=slow_failing_tracer_close,
+                close_timeout_seconds=0.02,
             )
         )
+        elapsed = time.monotonic() - started_at
 
+        self.assertTrue(close_started.wait(0.1))
         self.assertEqual(
-            sequence,
+            sequence[:3],
             [
                 "drain_started",
                 "transcript_settled",
                 "tracer_close_started",
-                "tracer_close_failed",
             ],
         )
+        self.assertLess(elapsed, 0.06)
+        self.assertEqual(close_thread_is_daemon, [True])
+        self.assertFalse(close_finished.is_set())
+        release_close.set()
+        self.assertTrue(close_finished.wait(0.3))
+        self.assertEqual(sequence[-1], "tracer_close_failed")
 
 
 if __name__ == "__main__":

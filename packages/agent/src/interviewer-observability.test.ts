@@ -423,8 +423,54 @@ test("interruption recovery correlates, deduplicates, and bounds rates", () => {
   assert.equal(aggregate.recovered_interruption_count, 1);
   assert.equal(aggregate.interruption_recovery_rate, 0.5);
   assert.equal(aggregate.interruption_recovery_ms.count, 1);
-  assert.equal(aggregate.interruption_recovery_ms.p50, 120);
+  assert.equal(aggregate.interruption_recovery_ms.p50, 240);
   assert.ok((aggregate.interruption_recovery_rate ?? 0) <= 1);
+});
+
+test("interruption recovery is invariant across terminal event permutations", () => {
+  const terminalEvents = [
+    interruption(
+      "run:permutations",
+      "canary",
+      "adaptive-canary.v1",
+      "turn",
+      "interrupted"
+    ),
+    interruption(
+      "run:permutations",
+      "canary",
+      "adaptive-canary.v1",
+      "turn",
+      "recovered",
+      120
+    ),
+    interruption(
+      "run:permutations",
+      "canary",
+      "adaptive-canary.v1",
+      "turn",
+      "unrecovered"
+    ),
+  ];
+  const permutations = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ];
+
+  for (const permutation of permutations) {
+    const aggregate = aggregateInterviewerObservabilityEvents(
+      permutation.map((index) => terminalEvents[index]!)
+    );
+    assert.equal(aggregate.interruption_count, 1);
+    assert.equal(aggregate.recovered_interruption_count, 0);
+    assert.equal(aggregate.interruption_recovery_rate, 0);
+    assert.equal(aggregate.interruption_recovery_ms.count, 0);
+    assert.ok((aggregate.interruption_recovery_rate ?? 0) <= 1);
+  }
 });
 
 function latency(

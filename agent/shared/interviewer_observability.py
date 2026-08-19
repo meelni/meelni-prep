@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import os
 import re
+import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -17,6 +19,7 @@ INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION = "interviewer-observability.v1"
 INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1"
 INTERVIEWER_TOOL_CONTRACT_VERSION = "interviewer-tools.v1"
 DIRECTOR_RECOMMENDATION_CONTRACT_VERSION = "director-recommendation.v1"
+INTERVIEWER_OBSERVABILITY_CLOSE_TIMEOUT_SECONDS = 0.05
 
 RolloutCohort: TypeAlias = Literal["current", "shadow", "canary"]
 
@@ -598,15 +601,57 @@ async def drain_transcript_before_observability_close(
     *,
     drain: Callable[[], Awaitable[None]],
     close: Callable[[], None],
+    close_timeout_seconds: float = INTERVIEWER_OBSERVABILITY_CLOSE_TIMEOUT_SECONDS,
 ) -> None:
-    """Run telemetry close only after the authoritative transcript drain settles."""
+    """Drain transcript authority, then bound synchronous telemetry close work."""
     try:
         await drain()
     finally:
+        await _run_bounded_observability_close(
+            close=close,
+            timeout_seconds=close_timeout_seconds,
+        )
+
+
+async def _run_bounded_observability_close(
+    *,
+    close: Callable[[], None],
+    timeout_seconds: float,
+) -> None:
+    if (
+        not isinstance(timeout_seconds, (int, float))
+        or isinstance(timeout_seconds, bool)
+        or not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0
+    ):
+        return
+
+    completed = threading.Event()
+
+    def run_close() -> None:
         try:
             close()
         except Exception:  # noqa: BLE001 - telemetry cannot affect shutdown
             pass
+        finally:
+            completed.set()
+
+    try:
+        threading.Thread(
+            target=run_close,
+            name="interviewer-observability-close",
+            daemon=True,
+        ).start()
+    except Exception:  # noqa: BLE001 - telemetry cannot affect shutdown
+        return
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + float(timeout_seconds)
+    while not completed.is_set():
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return
+        await asyncio.sleep(min(remaining, 0.005))
 
 
 def _canonical_time(value: float) -> str:
