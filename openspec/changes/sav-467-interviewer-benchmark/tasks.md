@@ -10,4 +10,10 @@
 - [x] Harden semantic invariants with adversarial and false-positive controls.
 - [x] Bind usage/model evidence to an explicit versioned execution authorization.
 - [x] Constrain evidence I/O to the repo-owned artifact with atomic writes.
-- [ ] Product owner records accept/reject for each of the eight exact examples.
+- [x] Product owner records accept/reject for each of the eight exact examples.
+- [x] Bind the accepted labels to the exact manifest and version set in a strict
+      semantic-only approval artifact.
+- [x] Keep missing/invalid approval pending or failed closed without broadening
+      provider, runtime, rollout, or Production authority.
+- [x] Reject noncanonical raw approval JSON before parse-collapsing ambiguity can
+      reach the benchmark runner.

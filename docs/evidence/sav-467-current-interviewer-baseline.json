@@ -1,5 +1,5 @@
 {
-  "contractVersion": "meelni.interviewer-benchmark-report.v2",
+  "contractVersion": "meelni.interviewer-benchmark-report.v3",
   "recordedAt": "2026-08-18T00:00:00.000Z",
   "execution": {
     "kind": "provider_free_replay",
@@ -36,10 +36,10 @@
   },
   "versions": {
     "suite": "meelni.interviewer-benchmark-suite.v2",
-    "baseline": "meelni.current-interviewer-baseline.v2",
+    "baseline": "meelni.current-interviewer-baseline.v3",
     "sourceCommit": "1b86ff1d4207aed5ea216a246d6b236c74be66d4",
     "runtimeSourceSha256": "8077ca6d13fc9f36c566f3ca5ea3660b42bb65cd2d832aceef2546f1a1604f93",
-    "benchmarkSourceSha256": "fc0c3a5b523d2fb1009734f2e6fc00ff05e21a28a23dedbe1854b50f81d210cb",
+    "benchmarkSourceSha256": "0ce61bca44fd0d9021e561f55e2d4130d9d48e8c57d4bfde80c68ed58687fe20",
     "promptContract": "full_interview_prompt_v1"
   },
   "corpus": {
@@ -56,8 +56,9 @@
     "judgeRuns": 12,
     "calibrationPairs": 4,
     "calibrationExamples": 8,
-    "adjudicationStatus": "agent_authored_pending_product_owner_review",
-    "adjudicationManifestSha256": "312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f"
+    "adjudicationStatus": "product_owner_accepted_exact_candidate_manifest",
+    "adjudicationManifestSha256": "312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f",
+    "adjudicationApprovalSha256": "c45778d30fadbe37c3a35c9306443ac67a8fcdfe2693b94ab8663873bccb5757"
   },
   "deterministicInvariants": {
     "controlsDetected": 6,
@@ -336,21 +337,44 @@
       "requireOwnerCalibrationApproval": true,
       "eligible": false,
       "blockers": [
-        "eight calibration examples require product-owner adjudication",
         "provider-backed candidate evidence has not been run"
       ]
     }
   },
   "ownerAdjudication": {
-    "status": "agent_authored_pending_product_owner_review",
+    "status": "product_owner_accepted_exact_candidate_manifest",
     "examples": 8,
-    "requiredAction": "Product owner reviews the four strong/weak pairs in the manifest and records accept or reject for each of the eight examples.",
-    "reusedHumanAdjudication": false,
-    "note": "SAV-198 evidence concerns candidate feedback scoring and does not adjudicate interviewer-quality examples."
+    "acceptedExamples": 8,
+    "requiredAction": null,
+    "approval": {
+      "contractVersion": "meelni.interviewer-benchmark-adjudication-approval.v1",
+      "artifactSha256": "c45778d30fadbe37c3a35c9306443ac67a8fcdfe2693b94ab8663873bccb5757",
+      "authorityProvenance": {
+        "source": "explicit_product_owner_supervisor_chat_decision",
+        "sourceThreadId": "01a016c0-57eb-72c0-a744-92c802d6be0a",
+        "sourceMessageKind": "direct_user_message",
+        "decisionMakerRole": "product_owner",
+        "linearCheckpointCommentId": "b44d551e-d988-498f-94e9-16afdeaaac73",
+        "recordedAt": "2026-08-19T05:53:26.680Z"
+      },
+      "authorityScope": {
+        "semanticGoldSetAdjudicationOnly": true,
+        "launchAuthority": false,
+        "canaryAuthority": false,
+        "defaultOnAuthority": false,
+        "providerCallAuthority": false,
+        "providerSpendAuthorityUsd": null,
+        "productionAuthority": false,
+        "runtimeBehaviorAuthority": false,
+        "sav476GoNoGoAuthority": false
+      }
+    },
+    "reusedSav198Adjudication": false,
+    "note": "The exact SAV-467 interviewer-quality labels are accepted; the artifact grants no runtime, provider, canary, launch, default-on, Production, or SAV-476 GO/NO-GO authority."
   },
-  "conclusion": "baseline_recorded_owner_adjudication_pending",
+  "conclusion": "baseline_recorded_owner_adjudication_accepted",
   "reproducibility": {
-    "inputSha256": "24d1118ac659880aa8e9c15b82a8df393ad09fba1a15554d027942ac8a95c3f2",
-    "reportSha256": "e1cc2c344bed51c62fe95d7c80ac1aa40e87770fd696980917f6f68c0e60a857"
+    "inputSha256": "bc2774b8709d8cc23cbef3b60a4466443dd47aa9dcd0e2bb5b465bb6c9d28ffb",
+    "reportSha256": "e64f58db923c40b62355d8c49cd6af4cc24de7401048051c23c3edb6a9cb37ef"
   }
 }

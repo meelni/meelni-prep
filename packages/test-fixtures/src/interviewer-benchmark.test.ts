@@ -105,7 +105,7 @@ test("frozen judge outputs are strict, bounded, and reproducible across three se
   }
 });
 
-test("eight exact calibration examples remain agent-authored and pending owner review", () => {
+test("eight exact calibration candidates preserve their pre-approval manifest identity", () => {
   const outputs = new Map(
     createInterviewerBenchmarkJudgeOutputs().map((output) => [
       `${output.scenario_id}:${output.seed}`,
@@ -120,6 +120,62 @@ test("eight exact calibration examples remain agent-authored and pending owner r
       pair.weak,
     ]).length,
     8
+  );
+  assert.deepEqual(
+    INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS.flatMap(({ strong, weak }) => [
+      {
+        scenarioId: strong.scenario_id,
+        expectedLabel: strong.expected_quality,
+        seed: strong.seed,
+      },
+      {
+        scenarioId: weak.scenario_id,
+        expectedLabel: weak.expected_quality,
+        seed: weak.seed,
+      },
+    ]),
+    [
+      {
+        scenarioId: "current-product-sense-strong",
+        expectedLabel: "strong",
+        seed: 17,
+      },
+      {
+        scenarioId: "calibration-product-sense-weak",
+        expectedLabel: "weak",
+        seed: 0,
+      },
+      {
+        scenarioId: "calibration-execution-strong",
+        expectedLabel: "strong",
+        seed: 0,
+      },
+      {
+        scenarioId: "current-execution-shallow-silent",
+        expectedLabel: "weak",
+        seed: 17,
+      },
+      {
+        scenarioId: "calibration-strategy-strong",
+        expectedLabel: "strong",
+        seed: 0,
+      },
+      {
+        scenarioId: "current-strategy-rambling-contradictory",
+        expectedLabel: "weak",
+        seed: 17,
+      },
+      {
+        scenarioId: "calibration-behavioral-strong",
+        expectedLabel: "strong",
+        seed: 0,
+      },
+      {
+        scenarioId: "current-behavioral-interrupting",
+        expectedLabel: "weak",
+        seed: 17,
+      },
+    ]
   );
   for (const pair of INTERVIEWER_BENCHMARK_CALIBRATION_PAIRS) {
     assert.equal(
