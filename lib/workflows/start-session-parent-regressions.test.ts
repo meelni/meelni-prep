@@ -9,7 +9,12 @@ import {
   type PersistedStableInterviewStart,
   type StableInterviewStartInput,
 } from "@/lib/db/interview-starts";
-import { resolveInterviewRuntimeConfig } from "@meelni/agent";
+import {
+  INTERVIEW_BRIEF_V2_START_CONFIG_KEY,
+  parseInterviewBriefV2,
+  resolveInterviewRuntimeConfig,
+} from "@meelni/agent";
+import { readQuestionSelectionFromStartConfig } from "@meelni/core";
 
 import {
   type StartInterviewSessionDeps,
@@ -162,16 +167,26 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
   }
 });
 
-test("startInterviewSessionWorkflow falls back to an older active question when no recent question is available", async () => {
-  const selectionCalls: string[] = [];
+test("question-free start deterministically prefers an unseen eligible question", async () => {
+  const selectionCalls: unknown[] = [];
   const h = harness({
-    getRandomRecentQuestion: async (days, questionTypes) => {
-      selectionCalls.push(`recent:${days}:${questionTypes.join(",")}`);
-      return null;
-    },
-    getRandomQuestion: async (questionTypes) => {
-      selectionCalls.push(`all:${questionTypes.join(",")}`);
-      return question();
+    getQuestionRankingContext: async (input) => {
+      selectionCalls.push(input);
+      return {
+        catalogVersion: "question-catalog:test-v1",
+        candidates: [
+          rankingCandidate(QUESTION_ID),
+          rankingCandidate("73000000-0000-4000-8000-000000000002"),
+        ],
+        history: [
+          {
+            questionId: QUESTION_ID,
+            roundType: "product_sense",
+            practicedAt: "2026-07-10T11:30:00.000Z",
+          },
+        ],
+        feedbackSignals: [],
+      };
     },
   });
 
@@ -187,26 +202,34 @@ test("startInterviewSessionWorkflow falls back to an older active question when 
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(selectionCalls, [
-    "recent:365:Product Sense,Product design/strategy",
-    "all:Product Sense,Product design/strategy",
-  ]);
-  assert.equal(h.store.current?.question.id, QUESTION_ID);
+  assert.equal(selectionCalls.length, 1);
+  assert.equal(
+    h.store.current?.question.id,
+    "73000000-0000-4000-8000-000000000002"
+  );
+  assert.equal(
+    readQuestionSelectionFromStartConfig(h.store.current?.config)?.reasonCode,
+    "requested_round"
+  );
 });
 
-test("company launch context constrains recent and fallback question selection", async () => {
-  const selectionCalls: Array<{
-    source: "recent" | "all";
-    company?: string;
-  }> = [];
+test("company launch context is normalized and deterministically scored", async () => {
+  const selectionCalls: unknown[] = [];
   const h = harness({
-    getRandomRecentQuestion: async (_days, _questionTypes, company) => {
-      selectionCalls.push({ source: "recent", company });
-      return null;
-    },
-    getRandomQuestion: async (_questionTypes, company) => {
-      selectionCalls.push({ source: "all", company });
-      return question();
+    getQuestionRankingContext: async (input) => {
+      selectionCalls.push(input);
+      return {
+        catalogVersion: "question-catalog:test-v1",
+        candidates: [
+          { ...rankingCandidate(QUESTION_ID), company: "Other" },
+          {
+            ...rankingCandidate("73000000-0000-4000-8000-000000000002"),
+            company: "Acme",
+          },
+        ],
+        history: [],
+        feedbackSignals: [],
+      };
     },
   });
 
@@ -224,15 +247,30 @@ test("company launch context constrains recent and fallback question selection",
 
   assert.equal(result.ok, true);
   assert.deepEqual(selectionCalls, [
-    { source: "recent", company: "Acme" },
-    { source: "all", company: "Acme" },
+    {
+      userId: USER_ID,
+      request: {
+        roundType: "product_sense",
+        difficulty: "intermediate",
+        company: "Acme",
+      },
+    },
   ]);
+  assert.equal(h.store.current?.question.company, "Acme");
+  assert.equal(
+    readQuestionSelectionFromStartConfig(h.store.current?.config)?.reasonCode,
+    "requested_company"
+  );
 });
 
-test("company launch context returns a truthful no-match response without broadening selection", async () => {
+test("empty company catalog uses a deterministic embedded fallback without blocking start", async () => {
   const h = harness({
-    getRandomRecentQuestion: async () => null,
-    getRandomQuestion: async () => null,
+    getQuestionRankingContext: async () => ({
+      catalogVersion: "question-catalog:empty",
+      candidates: [],
+      history: [],
+      feedbackSignals: [],
+    }),
   });
 
   const result = await startInterviewSessionWorkflow(
@@ -247,23 +285,26 @@ test("company launch context returns a truthful no-match response without broade
     h.deps
   );
 
-  assert.deepEqual(result, {
-    ok: false,
-    status: 404,
-    body: {
-      error: "no_company_questions_available",
-      message:
-        "We couldn't find an active Acme question for this interview type. Choose another company or interview type and try again.",
-      retryable: false,
-    },
-  });
-  assert.equal(h.calls.includes("prepare"), false);
+  assert.equal(result.ok, true);
+  assert.equal(
+    h.store.current?.question.id,
+    "fallback:question:v1:product_sense"
+  );
+  assert.equal(
+    readQuestionSelectionFromStartConfig(h.store.current?.config)?.mode,
+    "catalog_fallback"
+  );
+  const brief = parseInterviewBriefV2(
+    h.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY]
+  );
+  assert.equal(brief.selected_question.id, h.store.current?.question.id);
 });
 
-test("startInterviewSessionWorkflow returns a recoverable message when a round has no active questions", async () => {
+test("ranking context failure uses a safe deterministic fallback", async () => {
   const h = harness({
-    getRandomRecentQuestion: async () => null,
-    getRandomQuestion: async () => null,
+    getQuestionRankingContext: async () => {
+      throw new Error("database unavailable");
+    },
   });
 
   const result = await startInterviewSessionWorkflow(
@@ -277,18 +318,13 @@ test("startInterviewSessionWorkflow returns a recoverable message when a round h
     h.deps
   );
 
-  assert.deepEqual(result, {
-    ok: false,
-    status: 404,
-    body: {
-      error: "no_questions_available",
-      message:
-        "We couldn't find an active question for this interview type. Choose another interview type and try again.",
-      retryable: false,
-    },
-  });
-  assert.equal(h.calls.includes("prepare"), false);
-  assert.equal(h.calls.includes("provider"), false);
+  assert.equal(result.ok, true);
+  assert.equal(
+    h.store.current?.question.id,
+    "fallback:question:v1:product_sense"
+  );
+  assert.equal(h.calls.includes("prepare"), true);
+  assert.equal(h.calls.includes("provider"), true);
 });
 
 test("startInterviewSessionWorkflow returns no-credit response before session work", async () => {
@@ -497,6 +533,20 @@ function question(questionType = "Product Sense") {
   };
 }
 
+function rankingCandidate(id: string) {
+  return {
+    id,
+    company: "Acme",
+    text: "How would you improve Acme?",
+    roundType: "product_sense" as const,
+    difficulty: "intermediate" as const,
+    sourceKind: "google_sheets" as const,
+    qualityStatus: "published" as const,
+    askedAt: NOW.toISOString(),
+    isActive: true,
+  };
+}
+
 function harness(overrides: Partial<StartInterviewSessionDeps> = {}) {
   const calls: string[] = [];
   let metadata: Record<string, unknown> | null = null;
@@ -508,8 +558,12 @@ function harness(overrides: Partial<StartInterviewSessionDeps> = {}) {
       return store.createOrLoad(start);
     },
     getQuestionById: async () => question(),
-    getRandomQuestion: async () => question(),
-    getRandomRecentQuestion: async () => question(),
+    getQuestionRankingContext: async () => ({
+      catalogVersion: "question-catalog:test-v1",
+      candidates: [rankingCandidate(QUESTION_ID)],
+      history: [],
+      feedbackSignals: [],
+    }),
     ensureTrialGrant: async () => {
       calls.push("trial");
     },

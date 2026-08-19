@@ -14,7 +14,9 @@ import {
 } from "@/lib/billing/credit-ledger-store";
 import {
   deriveInterviewDeadlineAt,
+  isEmbeddedQuestionSelection,
   normalizeInterviewDurationMinutes,
+  readQuestionSelectionFromStartConfig,
 } from "@meelni/core";
 
 export const INTERVIEW_START_CONTRACT_VERSION = 1 as const;
@@ -490,15 +492,18 @@ async function createOrLoadInTransaction(
     .for("update");
   assertMatchingStart(rows[0], input);
 
-  await transaction
-    .insert(sessionQuestion)
-    .values({
-      sessionId: input.startAttemptId,
-      questionId: input.question.id,
-      startContractVersion: INTERVIEW_START_CONTRACT_VERSION,
-      startAttemptId: input.startAttemptId,
-    })
-    .onConflictDoNothing({ target: sessionQuestion.sessionId });
+  const persistedSelection = readQuestionSelectionFromStartConfig(input.config);
+  if (!persistedSelection || !isEmbeddedQuestionSelection(persistedSelection)) {
+    await transaction
+      .insert(sessionQuestion)
+      .values({
+        sessionId: input.startAttemptId,
+        questionId: input.question.id,
+        startContractVersion: INTERVIEW_START_CONTRACT_VERSION,
+        startAttemptId: input.startAttemptId,
+      })
+      .onConflictDoNothing({ target: sessionQuestion.sessionId });
+  }
 
   return loadStart(transaction, input.startAttemptId);
 }
@@ -513,11 +518,11 @@ async function loadStart(
       question: interviewQuestion,
     })
     .from(interviewSession)
-    .innerJoin(
+    .leftJoin(
       sessionQuestion,
       eq(sessionQuestion.sessionId, interviewSession.id)
     )
-    .innerJoin(
+    .leftJoin(
       interviewQuestion,
       eq(interviewQuestion.id, sessionQuestion.questionId)
     )
@@ -537,6 +542,35 @@ async function loadStart(
   if (!isProvisioningState(row.session.provisioningState)) {
     throw new InterviewStartConflictError();
   }
+  const persistedSelection = readQuestionSelectionFromStartConfig(
+    row.session.config
+  );
+  const question = row.question
+    ? {
+        id: row.question.id,
+        company: row.question.company,
+        questionText: row.question.questionText,
+        questionType: row.question.questionType,
+        askedAt: row.question.askedAt,
+        isActive: row.question.isActive,
+        createdAt: row.question.createdAt,
+      }
+    : persistedSelection && isEmbeddedQuestionSelection(persistedSelection)
+      ? {
+          id: persistedSelection.question.id,
+          company: persistedSelection.question.company,
+          questionText: persistedSelection.question.text,
+          questionType: persistedSelection.question.type,
+          askedAt: persistedSelection.question.askedAt
+            ? new Date(persistedSelection.question.askedAt)
+            : null,
+          isActive: persistedSelection.question.isActive,
+          createdAt: persistedSelection.question.createdAt
+            ? new Date(persistedSelection.question.createdAt)
+            : null,
+        }
+      : null;
+  if (!question) throw new Error("interview_start_question_missing");
 
   return {
     sessionId: row.session.id,
@@ -552,15 +586,7 @@ async function loadStart(
     lifecycleState: row.session.lifecycleState,
     lifecycleVersion: row.session.lifecycleVersion,
     endedAt: row.session.endedAt,
-    question: {
-      id: row.question.id,
-      company: row.question.company,
-      questionText: row.question.questionText,
-      questionType: row.question.questionType,
-      askedAt: row.question.askedAt,
-      isActive: row.question.isActive,
-      createdAt: row.question.createdAt,
-    },
+    question,
   };
 }
 

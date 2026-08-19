@@ -27,6 +27,8 @@ export * from "./shadow-feedback-comparison";
 export * from "./transcript-integrity";
 export * from "./question";
 export * from "./question-taxonomy";
+export * from "./question-ranking";
+export * from "./question-selection";
 export * from "./interview-launch";
 export * from "./session";
 export * from "./session-lifecycle";
