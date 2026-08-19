@@ -5,8 +5,11 @@ import type { QuestionRankingCandidate } from "@meelni/core";
 
 import {
   QUESTION_RANKING_DB_BOUNDS,
+  createQuestionCandidatePreferenceBuckets,
   createQuestionCatalogVersion,
   getQuestionRankingContext,
+  normalizeStoredQuestionAskedAt,
+  normalizeStoredQuestionDifficulty,
   type QuestionRankingContextStore,
 } from "./question-ranking";
 
@@ -60,7 +63,66 @@ test("ranking context performs three bounded logical reads and truncates oversiz
   assert.equal(context.candidates.length, 64);
   assert.equal(context.history.length, 16);
   assert.deepEqual(context.feedbackSignals, []);
-  assert.equal(QUESTION_RANKING_DB_BOUNDS.maxDatabaseQueries, 8);
+  assert.equal(QUESTION_RANKING_DB_BOUNDS.maxDatabaseQueries, 11);
+  assert.equal(QUESTION_RANKING_DB_BOUNDS.candidateBuckets, 32);
+  assert.equal(QUESTION_RANKING_DB_BOUNDS.candidateWorkingRows, 2_048);
+});
+
+test("no-company candidate buckets preserve round then difficulty preference before recency and ID", () => {
+  const buckets = createQuestionCandidatePreferenceBuckets(request);
+
+  assert.equal(buckets.length, 32);
+  assert.equal(
+    buckets.filter(
+      (bucket) =>
+        bucket.questionType === "Product Sense" &&
+        bucket.difficulty === "Medium"
+    )[0]?.roundPriority,
+    0
+  );
+  assert.equal(
+    buckets.find(
+      (bucket) =>
+        bucket.questionType === "Product Sense" && bucket.difficulty === null
+    )?.difficultyPriority,
+    1
+  );
+  assert.deepEqual(
+    new Set(
+      buckets
+        .filter((bucket) => bucket.questionType === "Behavioral")
+        .map((bucket) => bucket.roundPriority)
+    ),
+    new Set([1])
+  );
+  assert.deepEqual(
+    new Set(
+      buckets
+        .filter((bucket) => bucket.difficulty === "Medium")
+        .map((bucket) => bucket.difficultyPriority)
+    ),
+    new Set([0])
+  );
+});
+
+test("nullable stored difficulty remains neutral instead of becoming intermediate", () => {
+  assert.equal(normalizeStoredQuestionDifficulty(null), null);
+  assert.equal(normalizeStoredQuestionDifficulty("Medium"), "intermediate");
+  assert.equal(normalizeStoredQuestionDifficulty("Easy"), "beginner");
+  assert.equal(normalizeStoredQuestionDifficulty("Hard"), "advanced");
+});
+
+test("raw database timestamps normalize without assuming a Date instance", () => {
+  assert.equal(
+    normalizeStoredQuestionAskedAt("2026-08-18T12:00:00.000Z"),
+    "2026-08-18T12:00:00.000Z"
+  );
+  assert.equal(
+    normalizeStoredQuestionAskedAt(new Date("2026-08-18T12:00:00.000Z")),
+    "2026-08-18T12:00:00.000Z"
+  );
+  assert.equal(normalizeStoredQuestionAskedAt("not-a-timestamp"), null);
+  assert.equal(normalizeStoredQuestionAskedAt(null), null);
 });
 
 test("catalog versions are stable across adapter ordering and change with catalog content", () => {

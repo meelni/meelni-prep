@@ -48,10 +48,11 @@
 |    39 | `0039_sav_445_shadow_feedback_artifacts`          |
 |    40 | `0040_sav_448_managed_service_role_grants`        |
 |    41 | `0041_sav_453_total_required_scorecards`          |
+|    42 | `0042_sav_470_question_ranking_indexes`           |
 
 <!-- migration-journal:end -->
 
-This forty-two-entry inventory is generated from the same ordered contract as
+This forty-three-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -498,3 +499,14 @@ signals. It performs no update, backfill, renormalization, or row rewrite.
 Application reads strictly validate historical partial rows and remove their
 numerical fields only in the customer Coaching projection. Generating this
 migration source does not authorize applying it to Preview or Production.
+
+## Deterministic question-ranking indexes
+
+Migration `0042_sav_470_question_ranking_indexes` adds the partial
+`interview_question_ranking_bucket_idx` over active, published question type,
+difficulty, source recency, and stable ID, plus the partial
+`interview_session_question_ranking_history_idx` over user, activation recency,
+and stable session ID. These indexes serve the bounded pre-room ranking reads;
+the migration changes no rows, selection behavior, RLS policy, provider state,
+or runtime permission. Generating it does not authorize applying it to Preview
+or Production.

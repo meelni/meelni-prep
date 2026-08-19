@@ -373,6 +373,11 @@ export const interviewSession = pgTable(
       table.userId,
       table.status
     ),
+    questionRankingHistoryIdx: index(
+      "interview_session_question_ranking_history_idx"
+    )
+      .on(table.userId, table.activatedAt.desc().nullsLast(), table.id.asc())
+      .where(sql`${table.activatedAt} IS NOT NULL`),
     endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
     lifecycleStateTransitionIdx: index(
       "interview_session_lifecycle_state_transition_idx"

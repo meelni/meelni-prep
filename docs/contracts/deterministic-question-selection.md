@@ -21,12 +21,27 @@ The workflow/database boundary normalizes at most:
 - 64 active, published candidates;
 - 16 activated-session practice-history rows;
 - one latest feedback row, emitted only as a validated scorecard signal; and
-- eight database statements in the worst evidence-validation path (candidate,
-  history, feedback, and five frozen-evidence reads).
+- eleven database statements in the worst evidence-validation path (three
+  transaction-local timeouts, candidate, history, feedback, and five frozen-
+  evidence reads).
 
-The three logical context reads run concurrently. Core independently reapplies
-the 64/16/8 candidate/history/signal limits before scoring. Candidate catalog
-content is hashed into `question-catalog:sha256:<digest>` after stable ID sorting.
+The three logical context reads run concurrently and every database statement
+has the existing 5-second interactive-read timeout; the workflow also abandons
+ranking for the embedded fallback after 5 seconds so room start does not wait on
+queued work. Candidate SQL uses a fixed 32-bucket matrix (eight stored question
+types by Easy/Medium/Hard/null), reads at most 64 index-ordered rows per bucket,
+materializes at most 2,048 rows, and returns 64. With no requested company, the
+window is ordered by requested round, requested difficulty, source recency, and
+stable question ID. A partial `(question_type, difficulty, asked_at DESC, id)`
+index serves each exact bucket. History first limits sessions through the
+partial `(user_id, activated_at DESC, id)` index and only then joins the one
+question relation. Migration `0042_sav_470_question_ranking_indexes` owns both
+indexes.
+
+Core independently reapplies the 64/16/8 candidate/history/signal limits before
+scoring. A nullable catalog difficulty remains eligible but neutral and never
+earns the requested-difficulty weight. Candidate catalog content is hashed into
+`question-catalog:sha256:<digest>` after stable ID sorting.
 
 ## Scoring Table
 
@@ -71,7 +86,10 @@ Persisted `questionSelectionV1` contains only:
 
 It never stores candidate scores, factor weights, practice history, or feedback
 evidence. An accepted start reuses both this receipt and the exact persisted
-`InterviewBriefV2` wire without reranking.
+`InterviewBriefV2` wire without reranking. Every SAV-470 selection mode rebuilds
+the selected-question response from this snapshot even if the current catalog
+row was edited or deleted. The locked persisted winner also exclusively decides
+whether the catalog foreign-key relation is created after an insert conflict.
 
 ## Fallbacks
 
@@ -93,9 +111,10 @@ snapshot. Catalog selections retain the existing session-question relation.
 Local synthetic evidence on 2026-08-18, without providers, Production data, or
 customer data:
 
-- DB seam test: three bounded logical reads, worst-case eight SQL statements;
-- 2,000 selections over 64 synthetic candidates: p50 0.046 ms, p95 0.071 ms,
-  maximum 8.434 ms on the local workstation.
+- DB seam test: three bounded logical reads, worst-case eleven SQL statements,
+  32 candidate buckets, and at most 2,048 bucket rows before the 64-row window;
+- 2,000 selections over 64 synthetic candidates and 16 history rows: p50
+  0.060 ms, p95 0.069 ms, maximum 0.277 ms on the local workstation.
 
 These measurements characterize local selection work only; they are not a
 Production latency claim or launch decision.

@@ -43,6 +43,10 @@ import {
   type QuestionRankingContext,
 } from "@/lib/db/question-ranking";
 import {
+  INTERACTIVE_READ_STATEMENT_TIMEOUT_MS,
+  withDeadline,
+} from "@/lib/http/deadline";
+import {
   createDrizzleInterviewStartStore,
   InterviewProvisioningLeaseLostError,
   InterviewStartConflictError,
@@ -1171,7 +1175,11 @@ async function selectQuestion({
   };
   let context: QuestionRankingContext;
   try {
-    context = await deps.getQuestionRankingContext({ userId, request });
+    context = await withDeadline(
+      "question ranking context",
+      deps.getQuestionRankingContext({ userId, request }),
+      INTERACTIVE_READ_STATEMENT_TIMEOUT_MS
+    );
   } catch {
     context = {
       catalogVersion: "question-catalog:unavailable",

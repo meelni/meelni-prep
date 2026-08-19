@@ -23,6 +23,7 @@ import {
   prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
 } from "@/lib/evaluation/session-validator";
 import { db } from "./index";
+import { withInteractiveReadTransaction } from "./interactive-read";
 import {
   feedback,
   interviewQuestion,
@@ -30,13 +31,30 @@ import {
   sessionQuestion,
 } from "./schema";
 import { getFrozenFeedbackEvaluationEvidence } from "./transcripts";
+import { INTERACTIVE_READ_STATEMENT_TIMEOUT_MS } from "@/lib/http/deadline";
+
+type QuestionRankingReadDatabase = Pick<typeof db, "select" | "execute">;
+
+type StoredQuestionDifficulty = "Easy" | "Medium" | "Hard" | null;
+
+export interface QuestionCandidatePreferenceBucket {
+  questionType: string;
+  difficulty: StoredQuestionDifficulty;
+  roundPriority: 0 | 1;
+  difficultyPriority: 0 | 1;
+}
 
 export const QUESTION_RANKING_DB_BOUNDS = {
   candidateRows: QUESTION_RANKING_LIMITS.candidates,
+  candidateBuckets: 32,
+  candidateRowsPerBucket: QUESTION_RANKING_LIMITS.candidates,
+  candidateWorkingRows: 32 * QUESTION_RANKING_LIMITS.candidates,
   historyRows: QUESTION_RANKING_LIMITS.history,
   feedbackRows: 1,
-  // candidate + history + feedback row + the five bounded frozen-evidence reads
-  maxDatabaseQueries: 8,
+  statementTimeoutMs: INTERACTIVE_READ_STATEMENT_TIMEOUT_MS,
+  // Three SET LOCAL statements + candidate + history + feedback row + the five
+  // bounded frozen-evidence reads.
+  maxDatabaseQueries: 11,
 } as const;
 
 export interface QuestionRankingContext {
@@ -112,111 +130,188 @@ export function createQuestionCatalogVersion(
 
 export function createDrizzleQuestionRankingContextStore(): QuestionRankingContextStore {
   return {
-    async loadCandidates(request, limit) {
-      const storedDifficulty = toStoredDifficulty(request.difficulty);
-      const company = request.company?.trim() || null;
-      const rows = await db
-        .select({
-          id: interviewQuestion.id,
-          text: interviewQuestion.questionText,
-          company: interviewQuestion.company,
-          questionType: interviewQuestion.questionType,
-          difficulty: interviewQuestion.difficulty,
-          sourceKind: interviewQuestion.sourceKind,
-          qualityStatus: interviewQuestion.qualityStatus,
-          askedAt: interviewQuestion.askedAt,
-          isActive: interviewQuestion.isActive,
-        })
-        .from(interviewQuestion)
-        .where(
-          and(
-            eq(interviewQuestion.isActive, true),
-            eq(interviewQuestion.qualityStatus, "published")
-          )
-        )
-        .orderBy(
-          company
-            ? desc(
-                sql`CASE WHEN lower(btrim(${interviewQuestion.company})) = lower(btrim(${company})) THEN 1 ELSE 0 END`
-              )
-            : asc(interviewQuestion.id),
-          desc(
-            sql`CASE WHEN ${interviewQuestion.questionType} = ANY(${questionTypesForRoundSql(
-              request.roundType
-            )}) THEN 1 ELSE 0 END`
-          ),
-          desc(
-            sql`CASE WHEN ${interviewQuestion.difficulty} = ${storedDifficulty} THEN 1 ELSE 0 END`
-          ),
-          sql`${interviewQuestion.askedAt} DESC NULLS LAST`,
-          asc(interviewQuestion.id)
-        )
-        .limit(Math.min(limit, QUESTION_RANKING_DB_BOUNDS.candidateRows));
-
-      return rows.flatMap((row) => {
-        const roundType = normalizeQuestionRound(row.questionType);
-        if (!roundType) return [];
-        return [
-          {
-            id: row.id,
-            text: row.text,
-            company: row.company,
-            roundType,
-            difficulty: fromStoredDifficulty(row.difficulty),
-            sourceKind: row.sourceKind,
-            qualityStatus: row.qualityStatus,
-            askedAt: row.askedAt?.toISOString() ?? null,
-            isActive: row.isActive,
-          } satisfies QuestionRankingCandidate,
-        ];
-      });
-    },
-
-    async loadHistory(userId, limit) {
-      const rows = await db
-        .select({
-          questionId: sessionQuestion.questionId,
-          roundType: interviewSession.roundType,
-          practicedAt: interviewSession.activatedAt,
-        })
-        .from(interviewSession)
-        .innerJoin(
-          sessionQuestion,
-          eq(sessionQuestion.sessionId, interviewSession.id)
-        )
-        .where(
-          and(
-            eq(interviewSession.userId, userId),
-            isNotNull(interviewSession.activatedAt)
-          )
-        )
-        .orderBy(
-          desc(interviewSession.activatedAt),
-          asc(sessionQuestion.questionId)
-        )
-        .limit(Math.min(limit, QUESTION_RANKING_DB_BOUNDS.historyRows));
-
-      return rows.flatMap((row) => {
-        const roundType = normalizeQuestionRound(row.roundType);
-        if (!roundType || !row.practicedAt) return [];
-        return [
-          {
-            questionId: row.questionId,
-            roundType,
-            practicedAt: row.practicedAt.toISOString(),
-          } satisfies QuestionRankingHistoryEntry,
-        ];
-      });
-    },
-
-    loadLatestValidatedFeedbackSignal,
+    loadCandidates: (request, limit) =>
+      withInteractiveReadTransaction((database) =>
+        loadBoundedCandidateWindow(database, request, limit)
+      ),
+    loadHistory: (userId, limit) =>
+      withInteractiveReadTransaction((database) =>
+        loadBoundedQuestionHistory(database, userId, limit)
+      ),
+    loadLatestValidatedFeedbackSignal: (userId) =>
+      withInteractiveReadTransaction((database) =>
+        loadLatestValidatedFeedbackSignal(userId, database)
+      ),
   };
 }
 
+interface QuestionCandidateRow {
+  [key: string]: unknown;
+  id: string;
+  text: string;
+  company: string | null;
+  questionType: string;
+  difficulty: StoredQuestionDifficulty;
+  sourceKind: "legacy" | "google_sheets";
+  qualityStatus: "published";
+  askedAt: Date | string | null;
+  isActive: boolean;
+}
+
+async function loadBoundedCandidateWindow(
+  database: QuestionRankingReadDatabase,
+  request: QuestionRankingRequest,
+  limit: number
+): Promise<readonly QuestionRankingCandidate[]> {
+  const boundedLimit = Math.min(
+    limit,
+    QUESTION_RANKING_DB_BOUNDS.candidateRows
+  );
+  const preferences = createQuestionCandidatePreferenceBuckets(request);
+  const preferenceValues = sql.join(
+    preferences.map(
+      (preference) =>
+        sql`(${preference.questionType}::text, ${preference.difficulty}::text, ${preference.roundPriority}::integer, ${preference.difficultyPriority}::integer)`
+    ),
+    sql`, `
+  );
+  const company = request.company?.trim() || null;
+  const ordering = [
+    sql`"roundPriority" ASC`,
+    ...(company
+      ? [
+          sql`CASE WHEN lower(btrim("company")) = lower(btrim(${company})) THEN 0 ELSE 1 END ASC`,
+        ]
+      : []),
+    sql`"difficultyPriority" ASC`,
+    sql`"askedAt" DESC NULLS LAST`,
+    sql`"id" ASC`,
+  ];
+  const rows = await database.execute<QuestionCandidateRow>(sql`
+    WITH preference(
+      "questionType",
+      "difficulty",
+      "roundPriority",
+      "difficultyPriority"
+    ) AS (
+      VALUES ${preferenceValues}
+    ), bounded_buckets AS (
+      SELECT
+        preference."roundPriority",
+        preference."difficultyPriority",
+        candidate.*
+      FROM preference
+      CROSS JOIN LATERAL (
+        SELECT
+          ${interviewQuestion.id} AS "id",
+          ${interviewQuestion.questionText} AS "text",
+          ${interviewQuestion.company} AS "company",
+          ${interviewQuestion.questionType} AS "questionType",
+          ${interviewQuestion.difficulty} AS "difficulty",
+          ${interviewQuestion.sourceKind} AS "sourceKind",
+          ${interviewQuestion.qualityStatus} AS "qualityStatus",
+          ${interviewQuestion.askedAt} AS "askedAt",
+          ${interviewQuestion.isActive} AS "isActive"
+        FROM ${interviewQuestion}
+        WHERE ${interviewQuestion.isActive} = true
+          AND ${interviewQuestion.qualityStatus} = 'published'
+          AND ${interviewQuestion.questionType} = preference."questionType"
+          AND ${interviewQuestion.difficulty}
+            IS NOT DISTINCT FROM preference."difficulty"
+        ORDER BY
+          ${interviewQuestion.askedAt} DESC NULLS LAST,
+          ${interviewQuestion.id} ASC
+        LIMIT ${boundedLimit}
+      ) AS candidate
+    )
+    SELECT
+      "id",
+      "text",
+      "company",
+      "questionType",
+      "difficulty",
+      "sourceKind",
+      "qualityStatus",
+      "askedAt",
+      "isActive"
+    FROM bounded_buckets
+    ORDER BY ${sql.join(ordering, sql`, `)}
+    LIMIT ${boundedLimit}
+  `);
+
+  return rows.flatMap((row) => {
+    const roundType = normalizeQuestionRound(row.questionType);
+    if (!roundType) return [];
+    return [
+      {
+        id: row.id,
+        text: row.text,
+        company: row.company,
+        roundType,
+        difficulty: normalizeStoredQuestionDifficulty(row.difficulty),
+        sourceKind: row.sourceKind,
+        qualityStatus: row.qualityStatus,
+        askedAt: normalizeStoredQuestionAskedAt(row.askedAt),
+        isActive: row.isActive,
+      } satisfies QuestionRankingCandidate,
+    ];
+  });
+}
+
+async function loadBoundedQuestionHistory(
+  database: QuestionRankingReadDatabase,
+  userId: string,
+  limit: number
+): Promise<readonly QuestionRankingHistoryEntry[]> {
+  const boundedLimit = Math.min(limit, QUESTION_RANKING_DB_BOUNDS.historyRows);
+  const recentSessions = database
+    .select({
+      sessionId: interviewSession.id,
+      roundType: interviewSession.roundType,
+      practicedAt: interviewSession.activatedAt,
+    })
+    .from(interviewSession)
+    .where(
+      and(
+        eq(interviewSession.userId, userId),
+        isNotNull(interviewSession.activatedAt)
+      )
+    )
+    .orderBy(desc(interviewSession.activatedAt), asc(interviewSession.id))
+    .limit(boundedLimit)
+    .as("recent_question_practice_sessions");
+  const rows = await database
+    .select({
+      questionId: sessionQuestion.questionId,
+      roundType: recentSessions.roundType,
+      practicedAt: recentSessions.practicedAt,
+    })
+    .from(recentSessions)
+    .innerJoin(
+      sessionQuestion,
+      eq(sessionQuestion.sessionId, recentSessions.sessionId)
+    )
+    .orderBy(desc(recentSessions.practicedAt), asc(sessionQuestion.questionId))
+    .limit(boundedLimit);
+
+  return rows.flatMap((row) => {
+    const roundType = normalizeQuestionRound(row.roundType);
+    if (!roundType || !row.practicedAt) return [];
+    return [
+      {
+        questionId: row.questionId,
+        roundType,
+        practicedAt: row.practicedAt.toISOString(),
+      } satisfies QuestionRankingHistoryEntry,
+    ];
+  });
+}
+
 async function loadLatestValidatedFeedbackSignal(
-  userId: string
+  userId: string,
+  database: QuestionRankingReadDatabase
 ): Promise<ValidatedQuestionRankingFeedbackSignal | null> {
-  const [row] = await db
+  const [row] = await database
     .select({
       sessionId: interviewSession.id,
       sessionRoundType: interviewSession.roundType,
@@ -289,7 +384,10 @@ async function loadLatestValidatedFeedbackSignal(
 
   const roundType = normalizeQuestionRound(row.sessionRoundType);
   if (!roundType || row.candidate.feedbackRoundType !== roundType) return null;
-  const frozen = await getFrozenFeedbackEvaluationEvidence(row.sessionId);
+  const frozen = await getFrozenFeedbackEvaluationEvidence(
+    row.sessionId,
+    database
+  );
   const preparedTrusted =
     row.candidate.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
       ? prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(frozen)
@@ -334,23 +432,54 @@ function toStoredDifficulty(
   return "Medium";
 }
 
-function fromStoredDifficulty(
+export function normalizeStoredQuestionDifficulty(
   difficulty: string | null
-): QuestionRankingRequest["difficulty"] {
+): QuestionRankingCandidate["difficulty"] {
   if (difficulty === "Easy") return "beginner";
   if (difficulty === "Hard") return "advanced";
-  return "intermediate";
+  if (difficulty === "Medium") return "intermediate";
+  return null;
 }
 
-function questionTypesForRoundSql(roundType: RoundType) {
-  const aliases: Record<RoundType, readonly string[]> = {
-    product_sense: ["Product Sense", "Product design/strategy"],
-    behavioral: ["Behavioral"],
-    execution: ["Execution", "A/B Testing", "Estimation", "Pricing"],
-    strategy: ["Strategy", "Product Strategy"],
-  };
-  return sql`ARRAY[${sql.join(
-    aliases[roundType].map((value) => sql`${value}`),
-    sql`, `
-  )}]::text[]`;
+export function normalizeStoredQuestionAskedAt(
+  askedAt: Date | string | null
+): string | null {
+  if (askedAt === null) return null;
+  const timestamp = askedAt instanceof Date ? askedAt : new Date(askedAt);
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
+}
+
+const STORED_QUESTION_TYPE_ROUNDS = [
+  { questionType: "A/B Testing", roundType: "execution" },
+  { questionType: "Product design/strategy", roundType: "product_sense" },
+  { questionType: "Behavioral", roundType: "behavioral" },
+  { questionType: "Execution", roundType: "execution" },
+  { questionType: "Product Sense", roundType: "product_sense" },
+  { questionType: "Pricing", roundType: "execution" },
+  { questionType: "Estimation", roundType: "execution" },
+  { questionType: "Product Strategy", roundType: "strategy" },
+] as const satisfies readonly {
+  questionType: string;
+  roundType: RoundType;
+}[];
+
+const STORED_QUESTION_DIFFICULTIES = [
+  "Easy",
+  "Medium",
+  "Hard",
+  null,
+] as const satisfies readonly StoredQuestionDifficulty[];
+
+export function createQuestionCandidatePreferenceBuckets(
+  request: QuestionRankingRequest
+): readonly QuestionCandidatePreferenceBucket[] {
+  const requestedDifficulty = toStoredDifficulty(request.difficulty);
+  return STORED_QUESTION_TYPE_ROUNDS.flatMap((question) =>
+    STORED_QUESTION_DIFFICULTIES.map((difficulty) => ({
+      questionType: question.questionType,
+      difficulty,
+      roundPriority: question.roundType === request.roundType ? 0 : 1,
+      difficultyPriority: difficulty === requestedDifficulty ? 0 : 1,
+    }))
+  );
 }

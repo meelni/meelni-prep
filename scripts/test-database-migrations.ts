@@ -52,6 +52,7 @@ import {
   SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
   MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
   TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
+  QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -299,6 +300,7 @@ async function run() {
     await verifyFeedbackQualityPersistence(clean, cleanUrl, true);
     await verifyQuestionSyncTransactionAdapter(cleanUrl);
     await verifyQuestionLookupAdapters(cleanUrl);
+    await verifyQuestionRankingAdapter(clean, cleanUrl);
     runAnalyticsConsentAdapterVerification(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
@@ -324,6 +326,7 @@ async function run() {
     );
     await verifyStableStartContract(clean);
     await verifyStableStartConcurrency(clean, cleanUrl);
+    await verifyStableStartQuestionSelectionAuthority(clean, cleanUrl);
     await verifyProviderCreditRecovery(clean, cleanUrl);
     await verifyStableStartNegativePreflight(clean, cleanUrl);
     assertZeroStableStartV1Integrity(
@@ -335,10 +338,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -541,9 +541,10 @@ async function run() {
         SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
         MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
         TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
+        QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 41; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 42; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -563,7 +564,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 42; found 22/
+            /Strict launch preflight requires the exact latest migration count 43; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -889,7 +890,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 42);
+      assert.equal(await migrationCount(sql), 43);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -953,7 +954,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
+      QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1198,7 +1199,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 42; found 25/
+      /exact latest migration count 43; found 25/
     );
 
     const genericRows = await sql<
@@ -1297,9 +1298,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 42);
+    assert.equal(await migrationCount(sql), 43);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "total_required_scorecards");
+    assert.equal(finalPreflight.startingContract, "question_ranking_indexes");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 42);
@@ -1308,7 +1309,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
+      QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6479,6 +6480,267 @@ async function verifyStableStartConcurrency(
   }
 }
 
+async function verifyStableStartQuestionSelectionAuthority(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  const userId = "51000000-0000-4000-8000-000000000005";
+  const explicitQuestionId = "54000000-0000-4000-8000-000000000001";
+  const rankedQuestionId = "54000000-0000-4000-8000-000000000002";
+  const retryQuestionId = "54000000-0000-4000-8000-000000000003";
+  const explicitAttempt = "53000000-0000-4000-8000-000000000001";
+  const rankedAttempt = "53000000-0000-4000-8000-000000000002";
+  const fallbackAttempt = "53000000-0000-4000-8000-000000000003";
+  const now = new Date("2026-08-18T12:00:00.000Z");
+  const client = postgres(databaseUrl, { max: 1, prepare: false });
+  const [
+    { createDrizzleInterviewStartStore },
+    {
+      QUESTION_RANKER_VERSION,
+      QUESTION_RANKING_CONTRACT_VERSION,
+      addQuestionSelectionToStartConfig,
+      buildQuestionRankingFallback,
+      createExplicitQuestionSelection,
+      createRankedQuestionSelection,
+    },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/interview-starts"),
+    import("@meelni/core"),
+    import("../lib/db/schema"),
+  ]);
+  const store = createDrizzleInterviewStartStore(drizzle(client, { schema }));
+  const persistedText = "Persisted replay bytes — unchanged by catalog edits";
+  const makeCatalogQuestion = (id: string, text: string) => ({
+    id,
+    company: "Persisted Company",
+    questionText: text,
+    questionType: "Product Sense",
+    askedAt: now,
+    isActive: true,
+    createdAt: now,
+  });
+  const explicitQuestion = makeCatalogQuestion(
+    explicitQuestionId,
+    `${persistedText} explicit`
+  );
+  const rankedQuestion = makeCatalogQuestion(
+    rankedQuestionId,
+    `${persistedText} ranked`
+  );
+  const retryQuestion = makeCatalogQuestion(
+    retryQuestionId,
+    "Concurrent retry catalog bytes"
+  );
+  const snapshot = (question: ReturnType<typeof makeCatalogQuestion>) => ({
+    id: question.id,
+    company: question.company,
+    text: question.questionText,
+    type: question.questionType,
+    roundType: "product_sense" as const,
+    askedAt: question.askedAt.toISOString(),
+    isActive: true as const,
+    createdAt: question.createdAt.toISOString(),
+  });
+  const rankedSelection = (question: ReturnType<typeof makeCatalogQuestion>) =>
+    createRankedQuestionSelection({
+      candidate: {
+        id: question.id,
+        company: question.company,
+        text: question.questionText,
+        roundType: "product_sense",
+        difficulty: "intermediate",
+        sourceKind: "google_sheets",
+        qualityStatus: "published",
+        askedAt: question.askedAt.toISOString(),
+        isActive: true,
+      },
+      questionType: question.questionType,
+      receipt: {
+        contractVersion: QUESTION_RANKING_CONTRACT_VERSION,
+        rankerVersion: QUESTION_RANKER_VERSION,
+        catalogVersion: "question-catalog:authority-test",
+        questionId: question.id,
+        reasonCode: "requested_round",
+      },
+    });
+  const makeStart = (
+    attemptId: string,
+    question:
+      | ReturnType<typeof makeCatalogQuestion>
+      | {
+          id: string;
+          company: string | null;
+          questionText: string;
+          questionType: string;
+          askedAt: Date | null;
+          isActive: true;
+          createdAt: Date | null;
+        },
+    config: Record<string, unknown>
+  ) => ({
+    startAttemptId: attemptId,
+    userId,
+    requestFingerprint: "e".repeat(64),
+    role: "pm",
+    roundType: "product_sense" as const,
+    mode: "voice_video" as const,
+    roomName: `interview-${attemptId}`,
+    config,
+    startedAt: now,
+    question,
+  });
+
+  try {
+    await seedCreditTestUser(sql, userId, "stable-start-selection-authority");
+    await sql`
+      INSERT INTO interview_question (
+        id, company, question_text, question_type, difficulty, asked_at,
+        source_kind, source_fingerprint, quality_status, is_active, created_at
+      ) VALUES
+        (
+          ${explicitQuestion.id}::uuid, ${explicitQuestion.company},
+          ${explicitQuestion.questionText}, ${explicitQuestion.questionType},
+          'Medium', ${now.toISOString()}::timestamptz, 'google_sheets',
+          ${"1".repeat(64)}, 'published', true,
+          ${now.toISOString()}::timestamptz
+        ),
+        (
+          ${rankedQuestion.id}::uuid, ${rankedQuestion.company},
+          ${rankedQuestion.questionText}, ${rankedQuestion.questionType},
+          'Medium', ${now.toISOString()}::timestamptz, 'google_sheets',
+          ${"2".repeat(64)}, 'published', true,
+          ${now.toISOString()}::timestamptz
+        ),
+        (
+          ${retryQuestion.id}::uuid, ${retryQuestion.company},
+          ${retryQuestion.questionText}, ${retryQuestion.questionType},
+          'Medium', ${now.toISOString()}::timestamptz, 'google_sheets',
+          ${"3".repeat(64)}, 'published', true,
+          ${now.toISOString()}::timestamptz
+        )
+    `;
+
+    await store.createOrLoad(
+      makeStart(
+        explicitAttempt,
+        explicitQuestion,
+        addQuestionSelectionToStartConfig(
+          { duration: 30 },
+          createExplicitQuestionSelection(snapshot(explicitQuestion))
+        )
+      )
+    );
+    await store.createOrLoad(
+      makeStart(
+        rankedAttempt,
+        rankedQuestion,
+        addQuestionSelectionToStartConfig(
+          { duration: 30 },
+          rankedSelection(rankedQuestion)
+        )
+      )
+    );
+    await sql`
+      UPDATE interview_question
+      SET company = 'Edited Company',
+        question_text = 'Edited catalog bytes',
+        quality_status = 'retired_source_missing',
+        is_active = false
+      WHERE id IN (${explicitQuestionId}::uuid, ${rankedQuestionId}::uuid)
+    `;
+    const explicitReplay = await store.find({
+      startAttemptId: explicitAttempt,
+      userId,
+      requestFingerprint: "e".repeat(64),
+    });
+    const rankedReplay = await store.find({
+      startAttemptId: rankedAttempt,
+      userId,
+      requestFingerprint: "e".repeat(64),
+    });
+    assert.deepEqual(explicitReplay?.question, explicitQuestion);
+    assert.deepEqual(rankedReplay?.question, {
+      ...rankedQuestion,
+      createdAt: null,
+    });
+
+    const fallback = buildQuestionRankingFallback({
+      roundType: "product_sense",
+      difficulty: "intermediate",
+      company: null,
+    });
+    const fallbackQuestion = {
+      id: fallback.id,
+      company: fallback.company,
+      questionText: fallback.text,
+      questionType: "Product Sense",
+      askedAt: fallback.askedAt ? new Date(fallback.askedAt) : null,
+      isActive: true as const,
+      createdAt: null,
+    };
+    const fallbackSelection = createRankedQuestionSelection({
+      candidate: fallback,
+      questionType: fallbackQuestion.questionType,
+      receipt: {
+        contractVersion: QUESTION_RANKING_CONTRACT_VERSION,
+        rankerVersion: QUESTION_RANKER_VERSION,
+        catalogVersion: "question-catalog:unavailable",
+        questionId: fallback.id,
+        reasonCode: "catalog_fallback",
+      },
+    });
+    await store.createOrLoad(
+      makeStart(
+        fallbackAttempt,
+        fallbackQuestion,
+        addQuestionSelectionToStartConfig({ duration: 30 }, fallbackSelection)
+      )
+    );
+    const conflictedRetry = await store.createOrLoad(
+      makeStart(
+        fallbackAttempt,
+        retryQuestion,
+        addQuestionSelectionToStartConfig(
+          { duration: 30 },
+          rankedSelection(retryQuestion)
+        )
+      )
+    );
+    assert.deepEqual(conflictedRetry.question, fallbackQuestion);
+    const [fallbackRelation] = await sql<{ relation_count: number }[]>`
+      SELECT count(*)::int AS relation_count
+      FROM session_question
+      WHERE session_id = ${fallbackAttempt}::uuid
+    `;
+    assert.equal(fallbackRelation?.relation_count, 0);
+  } finally {
+    await sql`
+      DELETE FROM session_question
+      WHERE session_id IN (
+        ${explicitAttempt}::uuid, ${rankedAttempt}::uuid,
+        ${fallbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE id IN (
+        ${explicitAttempt}::uuid, ${rankedAttempt}::uuid,
+        ${fallbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM interview_question
+      WHERE id IN (
+        ${explicitQuestionId}::uuid, ${rankedQuestionId}::uuid,
+        ${retryQuestionId}::uuid
+      )
+    `;
+    await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
+    await client.end();
+  }
+}
+
 async function verifyProviderCreditRecovery(
   sql: postgres.Sql,
   databaseUrl: string
@@ -6683,7 +6945,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "total_required_scorecards"
+      "question_ranking_indexes"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7288,6 +7550,110 @@ async function verifyQuestionLookupAdapters(databaseUrl: string) {
   } finally {
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+}
+
+async function verifyQuestionRankingAdapter(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  const fixtureIdPrefix = "47000000-";
+  const matchingQuestionId = "47000000-0000-4000-9000-000000000001";
+  const nullDifficultyQuestionId = "47000000-0000-4000-9000-000000000002";
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, difficulty, asked_at,
+      quality_status, is_active
+    )
+    SELECT
+      (
+        '47000000-0000-4000-8000-' || lpad(candidate::text, 12, '0')
+      )::uuid,
+      NULL,
+      'Synthetic earlier-ID non-matching candidate ' || candidate,
+      'Behavioral',
+      'Easy',
+      '2026-08-18T12:00:00.000Z'::timestamptz -
+        candidate * interval '1 second',
+      'published',
+      true
+    FROM generate_series(1, 70) AS candidate
+  `;
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, difficulty, asked_at,
+      quality_status, is_active
+    ) VALUES
+      (
+        ${matchingQuestionId}::uuid,
+        NULL,
+        'Synthetic requested-round and requested-difficulty candidate',
+        'Product Sense',
+        'Medium',
+        '2026-08-01T12:00:00.000Z'::timestamptz,
+        'published',
+        true
+      ),
+      (
+        ${nullDifficultyQuestionId}::uuid,
+        NULL,
+        'Synthetic requested-round nullable-difficulty candidate',
+        'Product Sense',
+        NULL,
+        '2026-08-17T12:00:00.000Z'::timestamptz,
+        'published',
+        true
+      )
+  `;
+
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  try {
+    const { createDrizzleQuestionRankingContextStore } = await import(
+      "../lib/db/question-ranking"
+    );
+    const candidates =
+      await createDrizzleQuestionRankingContextStore().loadCandidates(
+        {
+          roundType: "product_sense",
+          difficulty: "intermediate",
+          company: null,
+        },
+        64
+      );
+    assert.equal(candidates.length, 64);
+    assert.equal(candidates[0]?.id, matchingQuestionId);
+    assert.equal(
+      candidates.find(({ id }) => id === nullDifficultyQuestionId)?.difficulty,
+      null
+    );
+
+    const indexes = await sql<{ indexname: string; indexdef: string }[]>`
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname IN (
+          'interview_question_ranking_bucket_idx',
+          'interview_session_question_ranking_history_idx'
+        )
+      ORDER BY indexname
+    `;
+    assert.equal(indexes.length, 2);
+    assert.match(
+      indexes[0]?.indexdef ?? "",
+      /interview_question_ranking_bucket_idx.*question_type, difficulty, asked_at DESC NULLS LAST, id.*WHERE \(\(is_active = true\) AND \(quality_status = 'published'::text\)\)/
+    );
+    assert.match(
+      indexes[1]?.indexdef ?? "",
+      /interview_session_question_ranking_history_idx.*user_id, activated_at DESC NULLS LAST, id.*WHERE \(activated_at IS NOT NULL\)/
+    );
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    await sql`
+      DELETE FROM interview_question
+      WHERE id::text LIKE ${`${fixtureIdPrefix}%`}
+    `;
   }
 }
 
@@ -8741,7 +9107,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 42);
+  assert.equal(await migrationCount(sql), 43);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -10045,12 +10411,15 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       /feedback_verified_prefix_scope_tuple_check/
     );
     await assert.rejects(
-      tx.savepoint("historical_partial_overall_forbidden", async (savepoint) => {
-        await savepoint`
+      tx.savepoint(
+        "historical_partial_overall_forbidden",
+        async (savepoint) => {
+          await savepoint`
           UPDATE feedback SET overall_score = 8
           WHERE id = ${legacy.id}::uuid
         `;
-      }),
+        }
+      ),
       /feedback_dimension_coverage_score_tuple_check/
     );
     await tx`
