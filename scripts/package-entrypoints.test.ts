@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  ADAPTIVE_INTERVIEWER_ROLLOUT_CONTRACT_VERSION,
   buildInterviewRoomMetadata,
   createTranscriptEvent,
 } from "@meelni/agent";
@@ -79,6 +80,10 @@ test("workspace package entrypoints expose named contracts", () => {
     "product_sense"
   );
   assert.equal(
+    ADAPTIVE_INTERVIEWER_ROLLOUT_CONTRACT_VERSION,
+    "adaptive-interviewer-rollout.v1"
+  );
+  assert.equal(
     createTranscriptEvent({
       event_id: "event-1",
       writer_id: "writer-1",
@@ -133,6 +138,11 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   assert.equal(typeof core.completeFocusedPracticeAttempt, "function");
   assert.equal(typeof agent.buildInterviewRoomMetadata, "function");
   assert.equal(typeof agent.createTranscriptEvent, "function");
+  assert.equal(typeof agent.assessAdaptiveInterviewerTransition, "function");
+  assert.equal(
+    typeof agent.parseAdaptiveInterviewerPreparationAuthorizationJson,
+    "function"
+  );
   assert.equal(typeof integrations.buildInterviewRoomName, "function");
   assert.equal(typeof integrations.getLiveKitEnvironment, "function");
   assert.equal(typeof opik.startOpikFeedbackEvaluationTrace, "function");

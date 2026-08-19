@@ -1,0 +1,142 @@
+{
+  "contract_version": "adaptive-interviewer-readiness-report.v1",
+  "implementation_base_sha": "eeb0eb04187899b13f7ef2e2f7d7a961cce37583",
+  "evidence_scope": {
+    "provenance": "fully_synthetic_provider_free",
+    "customer_data_used": false,
+    "provider_credentials_read": false,
+    "provider_calls": 0,
+    "production_calls": 0,
+    "live_rooms": 0,
+    "claim_boundary": "repository_contract_and_fixture_evidence_only"
+  },
+  "frozen_inputs": [
+    {
+      "artifact": "benchmark",
+      "path": "docs/evidence/sav-467-current-interviewer-baseline.json",
+      "sha256": "ed812951ddff990d6367c190a6ea03ad5e8bfabe20e5ad9a059e0993f3ebdc6e",
+      "digest_status": "matched"
+    },
+    {
+      "artifact": "adjudication",
+      "path": "docs/evidence/sav-467-interviewer-adjudication-approval.json",
+      "sha256": "e6e2415f7180d31dd5f34ecef69ca93c11f873fa2322e9564b3db723a2f52492",
+      "digest_status": "matched"
+    },
+    {
+      "artifact": "adaptive_feedback",
+      "path": "packages/test-fixtures/src/adaptive-feedback.ts",
+      "sha256": "e1dc45c5e259d93a2de68f079db2bb434b8864e70fc924d6cc18e674c13d2632",
+      "digest_status": "matched"
+    },
+    {
+      "artifact": "observability",
+      "path": "packages/test-fixtures/interviewer-observability-wire.json",
+      "sha256": "fbfb28c37a3dfb41f70d73561fb27327f238c9773f2bc35e536510e3de9b40a6",
+      "digest_status": "matched"
+    }
+  ],
+  "benchmark_evidence": {
+    "claim": "current_runtime_provider_free_baseline_and_invariants_only",
+    "contract_version": "meelni.interviewer-benchmark-report.v3",
+    "suite_version": "meelni.interviewer-benchmark-suite.v2",
+    "baseline_version": "meelni.current-interviewer-baseline.v3",
+    "prompt_contract": "full_interview_prompt_v1",
+    "input_sha256": "bc2774b8709d8cc23cbef3b60a4466443dd47aa9dcd0e2bb5b465bb6c9d28ffb",
+    "report_sha256": "e64f58db923c40b62355d8c49cd6af4cc24de7401048051c23c3edb6a9cb37ef",
+    "aggregate_current_quality_score": 72.083,
+    "aggregate_current_latency_p95_ms": 3000,
+    "deterministic_invariants": "passed",
+    "invariant_violations": 0,
+    "owner_adjudication": "product_owner_accepted_exact_candidate_manifest",
+    "adjudication_manifest_sha256": "312e086a46334ab3af3907406c90302990ab3ea90063e2ecc6428e17af30c70f",
+    "adjudication_authority": "semantic_gold_set_only",
+    "adaptive_quality_improvement_observed": false,
+    "shadow_entry_eligible": false,
+    "shadow_entry_blockers": [
+      "provider-backed candidate evidence has not been run"
+    ]
+  },
+  "adaptive_feedback_evidence": {
+    "claim": "frozen_synthetic_fixture_expectations_only",
+    "fixture_contract_version": "adaptive-feedback-regression.v1",
+    "fixture_count": 5,
+    "current_and_adaptive_variants": 10,
+    "fully_synthetic": true,
+    "accepted_transcript_change_fixture_count": 1,
+    "expected_outcomes": {
+      "coaching_review": 2,
+      "scorecard": 6,
+      "unable_to_review": 2
+    },
+    "equal_expected_outcome_pairs": 5,
+    "runtime_only_payloads_are_non_authoritative_by_contract": true,
+    "live_feedback_outcomes_observed": 0
+  },
+  "observability_evidence": {
+    "claim": "frozen_wire_contract_cases_only",
+    "contract_version": "interviewer-observability.v1",
+    "valid_case_count": 4,
+    "invalid_case_count": 2,
+    "expectations_matched": true,
+    "live_runtime_count": 0,
+    "live_latency_samples": 0,
+    "live_completion_samples": 0
+  },
+  "rollout_policy": {
+    "contract_version": "adaptive-interviewer-rollout.v1",
+    "configuration_sha256": "ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042",
+    "current_stage": "synthetic",
+    "next_stage": "preview_shadow",
+    "adaptive_flags_enabled": 0,
+    "director_adapter_version": null,
+    "director_model": null,
+    "allowed_forward_transition": "adjacent_only_with_stage_specific_owner_authorization",
+    "allowed_rollback": "declared_safe_target_only",
+    "active_session_immediate_revocation": "director_influence",
+    "active_session_shadow_stop": "reviewed_session_settle_or_shutdown_required",
+    "new_session_rollback_order": [
+      "director_influence",
+      "director_shadow",
+      "interviewer_tools",
+      "interview_controller",
+      "interview_brief"
+    ]
+  },
+  "owner_preparation_gate": {
+    "request_contract_version": "adaptive-interviewer-owner-preparation-request.v2",
+    "authorization_contract_version": "adaptive-interviewer-owner-preparation-authorization.v1",
+    "selection_contract_version": "adaptive-interviewer-preview-shadow-selection.v1",
+    "selection_status": "unselected",
+    "selection_configuration": null,
+    "selected_candidate_configuration_sha256": null,
+    "candidate_preparation_authorized": false,
+    "rollout_transition_authorized": false,
+    "parser_authenticates_human_identity": false,
+    "external_decision_reference_verification_required": true,
+    "authorization_max_ttl_ms": 604800000,
+    "second_live_authorization_rehearsal_matrix": "unbound_and_unperformed"
+  },
+  "readiness": {
+    "system_recommendation": "hold_at_synthetic",
+    "owner_decision": "pending",
+    "preview_shadow_authorized": false,
+    "preview_influence_authorized": false,
+    "production_authorized": false,
+    "default_on_authorized": false,
+    "launch_go_no_go_recorded": false,
+    "blockers": [
+      "adaptive_candidate_quality_improvement_not_measured",
+      "director_adapter_provider_model_not_selected_or_authorized",
+      "preview_spend_privacy_retention_not_authorized",
+      "preview_numeric_entry_and_stop_thresholds_not_owner_accepted",
+      "preview_live_voice_rehearsal_not_run",
+      "in_flight_preview_shadow_settle_shutdown_rehearsal_not_run",
+      "all_round_adverse_voice_rehearsal_matrix_unbound_and_unperformed",
+      "live_latency_completion_freshness_and_recovery_evidence_missing",
+      "exact_candidate_owner_authorization_missing"
+    ],
+    "smallest_owner_action": "After this repository packet is merged, fill the closed preview-shadow selection with an adapter/provider/model, integer Preview session and nano-USD caps, accepted synthetic-only privacy/retention terms, and coherent integer bps/ms entry and stop thresholds. Then record a current external owner decision reference authorizing only preparation against the exact origin/main SHA, repository configuration digest, and recomputed selected-candidate configuration digest. A trusted supervisor must verify that reference; parsing alone does not authenticate the owner. SAV-476 still requires a second exact-candidate authorization and an all-round/adverse-voice rehearsal matrix before any provider call, spend, deployment, or live room."
+  },
+  "report_sha256": "5851970257615170ca83baa0e7266d5ee3d19b6ca55d80f12a1842da6eb81dc8"
+}
