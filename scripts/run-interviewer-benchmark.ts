@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseInterviewerBenchmarkAdjudicationApprovalJson } from "@/lib/interviewer-benchmark/adjudication-approval";
 import {
+  readInterviewerBenchmarkAdjudicationApproval,
   readInterviewerBenchmarkEvidence,
   writeInterviewerBenchmarkEvidence,
 } from "@/lib/interviewer-benchmark/evidence-file";
@@ -21,6 +23,7 @@ const RUNTIME_SOURCES = [
 const BENCHMARK_SOURCES = [
   "packages/agent/src/interviewer-benchmark.ts",
   "packages/test-fixtures/src/interviewer-benchmark.ts",
+  "lib/interviewer-benchmark/adjudication-approval.ts",
   "lib/interviewer-benchmark/runner.ts",
   "lib/interviewer-benchmark/evidence-file.ts",
   "scripts/run-interviewer-benchmark.ts",
@@ -31,10 +34,15 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const runtimeSourceSha256 = await hashSources(RUNTIME_SOURCES);
   const benchmarkSourceSha256 = await hashSources(BENCHMARK_SOURCES);
+  const adjudicationApproval = options.approvalPath
+    ? await readApproval(options.approvalPath)
+    : null;
   const report = await runInterviewerBenchmark(
     createProviderFreeInterviewerJudgeAdapter(),
     runtimeSourceSha256,
-    benchmarkSourceSha256
+    benchmarkSourceSha256,
+    undefined,
+    adjudicationApproval
   );
   const serialized = serializeInterviewerBenchmarkReport(report);
   if (options.writePath) {
@@ -75,14 +83,28 @@ async function hashSources(paths: readonly string[]): Promise<string> {
   return hash.digest("hex");
 }
 
+async function readApproval(path: string): Promise<unknown> {
+  const contents = await readInterviewerBenchmarkAdjudicationApproval(
+    REPO_ROOT,
+    path
+  );
+  return parseInterviewerBenchmarkAdjudicationApprovalJson(contents);
+}
+
 function parseArgs(args: string[]): {
+  approvalPath: string | null;
   verifyPath: string | null;
   writePath: string | null;
 } {
+  let approvalPath: string | null = null;
   let verifyPath: string | null = null;
   let writePath: string | null = null;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
+    if (argument === "--approval" && args[index + 1]) {
+      approvalPath = args[++index]!;
+      continue;
+    }
     if (argument === "--verify" && args[index + 1]) {
       verifyPath = args[++index]!;
       continue;
@@ -96,7 +118,7 @@ function parseArgs(args: string[]): {
   if (verifyPath && writePath) {
     throw new Error("interviewer_benchmark_cli_mode_conflict");
   }
-  return { verifyPath, writePath };
+  return { approvalPath, verifyPath, writePath };
 }
 
 void main().catch((error: unknown) => {

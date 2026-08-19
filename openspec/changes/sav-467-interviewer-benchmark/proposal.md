@@ -12,7 +12,8 @@ regressions.
 - Add a fully synthetic four-round/adversarial catalog and invariant controls.
 - Add a provider-free fixed-seed baseline runner, checked evidence, thresholds,
   and scenario/turn-grounded failures.
-- Keep eight agent-authored calibration examples pending product-owner review.
+- Resolve the eight agent-authored calibration examples through one exact-hash,
+  semantic-only product-owner approval artifact.
 
 ## Boundaries
 

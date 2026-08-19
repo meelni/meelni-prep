@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -8,6 +10,7 @@ import {
   type InterviewerQualityJudgeAdapterV1,
 } from "@meelni/agent";
 
+import { parseInterviewerBenchmarkAdjudicationApprovalJson } from "./adjudication-approval";
 import {
   createProviderFreeInterviewerJudgeAdapter,
   runInterviewerBenchmark,
@@ -51,7 +54,139 @@ test("provider-free baseline is complete, bounded, actionable, and reproducible"
   assert.equal(first.aggregate.maximumDimensionRange, 1);
   assert.ok(first.aggregate.actionableFailures >= 6);
   assert.equal(first.thresholds.shadowEntry.eligible, false);
-  assert.equal(first.ownerAdjudication.reusedHumanAdjudication, false);
+  assert.equal(first.ownerAdjudication.reusedSav198Adjudication, false);
+  assert.equal(
+    first.ownerAdjudication.status,
+    "agent_authored_pending_product_owner_review"
+  );
+  assert.equal(first.ownerAdjudication.approval, null);
+  assert.equal(
+    first.conclusion,
+    "baseline_recorded_owner_adjudication_pending"
+  );
+});
+
+test("runner reports accepted only after the exact approval verifies and preserves every authority fence", async () => {
+  const approval = JSON.parse(
+    await readFile(
+      resolve(
+        process.cwd(),
+        "docs/evidence/sav-467-interviewer-adjudication-approval.json"
+      ),
+      "utf8"
+    )
+  );
+  const report = await runInterviewerBenchmark(
+    createProviderFreeInterviewerJudgeAdapter(),
+    SOURCE_HASH,
+    BENCHMARK_SOURCE_HASH,
+    undefined,
+    approval
+  );
+
+  assert.equal(
+    report.ownerAdjudication.status,
+    "product_owner_accepted_exact_candidate_manifest"
+  );
+  assert.equal(report.ownerAdjudication.acceptedExamples, 8);
+  assert.equal(report.ownerAdjudication.requiredAction, null);
+  assert.ok(report.ownerAdjudication.approval);
+  assert.equal(
+    "signature" in report.ownerAdjudication.approval.authorityProvenance,
+    false
+  );
+  assert.deepEqual(report.ownerAdjudication.approval.authorityScope, {
+    semanticGoldSetAdjudicationOnly: true,
+    launchAuthority: false,
+    canaryAuthority: false,
+    defaultOnAuthority: false,
+    providerCallAuthority: false,
+    providerSpendAuthorityUsd: null,
+    productionAuthority: false,
+    runtimeBehaviorAuthority: false,
+    sav476GoNoGoAuthority: false,
+  });
+  assert.equal(report.thresholds.shadowEntry.eligible, false);
+  assert.deepEqual(report.thresholds.shadowEntry.blockers, [
+    "provider-backed candidate evidence has not been run",
+  ]);
+  assert.equal(report.execution.providerCalls, 0);
+  assert.equal(report.execution.providerCredentialRead, false);
+  assert.equal(report.execution.productionCalled, false);
+  assert.equal(
+    report.conclusion,
+    "baseline_recorded_owner_adjudication_accepted"
+  );
+});
+
+test("runner rejects a stale approval before any judge invocation", async () => {
+  const replay = createProviderFreeInterviewerJudgeAdapter();
+  let judgeCalls = 0;
+  const adapter: InterviewerQualityJudgeAdapterV1 = {
+    ...replay,
+    async judge(request) {
+      judgeCalls += 1;
+      return replay.judge(request);
+    },
+  };
+  const approval = JSON.parse(
+    await readFile(
+      resolve(
+        process.cwd(),
+        "docs/evidence/sav-467-interviewer-adjudication-approval.json"
+      ),
+      "utf8"
+    )
+  );
+  approval.candidateManifest.sha256 = "0".repeat(64);
+
+  await assert.rejects(
+    runInterviewerBenchmark(
+      adapter,
+      SOURCE_HASH,
+      BENCHMARK_SOURCE_HASH,
+      undefined,
+      approval
+    ),
+    /interviewer_benchmark_adjudication_approval_invalid/
+  );
+  assert.equal(judgeCalls, 0);
+});
+
+test("raw duplicate contradictory authority keys fail before judge invocation", async () => {
+  const replay = createProviderFreeInterviewerJudgeAdapter();
+  let judgeCalls = 0;
+  const adapter: InterviewerQualityJudgeAdapterV1 = {
+    ...replay,
+    async judge(request) {
+      judgeCalls += 1;
+      return replay.judge(request);
+    },
+  };
+  const contents = await readFile(
+    resolve(
+      process.cwd(),
+      "docs/evidence/sav-467-interviewer-adjudication-approval.json"
+    ),
+    "utf8"
+  );
+  const contradictory = contents.replace(
+    '    "providerCallAuthority": false,',
+    '    "providerCallAuthority": true,\n    "providerCallAuthority": false,'
+  );
+
+  await assert.rejects(async () => {
+    const approval =
+      parseInterviewerBenchmarkAdjudicationApprovalJson(contradictory);
+    await runInterviewerBenchmark(
+      adapter,
+      SOURCE_HASH,
+      BENCHMARK_SOURCE_HASH,
+      undefined,
+      approval
+    );
+  }, /interviewer_benchmark_adjudication_approval_invalid/);
+  assert.equal(judgeCalls, 0);
 });
 
 test("runner fails closed on malformed judge output", async () => {
