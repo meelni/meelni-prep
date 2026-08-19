@@ -19,6 +19,7 @@ INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION = "interviewer-observability.v1"
 INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1"
 INTERVIEWER_TOOL_CONTRACT_VERSION = "interviewer-tools.v1"
 DIRECTOR_RECOMMENDATION_CONTRACT_VERSION = "director-recommendation.v1"
+DIRECTOR_POLICY_CONTRACT_VERSION = "interview-director-policy.v1"
 INTERVIEWER_OBSERVABILITY_CLOSE_TIMEOUT_SECONDS = 0.05
 
 RolloutCohort: TypeAlias = Literal["current", "shadow", "canary"]
@@ -91,6 +92,14 @@ _DIRECTOR_OUTCOMES = {
     "unavailable",
 }
 _RECOMMENDATION_FRESHNESS = {"fresh", "stale", "speculative", "missing"}
+_RECOMMENDATION_COMPARISONS = {
+    "exact_match",
+    "move_match_target_mismatch",
+    "move_mismatch",
+    "recommendation_missing",
+    "recommendation_expired",
+    "arrived_after_delivery",
+}
 _LATENCY_KINDS = {
     "user_speech_to_first_audio",
     "controller_decision_to_first_audio",
@@ -163,10 +172,14 @@ _EVENT_KEYS = {
     "director": _COMMON_KEYS
     | {
         "recommendation_contract_version",
+        "director_policy_version",
+        "director_adapter_version",
         "recommendation_outcome",
         "recommendation_freshness",
+        "recommendation_comparison",
         "ready_latency_ms",
         "recommendation_age_ms",
+        "estimated_cost_microusd",
     },
     "latency": _COMMON_KEYS | {"latency_kind", "latency_ms"},
     "interruption": _COMMON_KEYS
@@ -256,11 +269,20 @@ def is_interviewer_observability_event(value: object) -> bool:
         return (
             value.get("recommendation_contract_version")
             == DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
+            and value.get("director_policy_version")
+            == DIRECTOR_POLICY_CONTRACT_VERSION
+            and _contract_token(value.get("director_adapter_version"))
             and value.get("recommendation_outcome") in _DIRECTOR_OUTCOMES
             and value.get("recommendation_freshness")
             in _RECOMMENDATION_FRESHNESS
+            and (
+                value.get("recommendation_comparison") is None
+                or value.get("recommendation_comparison")
+                in _RECOMMENDATION_COMPARISONS
+            )
             and _nullable_latency(value.get("ready_latency_ms"))
             and _nullable_latency(value.get("recommendation_age_ms"))
+            and _nullable_estimated_cost(value.get("estimated_cost_microusd"))
         )
     if event_kind == "latency":
         return value.get("latency_kind") in _LATENCY_KINDS and _latency(
@@ -717,6 +739,18 @@ def _nullable_latency(value: object) -> bool:
     return value is None or _latency(value)
 
 
+def _contract_token(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= 96 and bool(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", value)
+    )
+
+
+def _nullable_estimated_cost(value: object) -> bool:
+    return value is None or (
+        type(value) is int and 0 <= value <= 100_000
+    )
+
+
 def _positive_time(value: object) -> bool:
     return (
         isinstance(value, (int, float))
@@ -727,4 +761,4 @@ def _positive_time(value: object) -> bool:
 
 
 def _is_true(value: str | None) -> bool:
-    return bool(value) and value.strip().lower() == "true"
+    return value == "true"

@@ -1,7 +1,7 @@
 # Stateful Interviewer And Decision Contracts
 
-Status: accepted contract for SAV-466; SAV-471 controller implementation is
-available but disabled by default
+Status: accepted contract for SAV-466; SAV-471 controller and SAV-474 read-only
+Director shadow implementations are available but disabled by default
 
 ## Purpose
 
@@ -57,6 +57,13 @@ construction. A local four-second lease is renewed through that reader. Tools
 never perform the read themselves. Missing, stale, conflicting, non-active, or
 unavailable authority disables tool/controller participation without inventing
 `active` or lifecycle version 1.
+
+SAV-474 also uses implementation-local `interview-director-policy.v1`,
+`interview-director-context.v1`, `interview-director-runner.v1`,
+`interview-director-store.v1`, and `interview-director-shadow-trace.v1`
+envelopes. The recommendation itself records the exact policy and
+model-adapter version. The application injects no adapter, so these envelopes
+are runnable only with the deterministic fake in provider-free tests.
 
 ## Room-metadata compatibility
 
@@ -521,8 +528,22 @@ transcript revision.
 
 A recommendation contains only the allowed move type, target
 question/topic/source turn/probe candidate, reason code, state and writer
-versions, creation time, and expiry. It contains no spoken prose, score,
-feedback label, lifecycle action, or chain of thought.
+versions, policy and model-adapter versions, creation time, and expiry. It
+contains no spoken prose, score, feedback label, lifecycle action, or chain of
+thought.
+
+SAV-474 stores only recommendations reconciled to finalized candidate text.
+Speculative interim work is labeled inside the bounded context and is either
+reconciled by content digest to the exact final transcript revision or
+canceled/discarded. Raw interim text is never stored as recommendation,
+transcript, evidence, telemetry, or customer output.
+
+While the controller has a canonical pending move, its live `allowed_moves`
+is empty. The shadow context may use the global accepted move vocabulary only
+for counterfactual comparison. That vocabulary cannot admit, generate, or
+speak a move and never enters the controller snapshot or live model chat. It
+becomes empty at an elapsed/zero-remaining deadline, speech fence, or lifecycle
+outside connecting/active/reconnecting.
 
 Recommendation TTL is positive and at most 10,000 milliseconds; an admitted
 move TTL is positive and at most 30,000 milliseconds. These are bounded
@@ -594,6 +615,11 @@ version. Independent of those future numbers, the Director is never a
 synchronous dependency and a tool deadline always falls back without blocking
 the live response.
 
+The Director-ready interval starts at finalized-turn availability before its
+concurrency semaphore and context builder. Matching in-flight speculative work
+rebinds to the exact final controller/lifecycle snapshot before publication;
+its earlier speculative state revision is never published as final authority.
+
 ## Rollout and rollback
 
 All new behavior is server-owned and default off behind these versioned flag
@@ -604,6 +630,10 @@ names:
 - `MEELNI_INTERVIEW_TOOLS_V1_ENABLED`
 - `MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED`
 - `MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED`
+
+Every flag accepts only the exact lowercase token `true`. Whitespace, mixed
+case, blanks, and all other values are disabled in both runtime construction
+and observability cohort selection.
 
 Rollout order is reader-first contract support, synthetic fixtures and
 benchmark, controller/tools disabled, Director read-only shadow, owner-controlled
@@ -619,7 +649,8 @@ the accepted launch contract. A passing gate is evidence, not authorization.
 
 ## Non-goals
 
-- runtime controller, tool, brief compiler, or Director implementation;
+- local-tool or live Director-influence implementation;
+- an application Director provider/model adapter or Preview/Production shadow execution;
 - provider/model selection or migration;
 - a new feedback rubric, live scoring, or incremental feedback authority;
 - public demo changes;

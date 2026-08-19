@@ -27,6 +27,7 @@ import { calculateInterviewerMutationRequestDigest } from "./interviewer-request
 import {
   DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
   DIRECTOR_RECOMMENDATION_MAX_TTL_MS,
+  DIRECTOR_POLICY_CONTRACT_VERSION,
   FULL_INTERVIEW_POLICY_CONTRACT_VERSION,
   FULL_INTERVIEW_PROMPT_CONTRACT_VERSION,
   INTERVIEW_BRIEF_V2_CONTRACT_VERSION,
@@ -492,6 +493,8 @@ export function isDirectorRecommendation(
   if (
     !hasExactKeys(value, [
       "contract_version",
+      "policy_version",
+      "model_adapter_version",
       "recommendation_id",
       "session_id",
       "brief_id",
@@ -514,6 +517,8 @@ export function isDirectorRecommendation(
 
   return (
     value.contract_version === DIRECTOR_RECOMMENDATION_CONTRACT_VERSION &&
+    value.policy_version === DIRECTOR_POLICY_CONTRACT_VERSION &&
+    isContractToken(value.model_adapter_version) &&
     isIdentifier(value.recommendation_id) &&
     isIdentifier(value.session_id) &&
     isIdentifier(value.brief_id) &&

@@ -50,16 +50,16 @@ prompt, identity, or transcript text.
 
 ## Event kinds
 
-| Kind           | Closed fields                                                           | Purpose                                                                           |
-| -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `phase`        | `phase`                                                                 | Observe opening, primary question, follow-up, transition, closing, or closed.     |
-| `move`         | move contract version, stage, type, nullable probe target ID            | Correlate planned through canonically delivered moves without prompt text.        |
-| `tool`         | tool contract version, tool name, typed outcome, latency                | Observe a local interviewer-tool result without arguments or result content.      |
-| `director`     | recommendation contract version, outcome, freshness, ready latency, age | Observe asynchronous Director readiness/admission without recommendation content. |
-| `latency`      | latency kind and milliseconds                                           | Record measured user-speech or controller-decision to first audio.                |
-| `interruption` | stage, delivery observation, nullable recovery latency                  | Observe interruption and recovery without speech text or provider IDs.            |
-| `fallback`     | closed reason and source                                                | Observe policy, Director, tool, prompt, or runtime fallback.                      |
-| `close`        | reason, outcome, completion status, completion authority                | Separate runtime observation from canonical lifecycle completion.                 |
+| Kind           | Closed fields                                                                                                     | Purpose                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `phase`        | `phase`                                                                                                           | Observe opening, primary question, follow-up, transition, closing, or closed.      |
+| `move`         | move contract version, stage, type, nullable probe target ID                                                      | Correlate planned through canonically delivered moves without prompt text.         |
+| `tool`         | tool contract version, tool name, typed outcome, latency                                                          | Observe a local interviewer-tool result without arguments or result content.       |
+| `director`     | recommendation/policy/adapter versions, outcome, freshness, comparison, ready latency, age, bounded cost estimate | Observe asynchronous Director readiness/comparison without recommendation content. |
+| `latency`      | latency kind and milliseconds                                                                                     | Record measured user-speech or controller-decision to first audio.                 |
+| `interruption` | stage, delivery observation, nullable recovery latency                                                            | Observe interruption and recovery without speech text or provider IDs.             |
+| `fallback`     | closed reason and source                                                                                          | Observe policy, Director, tool, prompt, or runtime fallback.                       |
+| `close`        | reason, outcome, completion status, completion authority                                                          | Separate runtime observation from canonical lifecycle completion.                  |
 
 Unknown keys, values outside a closed enum, a non-ASCII label, a timestamp
 outside canonical years 0001–9999, or non-finite/negative latency above
@@ -77,8 +77,13 @@ outside canonical years 0001–9999, or non-finite/negative latency above
 - Tool latency begins at local adapter invocation and ends at its typed result,
   including timeout or unavailable.
 - Director-ready latency begins when the source finalized turn is available
-  and ends when the recommendation is published. Recommendation age is
-  measured at admission or rejection.
+  and ends when the recommendation is published, including concurrency queue
+  time and bounded context construction. Speculative readiness is not included.
+  Recommendation age is measured at admission or rejection.
+- Director shadow comparison is a closed category only. Estimated cost is a
+  bounded non-negative integer in micro-USD supplied by the adapter contract;
+  neither field contains prompt, transcript, recommendation prose, or provider
+  identity, and neither establishes a quality/cost gate.
 - Planned, admitted, generated, scheduled, spoken, interrupted/aborted, and
   canonically delivered move events use the accepted SAV-466 transition
   meanings. Only canonical transcript evidence can emit
@@ -108,6 +113,13 @@ cohort. It reports runtime and measured-turn counts; p50/p95 user-speech to
 first-audio, Director-ready, tool, and interruption-recovery latency; repeated
 canonically delivered probes; fallback and tool-failure rates; stale Director
 recommendations; interruption recovery; and canonical completion.
+
+Director result events and comparison events are reduced separately. A
+comparison does not increment `director_result_count` or add another ready
+latency sample. If a previously ready recommendation is later compared as
+`recommendation_expired`, the comparison contributes one stale result against
+the existing result denominator, so ready-then-expired is one result with a
+stale rate of `1.0`.
 
 Completion counts only `close` events whose authority is
 `canonical_lifecycle`. A runtime-observed close has `completion_status=unknown`

@@ -87,6 +87,43 @@ class InterviewerObservabilityTests(unittest.TestCase):
                     is_interviewer_observability_event({**safe, key: value})
                 )
 
+        director = {
+            "contract_version": INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION,
+            "event_kind": "director",
+            "runtime_correlation_id": f"run:{RUNTIME_UUID}",
+            "turn_correlation_id": f"turn:{TURN_UUID}",
+            "runtime_version": "director-shadow.v1",
+            "rollout_cohort": "shadow",
+            "emitted_at": "2026-08-19T01:20:00.000Z",
+            "recommendation_contract_version": (
+                DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
+            ),
+            "director_policy_version": "interview-director-policy.v1",
+            "director_adapter_version": "interview-director-adapter.fake.v1",
+            "recommendation_outcome": "ready",
+            "recommendation_freshness": "fresh",
+            "recommendation_comparison": "exact_match",
+            "ready_latency_ms": 25,
+            "recommendation_age_ms": 5,
+            "estimated_cost_microusd": 12,
+        }
+        self.assertTrue(is_interviewer_observability_event(director))
+        self.assertFalse(
+            is_interviewer_observability_event(
+                {**director, "director_adapter_version": "x" * 97}
+            )
+        )
+        self.assertFalse(
+            is_interviewer_observability_event(
+                {**director, "recommendation_comparison": "candidate_quality_score"}
+            )
+        )
+        self.assertFalse(
+            is_interviewer_observability_event(
+                {**director, "estimated_cost_microusd": 100_001}
+            )
+        )
+
     def test_emitter_records_timeout_and_stale_recommendation_as_child_spans(self):
         tracer = FakeTracer()
         observability = create_interviewer_observability(
@@ -115,10 +152,14 @@ class InterviewerObservabilityTests(unittest.TestCase):
                 recommendation_contract_version=(
                     DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
                 ),
+                director_policy_version="interview-director-policy.v1",
+                director_adapter_version="interview-director-adapter.fake.v1",
                 recommendation_outcome="stale",
                 recommendation_freshness="stale",
+                recommendation_comparison="recommendation_expired",
                 ready_latency_ms=80,
                 recommendation_age_ms=500,
+                estimated_cost_microusd=25,
             )
         )
 
@@ -127,6 +168,8 @@ class InterviewerObservabilityTests(unittest.TestCase):
         serialized = json.dumps([span.attributes for span in tracer.spans])
         self.assertIn("meelni.interviewer.tool_outcome", serialized)
         self.assertIn("meelni.interviewer.recommendation_freshness", serialized)
+        self.assertIn("meelni.interviewer.recommendation_comparison", serialized)
+        self.assertIn("meelni.interviewer.estimated_cost_microusd", serialized)
         for forbidden in (
             "transcript",
             "tool_payload",

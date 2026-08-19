@@ -56,6 +56,8 @@ _NULLABLE_INTERVIEWER_EVENT_FIELDS = {
     "probe_target_id",
     "ready_latency_ms",
     "recommendation_age_ms",
+    "recommendation_comparison",
+    "estimated_cost_microusd",
     "recovery_latency_ms",
 }
 
@@ -97,10 +99,14 @@ _SAFE_ATTRIBUTES = {
     "meelni.interviewer.tool_outcome",
     "meelni.interviewer.latency_ms",
     "meelni.interviewer.recommendation_contract_version",
+    "meelni.interviewer.director_policy_version",
+    "meelni.interviewer.director_adapter_version",
     "meelni.interviewer.recommendation_outcome",
     "meelni.interviewer.recommendation_freshness",
+    "meelni.interviewer.recommendation_comparison",
     "meelni.interviewer.ready_latency_ms",
     "meelni.interviewer.recommendation_age_ms",
+    "meelni.interviewer.estimated_cost_microusd",
     "meelni.interviewer.latency_kind",
     "meelni.interviewer.interruption_stage",
     "meelni.interviewer.delivery_observation",
@@ -537,7 +543,14 @@ def sanitize_interviewer_semantic_attributes(
     if event_kind == "move":
         nullable_fields.add("probe_target_id")
     elif event_kind == "director":
-        nullable_fields.update({"ready_latency_ms", "recommendation_age_ms"})
+        nullable_fields.update(
+            {
+                "ready_latency_ms",
+                "recommendation_age_ms",
+                "recommendation_comparison",
+                "estimated_cost_microusd",
+            }
+        )
     elif event_kind == "interruption":
         nullable_fields.add("recovery_latency_ms")
     for field in nullable_fields & _NULLABLE_INTERVIEWER_EVENT_FIELDS:
