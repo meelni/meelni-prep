@@ -17,16 +17,24 @@
    message ID plus its deterministically assigned canonical event identity; it
    does not claim that the later publisher has already persisted the event.
    One pending move blocks a second admission.
-5. Speech events advance only lifecycle evidence. The move joins committed
+5. `speech_created` establishes only handle correlation. At the public LLM
+   generation boundary, the adapter projects monotonic time again and admits
+   generation only while the move remains legal. Speech events then advance
+   only lifecycle evidence. The move joins committed
    probe history only after a successful canonical transcript write positively
    correlated through the move, speech handle, assistant item, and event ID.
    An optional post-success interruption-marker observer may upgrade a
    correlated unheard abort, but it cannot settle the queue or session.
-6. The pre-deadline closing band or explicit exit may admit a graceful close.
-   At the deadline the controller admits no move and emits no snapshot; the
-   existing watchdog fences, settles, and terminates without waiting for model
-   speech. Runtime failures disable the adapter for that session and leave the
-   existing transcript/deadline/settlement paths running.
+6. The pre-deadline closing band or explicit exit may admit a graceful close;
+   terminal state follows canonical close delivery. A completed turn that
+   projects elapsed, and every already-terminal turn, returns normally from
+   `on_user_turn_completed`; an empty result at the public LLM node lets
+   LiveKit commit the finalized user item through its normal
+   `conversation_item_added` path without model speech. At the deadline the
+   controller admits no move and emits no snapshot; the existing watchdog
+   fences, settles, and terminates without waiting for model speech. Runtime
+   failures disable the adapter for that session and leave the existing
+   transcript/deadline/settlement paths running.
 
 ## Decisions
 
@@ -46,6 +54,11 @@
   inspectable.
 - The controller computes time bands. The model never receives instructions to
   estimate elapsed or remaining time.
+- A canonically delivered transition at the final objective/topic exhausts the
+  catalog. The next move is close even in warning, so the clamped catalog tail
+  cannot repeat transitions indefinitely.
+- After terminal, recognized shape-valid events at the exact revision return
+  the identical state. Transcript persistence remains independently owned.
 
 ## Compatibility And Rollback
 

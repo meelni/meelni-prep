@@ -10,6 +10,7 @@ from typing import Literal, Mapping
 
 from shared.interview_controller import (
     CandidateTurnCompleted,
+    ClockObserved,
     ControllerError,
     ControllerState,
     DeliveryEvidence,
@@ -60,6 +61,48 @@ class ControllerAdapterStatus:
     contract_version: str
     enabled: bool
     failure_reason: str | None
+
+
+class ReplySuppressionGate:
+    """Turn-local gate consumed at the public LiveKit LLM boundary."""
+
+    def __init__(self) -> None:
+        self._message_ids: dict[str, None] = {}
+
+    def arm(self, message_id: str) -> None:
+        if not isinstance(message_id, str) or not message_id:
+            raise ControllerError("invalid_adapter_input")
+        self._message_ids[message_id] = None
+        while len(self._message_ids) > MAX_PENDING_CORRELATIONS:
+            self._message_ids.pop(next(iter(self._message_ids)))
+
+    def consume_for_items(self, items: object) -> bool:
+        if not isinstance(items, (list, tuple)):
+            return False
+        for item in reversed(items):
+            if getattr(item, "role", None) != "user":
+                continue
+            message_id = getattr(item, "id", None)
+            if not isinstance(message_id, str):
+                return False
+            if message_id not in self._message_ids:
+                return False
+            self._message_ids.pop(message_id, None)
+            return True
+        return False
+
+
+def allow_controller_generation(
+    adapter: "InterviewControllerAdapter",
+    suppression_gate: ReplySuppressionGate,
+    chat_items: object,
+    *,
+    monotonic_ms: int | None = None,
+) -> bool:
+    """Resolve the provider-free decision used by the public LiveKit LLM node."""
+    if suppression_gate.consume_for_items(chat_items):
+        return False
+    return adapter.authorize_generation(monotonic_ms=monotonic_ms)
 
 
 class InterviewControllerAdapter:
@@ -155,20 +198,41 @@ class InterviewControllerAdapter:
         if not self.enabled or state is None or state.pending_move_id is None:
             return
         try:
-            move_id = state.pending_move_id
-            transition = reduce_controller(
+            _required_identifier(handle_id)
+            self._speech_move_ids[handle_id] = state.pending_move_id
+        except Exception as error:
+            self._disable(error)
+
+    def authorize_generation(self, *, monotonic_ms: int | None = None) -> bool:
+        """Observe the canonical clock before allowing provider generation."""
+        state = self._state
+        if not self.enabled or state is None:
+            return True
+        try:
+            current_ms = _monotonic_ms(monotonic_ms)
+            state = reduce_controller(
+                state,
+                ClockObserved(
+                    expected_state_revision=state.state_revision,
+                    monotonic_ms=current_ms,
+                ),
+            ).state
+            self._state = state
+            if state.terminal or state.pending_move_id is None:
+                return False
+            self._state = reduce_controller(
                 state,
                 MoveStageAdvanced(
                     expected_state_revision=state.state_revision,
-                    move_id=move_id,
+                    move_id=state.pending_move_id,
                     stage="generated",
-                    monotonic_ms=_monotonic_ms(monotonic_ms),
+                    monotonic_ms=current_ms,
                 ),
-            )
-            self._state = transition.state
-            self._speech_move_ids[handle_id] = move_id
+            ).state
+            return True
         except Exception as error:
             self._disable(error)
+            return True
 
     def speech_finished(
         self,
@@ -186,7 +250,7 @@ class InterviewControllerAdapter:
             return
         try:
             move = _find_move(state, move_id)
-            if move.stage == "canonically_delivered":
+            if move.stage in ("aborted", "interrupted", "canonically_delivered"):
                 return
             current_ms = _monotonic_ms(monotonic_ms)
             for message_id in assistant_message_ids:
@@ -527,6 +591,12 @@ def _required_string(value: Mapping[str, object], key: str) -> str:
     if not isinstance(candidate, str) or not candidate:
         raise ControllerError("invalid_adapter_input")
     return candidate
+
+
+def _required_identifier(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ControllerError("invalid_adapter_input")
+    return value
 
 
 def _required_integer(value: Mapping[str, object], key: str) -> int:

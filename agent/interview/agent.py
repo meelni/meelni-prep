@@ -27,7 +27,6 @@ from livekit.agents import (
     cli,
     room_io,
     SpeechCreatedEvent,
-    StopResponse,
 )
 from livekit.agents.llm import ChatMessage
 from livekit.plugins import silero, cartesia
@@ -46,6 +45,8 @@ from shared.interviewer_observability import (
 )
 from shared.interview_controller_adapter import (
     InterviewControllerAdapter,
+    ReplySuppressionGate,
+    allow_controller_generation,
     create_interview_controller_adapter,
     measured_turn_duration_ms,
     resolve_controller_runtime_mode,
@@ -174,6 +175,7 @@ class ControlledInterviewAgent(InterviewAgent):
     ) -> None:
         super().__init__(instructions=instructions)
         self._controller_adapter = controller_adapter
+        self._reply_suppression_gate = ReplySuppressionGate()
 
     async def on_user_turn_completed(self, turn_ctx, new_message: ChatMessage) -> None:
         state = self._controller_adapter.state
@@ -195,13 +197,31 @@ class ControlledInterviewAgent(InterviewAgent):
         if directive is None:
             return
         if directive.suppress_reply:
-            raise StopResponse()
+            self._reply_suppression_gate.arm(message_id)
+            # Mutating the turn-local context invalidates any preemptive reply.
+            turn_ctx.add_message(
+                role="system",
+                content="CONTROLLER_SUPPRESS_REPLY",
+                id=f"controller:suppress:{message_id}",
+            )
+            return
         if directive.instruction is not None:
             turn_ctx.add_message(
                 role="system",
                 content=directive.instruction,
                 id=f"controller:{directive.move_id}",
             )
+
+    def llm_node(self, chat_ctx, tools, model_settings):
+        # Returning an empty generation keeps the public scheduled pipeline alive
+        # long enough to commit and emit its finalized user item exactly once.
+        if not allow_controller_generation(
+            self._controller_adapter,
+            self._reply_suppression_gate,
+            chat_ctx.items,
+        ):
+            return None
+        return super().llm_node(chat_ctx, tools, model_settings)
 
 
 def create_interview_agent(

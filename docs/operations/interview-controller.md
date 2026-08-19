@@ -19,6 +19,12 @@ The elapsed reducer event can abort an undelivered pending move and fence local
 controller state. It schedules no speech, emits no prompt snapshot, and never
 delays or replaces the existing hard-deadline watchdog.
 
+The adapter observes the monotonic clock again at the public LiveKit LLM node,
+before provider generation. A normal/warning move that has crossed into closing
+is aborted and leaves only `close` admissible; a move at elapsed is fenced. A
+pre-deadline close may still generate. `speech_created` alone establishes
+correlation and does not advance the move to generated.
+
 ## Flag and fallback
 
 The flag is `MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED`. Only the exact string
@@ -50,6 +56,18 @@ identity assigned by the runtime. This is a runtime-final turn revision, not a
 claim of durable persistence. The later successful publisher reconciles the
 same identity.
 
+Turns that project elapsed and already-terminal turns do not raise
+`StopResponse` from this hook: pinned LiveKit Agents 1.6.5 would return before
+committing the finalized user item. Instead, the adapter arms a turn-local
+suppression identity, changes the temporary context to invalidate preemptive
+generation, and returns normally. The public `llm_node` consumes that exact
+identity and returns an empty generation. LiveKit then schedules its normal
+pipeline, commits/emits the finalized user `ChatMessage` once, and the existing
+`conversation_item_added` handler queues it for canonical persistence without
+interviewer output. A normal pre-deadline explicit exit still admits one
+graceful `candidate_requested_close`; canonical close delivery then makes the
+controller terminal.
+
 An interviewer move commits only in the `TranscriptIngestQueue.publisher`
 success callback, after positive move-to-speech-handle-to-assistant-item-to-event
 correlation. Unrelated events are ignored. If one handle exposes multiple
@@ -61,6 +79,16 @@ successful response. It accepts only the active writer's interviewer marker
 with reason `no_provider_confirmed_prefix`, and can upgrade the correlated move
 from aborted to interrupted. Observer failure is non-authoritative: it cannot
 change queue settlement.
+
+Once terminal, every recognized shape-valid event with the exact state revision
+is an exact controller-state no-op, including clock, writer reconnect,
+settlement replay, move stage, transcript evidence, interruption, and candidate
+turn events. This prevents late events from rewriting clock, lifecycle, writer,
+ledger, or revision while transcript persistence continues independently.
+
+After a canonically delivered transition reaches the final objective/topic,
+the catalog is exhausted and the next admitted move is close. Warning policy
+does not override this fence.
 
 ## Provider-free verification
 

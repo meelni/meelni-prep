@@ -415,7 +415,10 @@ def parse_controller_state(raw: str | dict[str, Any]) -> ControllerState:
 
 def reduce_controller(state: ControllerState, event: ControllerEvent) -> ControllerTransition:
     _validate_state(state)
+    _validate_event_shape(event)
     _require_revision(state, event.expected_state_revision)
+    if state.terminal:
+        return ControllerTransition(state)
     if isinstance(event, CandidateTurnCompleted):
         return _complete_candidate_turn(state, event)
     if isinstance(event, ClockObserved):
@@ -466,19 +469,6 @@ def classify_candidate_turn(
 def _complete_candidate_turn(
     state: ControllerState, event: CandidateTurnCompleted
 ) -> ControllerTransition:
-    _require_identifier(event.turn_id, "invalid_turn")
-    _require_identifier(event.transcript_revision, "invalid_turn")
-    if not isinstance(event.text, str) or len(event.text) > 12_000:
-        raise ControllerError("invalid_turn")
-    if type(event.duration_ms) is not int or event.duration_ms < 0:
-        raise ControllerError("invalid_turn")
-    if (
-        type(event.requested_clarification) is not bool
-        or type(event.requested_exit) is not bool
-    ):
-        raise ControllerError("invalid_turn")
-    if state.terminal:
-        return ControllerTransition(state)
     if event.turn_id == state.last_finalized_candidate_turn_id:
         raise ControllerError("stale_candidate_turn")
     if state.pending_move_id is not None:
@@ -567,9 +557,21 @@ def _select_move(
     requested_exit: bool,
 ) -> tuple[MoveType, str, int, int, ControllerMove | None]:
     recovery = _last_recoverable_move(state)
-    if requested_exit or state.clock.band == "closing" or state.close_state == "requested":
+    if (
+        requested_exit
+        or state.clock.band == "closing"
+        or state.close_state == "requested"
+    ):
         reason = "candidate_requested_close" if requested_exit else "deadline_close"
         return "close", reason, state.topic_index, state.objective_index, None
+    if _catalog_exhausted(state):
+        return (
+            "close",
+            "catalog_exhausted",
+            state.topic_index,
+            state.objective_index,
+            None,
+        )
     if recovery is not None:
         return (
             recovery.move_type,
@@ -815,11 +817,23 @@ def _advance_clock(
     )
     changes: dict[str, Any] = {"clock": clock}
     if band == "closing" and not state.terminal:
+        pending = state.pending_move_id
+        ledger = state.move_ledger
+        interruption_state = state.interruption_state
+        if pending is not None and _find_move(state, pending).move_type != "close":
+            ledger = _abort_pending_for_fence(replace(state, clock=clock))
+            pending = None
+            interruption_state = "clear"
         changes.update(
             phase="closing",
             close_state="requested" if state.close_state == "open" else state.close_state,
+            move_ledger=ledger,
+            pending_move_id=pending,
+            interruption_state=interruption_state,
             warning_state=(
-                "skipped" if state.warning_state == "pending" else state.warning_state
+                "skipped"
+                if state.warning_state in ("pending", "admitted")
+                else state.warning_state
             ),
         )
     elif band == "elapsed":
@@ -939,6 +953,20 @@ def _next_topic_and_objective(state: ControllerState) -> tuple[int, int]:
     return topic_index, objective_index
 
 
+def _catalog_exhausted(state: ControllerState) -> bool:
+    if (
+        state.topic_index != len(state.topic_catalog) - 1
+        or state.objective_index != len(state.round_objectives) - 1
+    ):
+        return False
+    return any(
+        move.stage == "canonically_delivered"
+        and move.move_type == "transition"
+        and move.topic == state.current_topic
+        for move in state.move_ledger
+    )
+
+
 def _last_recoverable_move(state: ControllerState) -> ControllerMove | None:
     if state.interruption_state != "recovery_pending":
         return None
@@ -1004,6 +1032,52 @@ def _revised(state: ControllerState, **changes: Any) -> ControllerState:
 def _require_revision(state: ControllerState, expected: int) -> None:
     if type(expected) is not int or expected != state.state_revision:
         raise ControllerError("stale_state")
+
+
+def _validate_event_shape(event: ControllerEvent) -> None:
+    if isinstance(event, CandidateTurnCompleted):
+        _require_identifier(event.turn_id, "invalid_turn")
+        _require_identifier(event.transcript_revision, "invalid_turn")
+        if not isinstance(event.text, str) or len(event.text) > 12_000:
+            raise ControllerError("invalid_turn")
+        if type(event.duration_ms) is not int or event.duration_ms < 0:
+            raise ControllerError("invalid_turn")
+        if (
+            type(event.requested_clarification) is not bool
+            or type(event.requested_exit) is not bool
+        ):
+            raise ControllerError("invalid_turn")
+    elif isinstance(event, (ClockObserved, TerminalSettled)):
+        pass
+    elif isinstance(event, MoveStageAdvanced):
+        _require_identifier(event.move_id, "invalid_event")
+        if event.stage not in ("generated", "scheduled", "spoken"):
+            raise ControllerError("invalid_event")
+    elif isinstance(event, SpeechInterrupted):
+        _require_identifier(event.move_id, "invalid_event")
+        if event.persisted_marker is not None:
+            if not isinstance(event.persisted_marker, DeliveryEvidence):
+                raise ControllerError("invalid_event")
+            _validate_evidence_shape(event.persisted_marker, code="invalid_event")
+            if event.persisted_marker.evidence_type != "interruption_marker":
+                raise ControllerError("invalid_event")
+    elif isinstance(event, PersistedTranscriptEvidence):
+        _require_identifier(event.move_id, "invalid_event")
+        if not isinstance(event.evidence, DeliveryEvidence):
+            raise ControllerError("invalid_event")
+        _validate_evidence_shape(event.evidence, code="invalid_event")
+        if event.evidence.evidence_type != "transcript_event":
+            raise ControllerError("invalid_event")
+    elif isinstance(event, WriterReconnected):
+        _require_identifier(event.writer_id, "invalid_writer")
+        if type(event.writer_generation) is not int or event.writer_generation <= 0:
+            raise ControllerError("invalid_writer")
+        if type(event.lifecycle_version) is not int or event.lifecycle_version <= 0:
+            raise ControllerError("invalid_lifecycle")
+    else:
+        raise ControllerError("unknown_event")
+    if type(event.monotonic_ms) is not int or event.monotonic_ms < 0:
+        raise ControllerError("invalid_event")
 
 
 def _candidate_digest(normalized: str) -> str:
@@ -1214,6 +1288,7 @@ def _validate_move_ledger(state: ControllerState) -> None:
         "close": (
             "deadline_close",
             "candidate_requested_close",
+            "catalog_exhausted",
             "controller_fallback",
         ),
     }
@@ -1264,29 +1339,31 @@ def _validate_move_ledger(state: ControllerState) -> None:
             _validate_evidence_shape(evidence)
 
 
-def _validate_evidence_shape(evidence: DeliveryEvidence) -> None:
-    _require_identifier(evidence.event_id, "invalid_state")
-    _require_identifier(evidence.writer_id, "invalid_state")
+def _validate_evidence_shape(
+    evidence: DeliveryEvidence, *, code: str = "invalid_state"
+) -> None:
+    _require_identifier(evidence.event_id, code)
+    _require_identifier(evidence.writer_id, code)
     if (
         type(evidence.writer_generation) is not int
         or evidence.writer_generation <= 0
         or type(evidence.sequence) is not int
         or evidence.sequence <= 0
     ):
-        raise ControllerError("invalid_state")
+        raise ControllerError(code)
     if evidence.evidence_type == "transcript_event":
         if evidence.delivery_state not in ("delivered", "partially_delivered"):
-            raise ControllerError("invalid_state")
+            raise ControllerError(code)
         if evidence.reason is not None:
-            raise ControllerError("invalid_state")
+            raise ControllerError(code)
     elif evidence.evidence_type == "interruption_marker":
         if (
             evidence.reason != "no_provider_confirmed_prefix"
             or evidence.delivery_state is not None
         ):
-            raise ControllerError("invalid_state")
+            raise ControllerError(code)
     else:
-        raise ControllerError("invalid_state")
+        raise ControllerError(code)
 
 
 def _timedelta_milliseconds(value: timedelta) -> int:

@@ -212,6 +212,12 @@ any active undelivered move and fences its operational state; the existing
 hard-deadline watchdog remains the exclusive settlement and termination
 authority.
 
+The runtime projects the clock again at the public LLM generation boundary.
+Crossing into closing aborts a pending non-close move before provider
+generation, while elapsed aborts and fences every pending move. A close already
+admitted inside the pre-deadline closing band remains eligible. The model never
+owns this check.
+
 A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
 candidate message ID plus the canonical transcript event identity assigned to
 that message. This identity is not represented as durably persisted at hook
@@ -219,6 +225,17 @@ time: LiveKit invokes the hook before the normal conversation-item publisher.
 The later persisted publisher reconciles that same identity. Each snapshot is
 limited to 2,048 UTF-8 bytes, includes no more than eight delivered moves, and
 permits one substantive interviewer question.
+
+A normal pre-deadline explicit exit admits one graceful
+`candidate_requested_close` and becomes terminal only after canonical close
+delivery. A completed turn that instead projects elapsed, and every
+already-terminal turn, returns normally from the pinned LiveKit user-turn hook
+and uses an empty public-LLM-node result so LiveKit still commits/emits the
+finalized user item through `conversation_item_added` exactly once. Raising
+`StopResponse` for those suppressed turns is forbidden because it bypasses that
+commit in LiveKit Agents 1.6.5. After terminal, every recognized shape-valid
+event at the exact revision is an identical state no-op; transcript persistence
+continues under its independent authority.
 
 ### Move lifecycle
 
@@ -275,8 +292,12 @@ creation/expiry, and idempotency key.
 
 Reason codes are closed by move type: probe/deepen reasoning,
 clarify/resolve ambiguity, challenge/test tradeoff, transition/advance round,
-and close/deadline or candidate request. `controller_fallback` is permitted for
-every move type. Probe, clarify, and challenge require a finalized source turn.
+and close/deadline, candidate request, or catalog exhausted.
+`controller_fallback` is permitted for every move type. Probe, clarify, and
+challenge require a finalized source turn. Once a delivered transition reaches
+the final objective/topic, the catalog is exhausted and the next policy move is
+close, including during warning; clamped tail indexes cannot authorize another
+transition.
 
 The live interviewer may phrase an admitted move naturally but may not change
 its type/target, add another substantive question, coach, hint, score, or speak

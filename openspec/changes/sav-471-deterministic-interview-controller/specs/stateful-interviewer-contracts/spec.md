@@ -33,6 +33,13 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 - **THEN** warning, closing, or elapsed state changes exactly once
 - **AND** allowed moves exclude actions that cannot fit the remaining band
 
+#### Scenario: Generation reaches the public runtime boundary
+
+- **WHEN** a controller-admitted reply reaches the public LiveKit LLM node
+- **THEN** the adapter observes monotonic time again before provider generation
+- **AND** a non-close move crossing into closing is aborted without speech
+- **AND** any move reaching elapsed is fenced without speech or snapshot
+
 #### Scenario: Deadline has elapsed
 
 - **WHEN** projected remaining time reaches zero
@@ -63,6 +70,41 @@ interrupted, aborted, and canonically delivered move identities separately.
 - **THEN** the move is committed exactly once
 - **AND** later candidate turns cannot repeat it unless an explicit,
   inspectable clarification reason permits that intent
+
+#### Scenario: The final catalog transition was delivered
+
+- **WHEN** the controller is at the final objective and topic and its transition
+  into that tail was canonically delivered
+- **THEN** the next admitted move is `close`
+- **AND** warning policy cannot admit another transition against the same tail
+
+### Requirement: Terminal And Suppressed Turns Preserve Transcript Evidence
+
+The system SHALL keep controller authority byte-stable after terminal while
+allowing finalized candidate transcript evidence to follow the existing
+conversation-item persistence path.
+
+#### Scenario: Candidate turn crosses elapsed or arrives after terminal
+
+- **WHEN** the controller suppresses a reply because the completed turn reaches
+  elapsed or the state was already terminal
+- **THEN** the hook returns normally and the public LLM node produces an empty
+  generation
+- **AND** LiveKit commits and emits the finalized candidate item exactly once
+- **AND** no interviewer reply is generated
+
+#### Scenario: Candidate explicitly exits before the deadline
+
+- **WHEN** a finalized candidate turn requests exit while time remains
+- **THEN** the controller admits one graceful `close` move
+- **AND** terminal state begins only after canonical close delivery
+
+#### Scenario: A legal event replays after terminal
+
+- **WHEN** any recognized controller event has valid shape and the exact
+  terminal state revision
+- **THEN** the reducer returns the identical state object with no snapshot
+- **AND** clock, writer, lifecycle, ledger, and revision remain unchanged
 
 ### Requirement: Disabled State Preserves Current Runtime Behavior
 
