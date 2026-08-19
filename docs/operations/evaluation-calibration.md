@@ -304,7 +304,7 @@ privileged launcher's independently reviewed binary digest and signature pin.
 
 The live child does not execute through `tsx` or import from mutable
 `node_modules`. `npm run calibration:build-runtime` reproducibly bundles the
-complete 417-input runtime into
+complete 421-input runtime into
 `scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
 remain external. `npm run calibration:verify-runtime` must reproduce the exact
 tracked bundle and `docs/evidence/sav-248-v32-runtime-manifest.json`. Before

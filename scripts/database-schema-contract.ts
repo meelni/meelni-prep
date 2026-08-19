@@ -69,6 +69,8 @@ export const MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT =
 // dimension-coverage score tuple closes around total-bearing scorecards.
 export const TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT =
   "2275da50d525599642694689c989f787c6751de9f995a70abc03629a79844683";
+export const QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT =
+  "c8cc178009d344b489eafef781a099c2411f9a173646784be7f02187b68d6dfa";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =

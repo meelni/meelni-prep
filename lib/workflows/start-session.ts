@@ -11,11 +11,19 @@ import {
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
 import {
+  QUESTION_RANKER_VERSION,
+  QUESTION_RANKING_CONTRACT_VERSION,
+  addQuestionSelectionToStartConfig,
+  canonicalQuestionTypeLabel,
+  createExplicitQuestionSelection,
+  createRankedQuestionSelection,
   deriveInterviewDeadlineAt,
   isValidRoundType,
   normalizeQuestionRound,
   normalizeInterviewDurationMinutes,
-  questionTypeStorageAliasesForRound,
+  rankInterviewQuestions,
+  type DifficultyLevel,
+  type PersistedQuestionSelectionV1,
   serializeInterviewDeadlineAt,
   type RoundType,
 } from "@/lib/internal/core";
@@ -27,11 +35,17 @@ import {
   type LiveKitInterviewProvider,
 } from "@/lib/internal/integrations";
 import {
-  getActiveQuestionById,
-  getRandomQuestion,
-  getRandomRecentQuestion,
+  getActiveQuestionByIdForLaunch,
   type QuestionBankRecord,
 } from "@/lib/db/questions";
+import {
+  getQuestionRankingContext,
+  type QuestionRankingContext,
+} from "@/lib/db/question-ranking";
+import {
+  INTERACTIVE_READ_STATEMENT_TIMEOUT_MS,
+  withDeadline,
+} from "@/lib/http/deadline";
 import {
   createDrizzleInterviewStartStore,
   InterviewProvisioningLeaseLostError,
@@ -77,13 +91,6 @@ import {
   type InterviewStartStageOutcome,
 } from "@/lib/operations/interview-start-slo";
 
-const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
-  behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
-  product_sense: [...questionTypeStorageAliasesForRound("product_sense")],
-  execution: [...questionTypeStorageAliasesForRound("execution")],
-  strategy: [...questionTypeStorageAliasesForRound("strategy")],
-};
-
 const INTERVIEW_START_BUSY_RETRY_MS = 1_000;
 
 export interface StartInterviewSessionUser {
@@ -120,15 +127,14 @@ export interface StartInterviewSessionDeps {
     reservation: ReserveCreditInput;
   }): Promise<PersistedStableInterviewStart>;
   getQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
-  getRandomQuestion(
-    questionTypes: string[],
-    company?: string
-  ): Promise<QuestionBankRecord | null>;
-  getRandomRecentQuestion(
-    days: number,
-    questionTypes: string[],
-    company?: string
-  ): Promise<QuestionBankRecord | null>;
+  getQuestionRankingContext(input: {
+    userId: string;
+    request: {
+      roundType: RoundType;
+      difficulty: DifficultyLevel;
+      company: string | null;
+    };
+  }): Promise<QuestionRankingContext>;
   ensureTrialGrant(userId: string): Promise<unknown>;
   releaseReservation(input: {
     reservationKey: string;
@@ -278,6 +284,7 @@ export async function startInterviewSessionWorkflow(
     });
     let question = existing?.question;
     let resolvedRoundType = existing?.roundType ?? roundType;
+    let questionSelection: PersistedQuestionSelectionV1 | null = null;
     if (!question) {
       const selection = await measureStartStage(
         deps,
@@ -287,7 +294,9 @@ export async function startInterviewSessionWorkflow(
             roundType,
             questionId,
             company,
-            recentDays: getRecentDays(preferences),
+            difficulty: runtimeConfig.difficulty,
+            userId: input.user.id,
+            referenceTime: deps.now(),
             deps,
           }),
         (result) => (result.ok ? "succeeded" : "terminal")
@@ -296,33 +305,40 @@ export async function startInterviewSessionWorkflow(
       if (!selection.value) throw new Error("interview_start_question_missing");
       question = selection.value;
       resolvedRoundType = selection.roundType;
+      questionSelection = selection.selection;
     }
     const startedAt = existing?.startedAt ?? deps.now();
     const startConfig =
       existing?.config ??
-      addInterviewBriefV2ToStartConfig(
-        { ...runtimeConfig },
-        compileInterviewBriefV2({
-          sessionId: startAttemptId,
-          sessionStartFingerprint: `sha256:${requestFingerprint}`,
-          deadlineAt: serializeInterviewDeadlineAt(
-            deriveInterviewDeadlineAt({
-              startedAt,
-              durationMinutes: runtimeConfig.duration,
-            })
-          ),
-          roundType: resolvedRoundType,
-          difficulty: runtimeConfig.difficulty,
-          durationMinutes: normalizeInterviewDurationMinutes(
-            runtimeConfig.duration
-          ),
-          selectedQuestion: {
-            id: question.id,
-            text: question.questionText,
-            company: question.company,
-            type: question.questionType,
-          },
-        })
+      addQuestionSelectionToStartConfig(
+        addInterviewBriefV2ToStartConfig(
+          { ...runtimeConfig },
+          compileInterviewBriefV2({
+            sessionId: startAttemptId,
+            sessionStartFingerprint: `sha256:${requestFingerprint}`,
+            deadlineAt: serializeInterviewDeadlineAt(
+              deriveInterviewDeadlineAt({
+                startedAt,
+                durationMinutes: runtimeConfig.duration,
+              })
+            ),
+            roundType: resolvedRoundType,
+            difficulty: runtimeConfig.difficulty,
+            durationMinutes: normalizeInterviewDurationMinutes(
+              runtimeConfig.duration
+            ),
+            selectedQuestion: {
+              id: question.id,
+              text: question.questionText,
+              company: question.company,
+              type: question.questionType,
+            },
+          })
+        ),
+        questionSelection ??
+          createExplicitQuestionSelection(
+            questionSnapshot(question, resolvedRoundType)
+          )
       );
     start = await measureStartStage(
       deps,
@@ -860,9 +876,8 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       await trackReservedCreditEvents(reservation, result.credit);
       return result.start;
     },
-    getQuestionById: getActiveQuestionById,
-    getRandomQuestion,
-    getRandomRecentQuestion,
+    getQuestionById: getActiveQuestionByIdForLaunch,
+    getQuestionRankingContext,
     ensureTrialGrant: async (userId) => {
       if (!persistentCreditLedger) {
         return;
@@ -1096,19 +1111,24 @@ async function selectQuestion({
   roundType,
   questionId,
   company,
-  recentDays,
+  difficulty,
+  userId,
+  referenceTime,
   deps,
 }: {
   roundType: RoundType;
   questionId?: string;
   company?: string;
-  recentDays?: number;
+  difficulty: DifficultyLevel;
+  userId: string;
+  referenceTime: Date;
   deps: StartInterviewSessionDeps;
 }): Promise<
   | {
       ok: true;
       value: QuestionBankRecord | null;
       roundType: RoundType;
+      selection: PersistedQuestionSelectionV1;
     }
   | StartInterviewSessionErrorResult
 > {
@@ -1142,49 +1162,79 @@ async function selectQuestion({
       ok: true,
       value: question,
       roundType: selectedQuestionRoundType,
+      selection: createExplicitQuestionSelection(
+        questionSnapshot(question, selectedQuestionRoundType)
+      ),
     };
   }
 
-  const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
-  let question = recentDays
-    ? await deps.getRandomRecentQuestion(recentDays, dbQuestionTypes, company)
-    : null;
-
-  // Recency is a preference, not an availability requirement. A sparse or
-  // older question bank should still let the candidate start an interview.
-  if (!question) {
-    question = await deps.getRandomQuestion(dbQuestionTypes, company);
-  }
-
-  if (!question) {
-    return {
-      ok: false,
-      status: 404,
-      body: {
-        error: company
-          ? "no_company_questions_available"
-          : "no_questions_available",
-        message: company
-          ? `We couldn't find an active ${company} question for this interview type. Choose another company or interview type and try again.`
-          : "We couldn't find an active question for this interview type. Choose another interview type and try again.",
-        retryable: false,
-      },
+  const request = {
+    roundType,
+    difficulty,
+    company: company?.trim() || null,
+  };
+  let context: QuestionRankingContext;
+  try {
+    context = await withDeadline(
+      "question ranking context",
+      deps.getQuestionRankingContext({ userId, request }),
+      INTERACTIVE_READ_STATEMENT_TIMEOUT_MS
+    );
+  } catch {
+    context = {
+      catalogVersion: "question-catalog:unavailable",
+      candidates: [],
+      history: [],
+      feedbackSignals: [],
     };
   }
+  const ranking = rankInterviewQuestions({
+    contractVersion: QUESTION_RANKING_CONTRACT_VERSION,
+    rankerVersion: QUESTION_RANKER_VERSION,
+    catalogVersion: context.catalogVersion,
+    referenceTime: referenceTime.toISOString(),
+    request,
+    candidates: context.candidates,
+    history: context.history,
+    feedbackSignals: context.feedbackSignals,
+  });
+  const selected = ranking.selected;
+  if (!selected) throw new Error("interview_start_question_missing");
+  const questionType =
+    canonicalQuestionTypeLabel(selected.roundType) ?? selected.roundType;
+  const question: QuestionBankRecord = {
+    id: selected.id,
+    company: selected.company,
+    questionText: selected.text,
+    questionType,
+    askedAt: selected.askedAt ? new Date(selected.askedAt) : null,
+    isActive: true,
+    createdAt: null,
+  };
 
-  return { ok: true, value: question, roundType };
+  return {
+    ok: true,
+    value: question,
+    roundType: selected.roundType,
+    selection: createRankedQuestionSelection({
+      candidate: selected,
+      questionType,
+      receipt: ranking.receipt,
+    }),
+  };
 }
 
-function getRecentDays(config: InterviewClientPreferences): number | undefined {
-  const questionPreference = config.questionPreference;
-
-  if (!isRecord(questionPreference)) {
-    return undefined;
-  }
-
-  return typeof questionPreference.recentDays === "number"
-    ? questionPreference.recentDays
-    : undefined;
+function questionSnapshot(question: QuestionBankRecord, roundType: RoundType) {
+  return {
+    id: question.id,
+    company: question.company,
+    text: question.questionText,
+    type: question.questionType,
+    roundType,
+    askedAt: question.askedAt?.toISOString() ?? null,
+    isActive: true as const,
+    createdAt: question.createdAt?.toISOString() ?? null,
+  };
 }
 
 export function fingerprintStartRequest(
