@@ -19,7 +19,10 @@ or failed telemetry is a no-op. The runtime never awaits export.
 conversation spans. Both metadata-only and content-enabled modes keep
 `interviewer_observability_session` and `interviewer_semantic_event` spans
 content-free. The semantic sanitizer accepts only the closed
-`meelni.interviewer.*` allowlist.
+`meelni.interviewer.*` namespace, reconstructs the exact event or session
+envelope, validates every value, and drops the whole semantic span when any
+field is malformed. Non-semantic conversation spans cannot export semantic
+attributes.
 
 These events are observations, not authority. They cannot admit a move, alter
 speech, write or settle the canonical transcript, close a session, or select a
@@ -39,24 +42,28 @@ Every event contains exactly:
 
 Correlation IDs are generated for observability only. They must not encode or
 copy a user, candidate, session, room, writer, message, provider request, or
-job identifier. A `probe_target_id` is a bounded semantic taxonomy identifier,
-not question, answer, prompt, or transcript text.
+job identifier. Runtime and turn values use `run:` or `turn:` plus a random
+lowercase UUID-shaped token. A `probe_target_id`, when present, uses `probe:`
+plus 32–64 lowercase hexadecimal characters derived without content. It is an
+opaque taxonomy correlation, not a readable taxonomy label, question, answer,
+prompt, identity, or transcript text.
 
 ## Event kinds
 
-| Kind | Closed fields | Purpose |
-| --- | --- | --- |
-| `phase` | `phase` | Observe opening, primary question, follow-up, transition, closing, or closed. |
-| `move` | move contract version, stage, type, nullable probe target ID | Correlate planned through canonically delivered moves without prompt text. |
-| `tool` | tool contract version, tool name, typed outcome, latency | Observe a local interviewer-tool result without arguments or result content. |
-| `director` | recommendation contract version, outcome, freshness, ready latency, age | Observe asynchronous Director readiness/admission without recommendation content. |
-| `latency` | latency kind and milliseconds | Record measured user-speech or controller-decision to first audio. |
-| `interruption` | stage, delivery observation, nullable recovery latency | Observe interruption and recovery without speech text or provider IDs. |
-| `fallback` | closed reason and source | Observe policy, Director, tool, prompt, or runtime fallback. |
-| `close` | reason, outcome, completion status, completion authority | Separate runtime observation from canonical lifecycle completion. |
+| Kind           | Closed fields                                                           | Purpose                                                                           |
+| -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `phase`        | `phase`                                                                 | Observe opening, primary question, follow-up, transition, closing, or closed.     |
+| `move`         | move contract version, stage, type, nullable probe target ID            | Correlate planned through canonically delivered moves without prompt text.        |
+| `tool`         | tool contract version, tool name, typed outcome, latency                | Observe a local interviewer-tool result without arguments or result content.      |
+| `director`     | recommendation contract version, outcome, freshness, ready latency, age | Observe asynchronous Director readiness/admission without recommendation content. |
+| `latency`      | latency kind and milliseconds                                           | Record measured user-speech or controller-decision to first audio.                |
+| `interruption` | stage, delivery observation, nullable recovery latency                  | Observe interruption and recovery without speech text or provider IDs.            |
+| `fallback`     | closed reason and source                                                | Observe policy, Director, tool, prompt, or runtime fallback.                      |
+| `close`        | reason, outcome, completion status, completion authority                | Separate runtime observation from canonical lifecycle completion.                 |
 
-Unknown keys, unbounded labels, non-finite/negative latency, or values outside a
-closed enum invalidate the entire event.
+Unknown keys, values outside a closed enum, a non-ASCII label, a timestamp
+outside canonical years 0001–9999, or non-finite/negative latency above
+86,400,000 milliseconds invalidate the entire event.
 
 ## Measurement anchors
 
@@ -106,19 +113,28 @@ Completion counts only `close` events whose authority is
 `canonical_lifecycle`. A runtime-observed close has `completion_status=unknown`
 and cannot raise or lower completion rate.
 
+Interruption recovery is correlated only by a non-null opaque turn ID. An
+interrupted turn contributes at most once, accepts at most one terminal
+`recovered`/`unrecovered` state, and ignores duplicate, unpaired, or null-ID
+recovery events. Every public rate is bounded to `[0, 1]`.
+
 The comparison function requires caller-supplied minimum samples and regression
 thresholds. It compares shadow/canary versions with an explicitly named
 current baseline and returns `pass`, `hold`, or `rollback` plus closed signal
-codes. These are operational recommendations only. They do not set thresholds,
-enable flags, infer owner GO/NO-GO, change Production state, or authorize a
-deployment.
+codes. Runtime count alone is insufficient: missing user-audio latency,
+completion, probe, Director-ready, tool, or interruption-recovery evidence
+produces `hold` with `insufficient_sample`, never `pass`. These are operational
+recommendations only. They do not set thresholds, enable flags, infer owner
+GO/NO-GO, change Production state, or authorize a deployment.
 
 ## Failure and evidence isolation
 
 Construction, validation, span creation, export, and close failures are caught
 at the telemetry boundary. They cannot block or replace speech, transcript
 admission/projection/settlement, runtime close, lifecycle finalization, or
-feedback.
+feedback. The one runtime shutdown callback completes the authoritative bounded
+transcript drain before starting semantic close work, including on a slow or
+failing tracer.
 
 The semantic event module is not imported by feedback preparation. Director,
 tool, move, and semantic trace fields are excluded before trusted answer-block

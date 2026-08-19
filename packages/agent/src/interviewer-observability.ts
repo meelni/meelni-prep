@@ -25,6 +25,14 @@ export const INTERVIEWER_ROLLOUT_COHORTS = [
 export type InterviewerRolloutCohort =
   (typeof INTERVIEWER_ROLLOUT_COHORTS)[number];
 
+export const INTERVIEWER_RUNTIME_VERSIONS = [
+  "current-prompt.v1",
+  "director-shadow.v1",
+  "adaptive-canary.v1",
+] as const;
+export type InterviewerRuntimeVersion =
+  (typeof INTERVIEWER_RUNTIME_VERSIONS)[number];
+
 export const INTERVIEWER_MOVE_OBSERVABILITY_STAGES = [
   "planned",
   "admitted",
@@ -66,8 +74,7 @@ export const INTERVIEWER_LATENCY_KINDS = [
   "tool_execution",
   "interruption_recovery",
 ] as const;
-export type InterviewerLatencyKind =
-  (typeof INTERVIEWER_LATENCY_KINDS)[number];
+export type InterviewerLatencyKind = (typeof INTERVIEWER_LATENCY_KINDS)[number];
 
 export const INTERVIEWER_INTERRUPTION_STAGES = [
   "interrupted",
@@ -110,8 +117,7 @@ export const INTERVIEWER_CLOSE_REASONS = [
   "runtime_closed",
   "unknown",
 ] as const;
-export type InterviewerCloseReason =
-  (typeof INTERVIEWER_CLOSE_REASONS)[number];
+export type InterviewerCloseReason = (typeof INTERVIEWER_CLOSE_REASONS)[number];
 
 export type InterviewerCompletionStatus =
   | "completed"
@@ -123,7 +129,7 @@ interface InterviewerObservabilityEventBase {
   contract_version: typeof INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION;
   runtime_correlation_id: string;
   turn_correlation_id: string | null;
-  runtime_version: string;
+  runtime_version: InterviewerRuntimeVersion;
   rollout_cohort: InterviewerRolloutCohort;
   emitted_at: string;
 }
@@ -189,47 +195,6 @@ const COMMON_KEYS = [
   "emitted_at",
 ] as const;
 
-const EVENT_KEYS: Record<InterviewerObservabilityEvent["event_kind"], string[]> = {
-  phase: [...COMMON_KEYS, "phase"],
-  move: [
-    ...COMMON_KEYS,
-    "move_contract_version",
-    "move_stage",
-    "move_type",
-    "probe_target_id",
-  ],
-  tool: [
-    ...COMMON_KEYS,
-    "tool_contract_version",
-    "tool_name",
-    "tool_outcome",
-    "latency_ms",
-  ],
-  director: [
-    ...COMMON_KEYS,
-    "recommendation_contract_version",
-    "recommendation_outcome",
-    "recommendation_freshness",
-    "ready_latency_ms",
-    "recommendation_age_ms",
-  ],
-  latency: [...COMMON_KEYS, "latency_kind", "latency_ms"],
-  interruption: [
-    ...COMMON_KEYS,
-    "interruption_stage",
-    "delivery_observation",
-    "recovery_latency_ms",
-  ],
-  fallback: [...COMMON_KEYS, "fallback_reason", "fallback_source"],
-  close: [
-    ...COMMON_KEYS,
-    "close_reason",
-    "close_outcome",
-    "completion_status",
-    "completion_authority",
-  ],
-};
-
 export class InterviewerObservabilityContractError extends Error {
   constructor() {
     super("Invalid interviewer observability event");
@@ -250,13 +215,13 @@ export function isInterviewerObservabilityEvent(
   value: unknown
 ): value is InterviewerObservabilityEvent {
   if (!isRecord(value) || typeof value.event_kind !== "string") return false;
-  const keys = EVENT_KEYS[value.event_kind as keyof typeof EVENT_KEYS];
+  const keys = eventKeys(value.event_kind);
   if (!keys || !hasExactKeys(value, keys)) return false;
   if (
     value.contract_version !== INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION ||
-    !isBoundedLabel(value.runtime_correlation_id) ||
-    !isNullableBoundedLabel(value.turn_correlation_id) ||
-    !isBoundedLabel(value.runtime_version) ||
+    !isRuntimeCorrelationId(value.runtime_correlation_id) ||
+    !isNullableTurnCorrelationId(value.turn_correlation_id) ||
+    !includes(INTERVIEWER_RUNTIME_VERSIONS, value.runtime_version) ||
     !includes(INTERVIEWER_ROLLOUT_COHORTS, value.rollout_cohort) ||
     !isCanonicalTimestamp(value.emitted_at)
   ) {
@@ -271,7 +236,7 @@ export function isInterviewerObservabilityEvent(
         value.move_contract_version === INTERVIEWER_MOVE_CONTRACT_VERSION &&
         includes(INTERVIEWER_MOVE_OBSERVABILITY_STAGES, value.move_stage) &&
         includes(INTERVIEWER_MOVE_TYPES, value.move_type) &&
-        isNullableBoundedLabel(value.probe_target_id)
+        isNullableProbeTargetId(value.probe_target_id)
       );
     case "tool":
       return (
@@ -284,7 +249,10 @@ export function isInterviewerObservabilityEvent(
       return (
         value.recommendation_contract_version ===
           DIRECTOR_RECOMMENDATION_CONTRACT_VERSION &&
-        includes(DIRECTOR_OBSERVABILITY_OUTCOMES, value.recommendation_outcome) &&
+        includes(
+          DIRECTOR_OBSERVABILITY_OUTCOMES,
+          value.recommendation_outcome
+        ) &&
         includes(
           DIRECTOR_RECOMMENDATION_FRESHNESS,
           value.recommendation_freshness
@@ -332,6 +300,59 @@ export function isInterviewerObservabilityEvent(
       );
     default:
       return false;
+  }
+}
+
+function eventKeys(eventKind: string): readonly string[] | null {
+  switch (eventKind) {
+    case "phase":
+      return [...COMMON_KEYS, "phase"];
+    case "move":
+      return [
+        ...COMMON_KEYS,
+        "move_contract_version",
+        "move_stage",
+        "move_type",
+        "probe_target_id",
+      ];
+    case "tool":
+      return [
+        ...COMMON_KEYS,
+        "tool_contract_version",
+        "tool_name",
+        "tool_outcome",
+        "latency_ms",
+      ];
+    case "director":
+      return [
+        ...COMMON_KEYS,
+        "recommendation_contract_version",
+        "recommendation_outcome",
+        "recommendation_freshness",
+        "ready_latency_ms",
+        "recommendation_age_ms",
+      ];
+    case "latency":
+      return [...COMMON_KEYS, "latency_kind", "latency_ms"];
+    case "interruption":
+      return [
+        ...COMMON_KEYS,
+        "interruption_stage",
+        "delivery_observation",
+        "recovery_latency_ms",
+      ];
+    case "fallback":
+      return [...COMMON_KEYS, "fallback_reason", "fallback_source"];
+    case "close":
+      return [
+        ...COMMON_KEYS,
+        "close_reason",
+        "close_outcome",
+        "completion_status",
+        "completion_authority",
+      ];
+    default:
+      return null;
   }
 }
 
@@ -447,9 +468,7 @@ export function buildInterviewerObservabilityComparisonReport(
         rollout_cohort: "shadow" | "canary";
       } => aggregate.rollout_cohort !== "current"
     )
-    .map((aggregate) =>
-      assessRollback(baseline, aggregate, input.thresholds)
-    );
+    .map((aggregate) => assessRollback(baseline, aggregate, input.thresholds));
 
   return {
     contract_version: INTERVIEWER_OBSERVABILITY_REPORT_VERSION,
@@ -475,7 +494,9 @@ export function aggregateInterviewerObservabilityEvents(
     throw new InterviewerObservabilityContractError();
   }
 
-  const runtimeIds = new Set(parsed.map((event) => event.runtime_correlation_id));
+  const runtimeIds = new Set(
+    parsed.map((event) => event.runtime_correlation_id)
+  );
   const deliveredProbeTargets = new Map<string, Set<string>>();
   const latencies = {
     user: [] as number[],
@@ -492,8 +513,14 @@ export function aggregateInterviewerObservabilityEvents(
   let toolFailureCount = 0;
   let directorResultCount = 0;
   let staleRecommendationCount = 0;
-  let interruptionCount = 0;
-  let recoveredInterruptionCount = 0;
+  const interruptionStates = new Map<
+    string,
+    {
+      interrupted: boolean;
+      terminal: "recovered" | "unrecovered" | null;
+      recoveryLatencyMs: number | null;
+    }
+  >();
   let canonicalCloseCount = 0;
   let completedSessionCount = 0;
 
@@ -506,7 +533,8 @@ export function aggregateInterviewerObservabilityEvents(
         ) {
           deliveredProbeCount += 1;
           const targets =
-            deliveredProbeTargets.get(event.runtime_correlation_id) ?? new Set();
+            deliveredProbeTargets.get(event.runtime_correlation_id) ??
+            new Set();
           if (targets.has(event.probe_target_id)) repeatedProbeCount += 1;
           targets.add(event.probe_target_id);
           deliveredProbeTargets.set(event.runtime_correlation_id, targets);
@@ -520,8 +548,17 @@ export function aggregateInterviewerObservabilityEvents(
           latencies.director.push(event.latency_ms);
         } else if (event.latency_kind === "tool_execution") {
           latencies.tool.push(event.latency_ms);
-        } else if (event.latency_kind === "interruption_recovery") {
-          latencies.recovery.push(event.latency_ms);
+        } else if (
+          event.latency_kind === "interruption_recovery" &&
+          event.turn_correlation_id !== null
+        ) {
+          const state = interruptionStates.get(event.turn_correlation_id) ?? {
+            interrupted: false,
+            terminal: null,
+            recoveryLatencyMs: null,
+          };
+          state.recoveryLatencyMs ??= event.latency_ms;
+          interruptionStates.set(event.turn_correlation_id, state);
         }
         break;
       case "director":
@@ -544,12 +581,28 @@ export function aggregateInterviewerObservabilityEvents(
         }
         break;
       case "interruption":
-        if (event.interruption_stage === "interrupted") interruptionCount += 1;
-        if (event.interruption_stage === "recovered") {
-          recoveredInterruptionCount += 1;
-          if (event.recovery_latency_ms !== null) {
-            latencies.recovery.push(event.recovery_latency_ms);
+        if (event.turn_correlation_id !== null) {
+          const state = interruptionStates.get(event.turn_correlation_id) ?? {
+            interrupted: false,
+            terminal: null,
+            recoveryLatencyMs: null,
+          };
+          if (event.interruption_stage === "interrupted") {
+            state.interrupted = true;
+          } else if (
+            (event.interruption_stage === "recovered" ||
+              event.interruption_stage === "unrecovered") &&
+            state.terminal === null
+          ) {
+            state.terminal = event.interruption_stage;
+            if (
+              event.interruption_stage === "recovered" &&
+              event.recovery_latency_ms !== null
+            ) {
+              state.recoveryLatencyMs = event.recovery_latency_ms;
+            }
           }
+          interruptionStates.set(event.turn_correlation_id, state);
         }
         break;
       case "fallback":
@@ -569,6 +622,18 @@ export function aggregateInterviewerObservabilityEvents(
     }
   }
 
+  let interruptionCount = 0;
+  let recoveredInterruptionCount = 0;
+  for (const state of interruptionStates.values()) {
+    if (!state.interrupted) continue;
+    interruptionCount += 1;
+    if (state.terminal !== "recovered") continue;
+    recoveredInterruptionCount += 1;
+    if (state.recoveryLatencyMs !== null) {
+      latencies.recovery.push(state.recoveryLatencyMs);
+    }
+  }
+
   return {
     rollout_cohort,
     runtime_version,
@@ -578,7 +643,7 @@ export function aggregateInterviewerObservabilityEvents(
     repeated_probe_count: repeatedProbeCount,
     repeated_probe_rate: rate(repeatedProbeCount, deliveredProbeCount),
     fallback_count: fallbackCount,
-    fallback_rate: fallbackRuntimeIds.size / runtimeIds.size,
+    fallback_rate: rate(fallbackRuntimeIds.size, runtimeIds.size) ?? 0,
     tool_call_count: toolCallCount,
     tool_failure_count: toolFailureCount,
     tool_failure_rate: rate(toolFailureCount, toolCallCount),
@@ -614,7 +679,8 @@ function assessRollback(
   const signals: InterviewerRollbackSignalCode[] = [];
   if (
     baseline.runtime_count < thresholds.minimum_runtime_count ||
-    candidate.runtime_count < thresholds.minimum_runtime_count
+    candidate.runtime_count < thresholds.minimum_runtime_count ||
+    !hasRequiredRollbackEvidence(baseline, candidate)
   ) {
     signals.push("insufficient_sample");
   }
@@ -676,10 +742,10 @@ function assessRollback(
   return {
     rollout_cohort: candidate.rollout_cohort,
     runtime_version: candidate.runtime_version,
-    recommendation: regression
-      ? "rollback"
-      : signals.includes("insufficient_sample")
-        ? "hold"
+    recommendation: signals.includes("insufficient_sample")
+      ? "hold"
+      : regression
+        ? "rollback"
         : "pass",
     signals,
   };
@@ -701,7 +767,29 @@ function percentile(sorted: number[], quantile: number): number | null {
 }
 
 function rate(numerator: number, denominator: number): number | null {
-  return denominator === 0 ? null : numerator / denominator;
+  return denominator === 0
+    ? null
+    : Math.min(1, Math.max(0, numerator / denominator));
+}
+
+function hasRequiredRollbackEvidence(
+  baseline: InterviewerObservabilityAggregate,
+  candidate: InterviewerObservabilityAggregate
+): boolean {
+  return (
+    baseline.user_speech_to_first_audio_ms.p95 !== null &&
+    candidate.user_speech_to_first_audio_ms.p95 !== null &&
+    baseline.repeated_probe_rate !== null &&
+    candidate.repeated_probe_rate !== null &&
+    baseline.completion_rate !== null &&
+    candidate.completion_rate !== null &&
+    candidate.stale_recommendation_rate !== null &&
+    candidate.director_ready_ms.p95 !== null &&
+    candidate.tool_failure_rate !== null &&
+    candidate.tool_latency_ms.p95 !== null &&
+    candidate.interruption_recovery_rate !== null &&
+    candidate.interruption_recovery_ms.p95 !== null
+  );
 }
 
 function exceedsIncrease(
@@ -709,7 +797,9 @@ function exceedsIncrease(
   candidate: number | null,
   threshold: number
 ): boolean {
-  return baseline !== null && candidate !== null && candidate - baseline > threshold;
+  return (
+    baseline !== null && candidate !== null && candidate - baseline > threshold
+  );
 }
 
 function exceedsRateIncrease(
@@ -717,7 +807,9 @@ function exceedsRateIncrease(
   candidate: number | null,
   threshold: number
 ): boolean {
-  return baseline !== null && candidate !== null && candidate - baseline > threshold;
+  return (
+    baseline !== null && candidate !== null && candidate - baseline > threshold
+  );
 }
 
 function exceedsRateDrop(
@@ -725,7 +817,9 @@ function exceedsRateDrop(
   candidate: number | null,
   threshold: number
 ): boolean {
-  return baseline !== null && candidate !== null && baseline - candidate > threshold;
+  return (
+    baseline !== null && candidate !== null && baseline - candidate > threshold
+  );
 }
 
 function areValidThresholds(
@@ -765,18 +859,45 @@ function includes<const T extends readonly unknown[]>(
 }
 
 function isBoundedLabel(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._:/-]{1,120}$/u.test(value);
+}
+
+function isRuntimeCorrelationId(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[a-z0-9._:/-]{1,120}$/iu.test(value)
+    /^run:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+      value
+    )
   );
 }
 
-function isNullableBoundedLabel(value: unknown): value is string | null {
-  return value === null || isBoundedLabel(value);
+function isTurnCorrelationId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^turn:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+      value
+    )
+  );
+}
+
+function isNullableTurnCorrelationId(value: unknown): value is string | null {
+  return value === null || isTurnCorrelationId(value);
+}
+
+function isNullableProbeTargetId(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === "string" && /^probe:[0-9a-f]{32,64}$/u.test(value))
+  );
 }
 
 function isLatency(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 86_400_000
+  );
 }
 
 function isNullableLatency(value: unknown): value is number | null {
@@ -794,6 +915,8 @@ function isCanonicalTimestamp(value: unknown): value is string {
   ) {
     return false;
   }
+  const year = Number(value.slice(0, 4));
+  if (year < 1 || year > 9999) return false;
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
 }
