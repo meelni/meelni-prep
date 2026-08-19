@@ -71,6 +71,7 @@ from shared.interview_director import (
     Sav469DirectorTraceSink,
     resolve_director_shadow_config,
 )
+from shared.interview_director_influence import DirectorInfluenceGate
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
     set_interview_contract_trace_attributes,
@@ -559,11 +560,14 @@ async def entrypoint(ctx: JobContext):
 
     transcript_shutdown_drain = no_transcript_shutdown_drain
     director_shutdown_drain = no_transcript_shutdown_drain
+    director_influence_gate: DirectorInfluenceGate | None = None
 
     async def shutdown_interview_runtime() -> None:
         async def drain_runtime_observers() -> None:
             await transcript_shutdown_drain()
             await director_shutdown_drain()
+            if director_influence_gate is not None:
+                director_influence_gate.close()
 
         await drain_transcript_before_observability_close(
             drain=drain_runtime_observers,
@@ -817,11 +821,63 @@ async def entrypoint(ctx: JobContext):
         observed_at=datetime.now(timezone.utc),
         monotonic_ms=lifecycle_observed_ms,
     )
+
+    def read_director_authority() -> dict[str, object] | None:
+        controller_state = controller_adapter.state
+        return (
+            controller_state.to_runtime_state()
+            if controller_state is not None
+            else None
+        )
+
+    def read_director_delivery_topic(move_id: str) -> str | None:
+        controller_state = controller_adapter.state
+        if controller_state is None:
+            return None
+        return next(
+            (
+                move.topic
+                for move in controller_state.move_ledger
+                if move.move_id == move_id
+            ),
+            None,
+        )
+
+    # This repository slice intentionally injects no Director adapter. The
+    # observer and influence gate remain default-off and cannot execute model
+    # work even if their flags are set.
+    director_shadow = InterviewDirectorShadowSession(
+        config=resolve_director_shadow_config(os.environ),
+        session_id=session_id,
+        adapter=None,
+        state_provider=read_director_authority,
+        delivery_topic_provider=read_director_delivery_topic,
+        trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
+    )
+    director_shadow.start()
+    director_shutdown_drain = director_shadow.shutdown
+    director_influence_gate = DirectorInfluenceGate(
+        env=os.environ,
+        session_id=session_id,
+        recommendation_store=director_shadow.store,
+        observability=semantic_observability,
+    )
+
+    def observe_director_influence_state() -> None:
+        try:
+            director_influence_gate.observe_controller_state(
+                controller_adapter.state,
+                now=datetime.now(timezone.utc),
+            )
+        except Exception:
+            return
+
     interviewer_tools = create_session_scoped_interviewer_tools(
         env=os.environ,
         controller=controller_adapter,
         lifecycle_store=lifecycle_store,
         observability=semantic_observability,
+        director_influence=director_influence_gate,
     )
     logger.info(
         "Deterministic interview controller resolved",
@@ -832,6 +888,14 @@ async def entrypoint(ctx: JobContext):
             "interviewer_tools_status": (
                 interviewer_tools.status.failure_reason or "enabled"
             ),
+        },
+    )
+    logger.info(
+        "Read-only Interview Director shadow resolved",
+        extra={
+            "director_enabled": director_shadow.enabled,
+            "director_status": director_shadow.failure_reason or "enabled",
+            "director_influence_enabled": director_influence_gate.enabled,
         },
     )
 
@@ -892,48 +956,6 @@ async def entrypoint(ctx: JobContext):
 
         ctx.add_shutdown_callback(stop_interviewer_lifecycle_refresh)
 
-    def read_director_authority() -> dict[str, object] | None:
-        controller_state = controller_adapter.state
-        return (
-            controller_state.to_runtime_state()
-            if controller_state is not None
-            else None
-        )
-
-    def read_director_delivery_topic(move_id: str) -> str | None:
-        controller_state = controller_adapter.state
-        if controller_state is None:
-            return None
-        return next(
-            (
-                move.topic
-                for move in controller_state.move_ledger
-                if move.move_id == move_id
-            ),
-            None,
-        )
-
-    # This repository slice intentionally injects no Director adapter. The
-    # observer is separately configured, default-off, and cannot execute even
-    # if its flag is set until an owner-authorized server adapter exists.
-    director_shadow = InterviewDirectorShadowSession(
-        config=resolve_director_shadow_config(os.environ),
-        session_id=session_id,
-        adapter=None,
-        state_provider=read_director_authority,
-        delivery_topic_provider=read_director_delivery_topic,
-        trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
-    )
-    director_shadow.start()
-    director_shutdown_drain = director_shadow.shutdown
-    logger.info(
-        "Read-only Interview Director shadow resolved",
-        extra={
-            "director_enabled": director_shadow.enabled,
-            "director_status": director_shadow.failure_reason or "enabled",
-        },
-    )
-
     async def publish_persisted_transcript(transcript_data: dict[str, object]):
         event_id = transcript_data.get("event_id")
         source_message_id = (
@@ -945,6 +967,7 @@ async def entrypoint(ctx: JobContext):
             transcript_data,
             source_message_id=source_message_id,
         )
+        observe_director_influence_state()
         # Post-persistence, one-way observation only. Its bounded status result
         # is deliberately ignored and cannot affect projection or live control.
         director_shadow.observe_persisted_transcript(
@@ -977,6 +1000,7 @@ async def entrypoint(ctx: JobContext):
         marker: dict[str, object],
     ) -> None:
         controller_adapter.persisted_interruption_marker(marker)
+        observe_director_influence_state()
 
     transcript_queue = TranscriptIngestQueue(
         ingest_url=transcript_ingest_url,
@@ -1336,6 +1360,7 @@ async def entrypoint(ctx: JobContext):
         nonlocal foreground_transcript_flush_active
         nonlocal runtime_settlement_cutoff, transcript_integrity_unavailable
         director_shadow.settle()
+        director_influence_gate.close()
         async with runtime_settlement_lock:
             if runtime_settlement_cutoff is None:
                 runtime_settlement_cutoff = cutoff_at
@@ -1937,6 +1962,7 @@ async def entrypoint(ctx: JobContext):
                 has_confirmed_prefix=has_confirmed_prefix,
                 assistant_message_ids=assistant_message_ids,
             )
+            observe_director_influence_state()
             if should_record_marker and marker_allowed:
                 queue_integrity_marker(
                     event_id=(

@@ -14,6 +14,12 @@ from typing import Any, Literal, TypeAlias
 from uuid import uuid4
 
 from shared.opik_tracing import read_opik_tracing_config
+from shared.interview_director_influence import (
+    DIRECTOR_INFLUENCE_CONFIG_VERSION,
+    DIRECTOR_INFLUENCE_CONTRACT_VERSION,
+    DIRECTOR_INFLUENCE_POLICY_VERSION,
+    INFLUENCE_DECISION_REASONS,
+)
 
 INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION = "interviewer-observability.v1"
 INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1"
@@ -39,6 +45,7 @@ _EVENT_KINDS = {
     "move",
     "tool",
     "director",
+    "director_influence",
     "latency",
     "interruption",
     "fallback",
@@ -91,6 +98,16 @@ _DIRECTOR_OUTCOMES = {
     "timeout",
     "unavailable",
 }
+_DIRECTOR_INFLUENCE_OUTCOMES = {"accepted", "rejected", "ignored"}
+_DIRECTOR_INFLUENCE_STAGES = {
+    "evaluated",
+    "planned",
+    "admitted",
+    "canonically_delivered",
+    "interrupted",
+    "aborted",
+}
+_DIRECTOR_INFLUENCE_FLAG_STATES = {"enabled", "disabled"}
 _RECOMMENDATION_FRESHNESS = {"fresh", "stale", "speculative", "missing"}
 _RECOMMENDATION_COMPARISONS = {
     "exact_match",
@@ -180,6 +197,22 @@ _EVENT_KEYS = {
         "ready_latency_ms",
         "recommendation_age_ms",
         "estimated_cost_microusd",
+    },
+    "director_influence": _COMMON_KEYS
+    | {
+        "influence_contract_version",
+        "influence_policy_version",
+        "influence_config_version",
+        "influence_flag_state",
+        "recommendation_contract_version",
+        "director_policy_version",
+        "director_adapter_version",
+        "decision_outcome",
+        "decision_reason",
+        "influence_stage",
+        "planned_move_type",
+        "delivered_move_type",
+        "recommendation_age_ms",
     },
     "latency": _COMMON_KEYS | {"latency_kind", "latency_ms"},
     "interruption": _COMMON_KEYS
@@ -283,6 +316,28 @@ def is_interviewer_observability_event(value: object) -> bool:
             and _nullable_latency(value.get("ready_latency_ms"))
             and _nullable_latency(value.get("recommendation_age_ms"))
             and _nullable_estimated_cost(value.get("estimated_cost_microusd"))
+        )
+    if event_kind == "director_influence":
+        return (
+            value.get("influence_contract_version")
+            == DIRECTOR_INFLUENCE_CONTRACT_VERSION
+            and value.get("influence_policy_version")
+            == DIRECTOR_INFLUENCE_POLICY_VERSION
+            and value.get("influence_config_version")
+            == DIRECTOR_INFLUENCE_CONFIG_VERSION
+            and value.get("influence_flag_state")
+            in _DIRECTOR_INFLUENCE_FLAG_STATES
+            and value.get("recommendation_contract_version")
+            == DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
+            and _nullable_contract_token(value.get("director_policy_version"))
+            and _nullable_contract_token(value.get("director_adapter_version"))
+            and value.get("decision_outcome")
+            in _DIRECTOR_INFLUENCE_OUTCOMES
+            and value.get("decision_reason") in INFLUENCE_DECISION_REASONS
+            and value.get("influence_stage") in _DIRECTOR_INFLUENCE_STAGES
+            and _nullable_move_type(value.get("planned_move_type"))
+            and _nullable_move_type(value.get("delivered_move_type"))
+            and _nullable_latency(value.get("recommendation_age_ms"))
         )
     if event_kind == "latency":
         return value.get("latency_kind") in _LATENCY_KINDS and _latency(
@@ -743,6 +798,14 @@ def _contract_token(value: object) -> bool:
     return isinstance(value, str) and len(value) <= 96 and bool(
         re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", value)
     )
+
+
+def _nullable_contract_token(value: object) -> bool:
+    return value is None or _contract_token(value)
+
+
+def _nullable_move_type(value: object) -> bool:
+    return value is None or value in _MOVE_TYPES
 
 
 def _nullable_estimated_cost(value: object) -> bool:

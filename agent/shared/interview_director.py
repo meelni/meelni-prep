@@ -10,6 +10,7 @@ import re
 import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Protocol
@@ -490,6 +491,7 @@ class DirectorRecommendationStore:
         self.capacity = capacity
         self._recommendations: dict[str, dict[str, Any]] = {}
         self._seen_recommendations: dict[str, str] = {}
+        self._latest_recommendation: dict[str, Any] | None = None
         self._deliveries: dict[tuple[str, str], DeliveredInterviewerMove] = {}
         self._seen_delivery_ids: dict[str, str] = {}
         self._closed = False
@@ -541,8 +543,21 @@ class DirectorRecommendationStore:
             previous_created = _timestamp_ms(previous["created_at"])
             if _timestamp_ms(recommendation["created_at"]) < previous_created:
                 return StoreResult("stale")
-        self._recommendations[recommendation["source_turn_id"]] = recommendation
-        return StoreResult("ready", recommendation=recommendation)
+        stored = deepcopy(recommendation)
+        self._recommendations[recommendation["source_turn_id"]] = stored
+        self._latest_recommendation = stored
+        return StoreResult("ready", recommendation=deepcopy(stored))
+
+    def peek_latest(self, *, session_id: str) -> dict[str, Any] | None:
+        """Return the latest published value without applying time filters."""
+        self._require_open()
+        if session_id != self.session_id:
+            raise DirectorError("session_mismatch")
+        return (
+            deepcopy(self._latest_recommendation)
+            if self._latest_recommendation is not None
+            else None
+        )
 
     def latest_valid(
         self,
@@ -565,7 +580,7 @@ class DirectorRecommendationStore:
             recommendation["expires_at"]
         ):
             return None
-        return dict(recommendation)
+        return deepcopy(recommendation)
 
     def record_delivery(self, delivery: DeliveredInterviewerMove, *, now: str) -> StoreResult:
         self._require_open()
@@ -634,6 +649,7 @@ class DirectorRecommendationStore:
         self.writer_generation = writer_generation
         self._recommendations.clear()
         self._seen_recommendations.clear()
+        self._latest_recommendation = None
         self._deliveries.clear()
         self._seen_delivery_ids.clear()
 
@@ -641,6 +657,7 @@ class DirectorRecommendationStore:
         self._closed = True
         self._recommendations.clear()
         self._seen_recommendations.clear()
+        self._latest_recommendation = None
         self._deliveries.clear()
         self._seen_delivery_ids.clear()
 
