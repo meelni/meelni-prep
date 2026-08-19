@@ -25,6 +25,16 @@ versioned nested field of top-level room-metadata version 1.
 - **THEN** the new reader discards the brief
 - **AND** uses validated v1 behavior without weakening policy
 
+#### Scenario: Nested decoy or duplicate top-level brief arrives
+
+- **WHEN** a same-named `interview_brief` property appears below another
+  top-level field
+- **THEN** raw-number validation ignores that decoy and validates the exact
+  decoded top-level brief
+- **AND WHEN** the top-level object contains duplicate decoded
+  `interview_brief` keys
+- **THEN** the optional brief falls back as `invalid_payload`
+
 #### Scenario: Top-level version 2 arrives
 
 - **WHEN** current readers receive top-level room-metadata version 2
@@ -58,6 +68,12 @@ session-start state and SHALL reuse the accepted bytes and digest on replay.
   `3e1`, or a timestamp is not a canonical UTC string
 - **THEN** TypeScript and Python reject the brief before hashing
 - **AND** optional nested-brief negotiation falls back to validated v1 behavior
+
+#### Scenario: Another contract integer has a float or exponent spelling
+
+- **WHEN** an integer-bearing runtime-state, move, tool request/result, or
+  Director field uses a float or exponent token
+- **THEN** TypeScript and Python both reject it as `invalid_payload`
 
 #### Scenario: Brief text contains invalid Unicode
 
@@ -153,6 +169,21 @@ fall back immediately on deadline or failure.
 - **WHEN** a tool is unavailable, invalid, stale, closed, expired, or timed out
 - **THEN** the live response uses the current deterministic/prompt-led fallback
 - **AND** speech, transcript persistence, exit, and settlement do not wait
+
+#### Scenario: State-sensitive tool reaches the canonical session deadline
+
+- **WHEN** probe lookup, move commit, or graceful-close admission runs exactly
+  at the canonical runtime deadline or later
+- **THEN** admission returns `deadline_elapsed` independently of the tool
+  request deadline or move expiry
+- **AND** a read-only state/clock result cannot authorize a move
+- **AND** the deterministic controller may select its deadline-close fallback
+
+#### Scenario: Tool move is not allowed by fresh state
+
+- **WHEN** probe lookup lacks `probe`, a committed move type is absent, or
+  graceful close lacks `close` in the fresh state's `allowed_moves`
+- **THEN** admission returns `move_not_allowed` without mutation
 
 #### Scenario: Tool requests privileged data or mutation
 

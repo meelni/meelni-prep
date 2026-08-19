@@ -31,6 +31,11 @@ authoritative v1 session, deadline, config, round, and selected question.
 Absent, unknown, malformed, or mismatched briefs fall back to validated v1
 behavior. Top-level version 2 remains unsupported.
 
+The raw-wire reader locates only the exact decoded top-level `interview_brief`
+property when enforcing numeric lexemes. Same-named nested decoys are ignored,
+while duplicate top-level brief keys make the optional brief invalid rather
+than relying on decoder key precedence.
+
 The payload uses snake_case because it crosses TypeScript/Python boundaries.
 All schemas reject unknown keys, unbounded collections, non-canonical
 timestamps, and unsupported versions.
@@ -45,7 +50,10 @@ random identity, live read, or generated model context is permitted.
 Strings must contain Unicode scalar values only; unpaired surrogates fail
 closed before canonical UTF-8 encoding in both runtimes.
 `duration_minutes` permits only integer JSON wire tokens `15`, `30`, or `45`;
-float/exponent spellings are invalid. Wire timestamps are strings.
+float/exponent spellings are invalid. Runtime state, moves, tool envelopes and
+results, and Director recommendations apply the same integer-token rule to
+their revisions, versions, writer generations, sequences, and remaining
+milliseconds. Wire timestamps are strings.
 
 ## Decision design
 
@@ -75,7 +83,13 @@ digest of canonical semantic request payload bytes. Recursive key sorting makes
 reordered requests duplicates; a changed semantic field under the same key is
 a conflict. A separate adapter helper correlates every result to its pending
 request by call/tool/session/writer/deadline and applicable revisions. No
-failure blocks the current fallback or settlement.
+failure blocks the current fallback or settlement. Read-only state and clock
+calls may remain available for observation, but every state-sensitive or
+mutating admission independently requires current time before the canonical
+session deadline and its implied or explicit move in the fresh state's
+`allowed_moves`. At or after the session deadline, the deterministic controller
+may choose its deadline-close fallback; a later per-call TTL cannot admit tool
+influence.
 
 ## Evidence and authority design
 

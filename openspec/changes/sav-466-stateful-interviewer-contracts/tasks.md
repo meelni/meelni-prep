@@ -25,13 +25,14 @@
 - [x] Cover evidence isolation, privacy, no coaching, and unchanged demo
       contract.
 - [x] Cover cross-runtime Unicode/numeric canonicalization, lifecycle/clock/close
-      edges, duplicate ledger IDs, probe reasons, result mismatch matrices, and
-      production trusted-answer-block/evaluator projection isolation.
+      edges, depth-aware/duplicate metadata keys, every integer-bearing wire
+      contract, duplicate ledger IDs, probe reasons, result mismatch matrices,
+      and production trusted-answer-block/evaluator projection isolation.
 
 ## 4. Validation and handoff
 
-- [ ] Run targeted package and Python tests on the replacement head.
-- [ ] Run typecheck, build, agent verification, and OpenSpec validation on the
+- [x] Run targeted package and Python tests on the replacement head.
+- [x] Run typecheck, build, agent verification, and OpenSpec validation on the
       replacement head.
 - [ ] Publish the replacement ready PR head, record exact evidence in SAV-466,
       and leave SAV-465

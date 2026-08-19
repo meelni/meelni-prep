@@ -18,6 +18,16 @@ logger = logging.getLogger("agent-config")
 INTERVIEW_ROOM_METADATA_CONTRACT_VERSION = 1
 
 
+class _ParsedJsonObject(dict[str, Any]):
+    def __init__(self, pairs: list[tuple[str, Any]]):
+        super().__init__()
+        self.duplicate_keys: set[str] = set()
+        for key, value in pairs:
+            if key in self:
+                self.duplicate_keys.add(key)
+            self[key] = value
+
+
 def parse_room_metadata(metadata: str) -> Dict[str, Any]:
     """
     Parse room metadata to extract interview configuration.
@@ -55,7 +65,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         Dict with round_type, question, and config keys
     """
     try:
-        data = json.loads(metadata)
+        data = json.loads(metadata, object_pairs_hook=_ParsedJsonObject)
         if not isinstance(data, dict):
             raise ValueError("Interview room metadata must be an object")
         if (
@@ -92,8 +102,12 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         )
         question = normalize_question(data.get("question"))
         deadline_at = normalize_deadline_at(data.get("deadline_at"))
-        brief_resolution = resolve_optional_interview_brief_v2(
-            data.get("interview_brief")
+        brief_resolution = (
+            {"mode": "room_metadata_v1", "reason": "invalid_payload"}
+            if "interview_brief" in data.duplicate_keys
+            else resolve_optional_interview_brief_v2(
+                data.get("interview_brief")
+            )
         )
         interview_brief = (
             brief_resolution["brief"]

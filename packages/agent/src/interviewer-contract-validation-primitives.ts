@@ -79,6 +79,42 @@ export function hasNonIntegerJsonNumberToken(raw: string): boolean {
   return false;
 }
 
+const INTEGER_WIRE_KEYS = new Set([
+  "duration_minutes",
+  "remaining_ms",
+  "writer_generation",
+  "sequence",
+  "state_revision",
+  "version",
+  "based_on_state_revision",
+  "based_on_lifecycle_version",
+  "expected_state_revision",
+  "expected_lifecycle_version",
+  "observed_state_revision",
+  "observed_lifecycle_version",
+]);
+
+export function hasNonCanonicalIntegerWireToken(raw: string): boolean {
+  let rejected = false;
+  const reviveIntegerTokens = (
+    key: string,
+    value: unknown,
+    context?: unknown
+  ): unknown => {
+    if (typeof value !== "number" || !INTEGER_WIRE_KEYS.has(key)) return value;
+    const source =
+      isRecord(context) && typeof context.source === "string"
+        ? context.source
+        : null;
+    if (source === null || !/^-?(?:0|[1-9]\d*)$/.test(source)) {
+      rejected = true;
+    }
+    return value;
+  };
+  JSON.parse(raw, reviveIntegerTokens);
+  return rejected;
+}
+
 export function isNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }

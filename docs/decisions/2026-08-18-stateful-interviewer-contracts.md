@@ -39,9 +39,10 @@ Adopt the contracts in
    interrupted/aborted, and canonically delivered states. Only durable
    transcript evidence commits delivered history.
 6. Expose only five session-scoped, non-privileged tools with explicit
-   deadlines, dual CAS, canonical mutation digests, writer fencing,
-   idempotency, pending-request result correlation, typed failures, and
-   immediate fallback.
+   request deadlines, a hard canonical-session-deadline fence for every
+   state-sensitive/mutating admission, allowed-move checks, dual CAS,
+   canonical mutation digests, writer fencing, idempotency, pending-request
+   result correlation, typed failures, and immediate fallback.
 7. Keep Director and tool content out of canonical transcript, answer blocks,
    and feedback evidence. Identical canonical evidence must produce identical
    evaluator input/authority regardless of operational traces.
@@ -57,8 +58,12 @@ Adopt the contracts in
   weakening interview policy or preventing a safe current-runtime start.
 - Cross-runtime brief strings accept Unicode scalars only, so canonical UTF-8
   hashing is byte-identical and unpaired surrogates fall back as invalid.
-- Canonical brief numbers use integer JSON tokens only; float/exponent duration
-  spellings are rejected before they can hash differently across runtimes.
+- Canonical brief and authority-bearing contract numbers use integer JSON
+  tokens only; float/exponent spellings are rejected before JavaScript can
+  normalize them differently from Python.
+- Raw nested-brief validation binds the exact decoded top-level property,
+  ignores same-named nested decoys, and treats duplicate top-level brief keys
+  as invalid optional payload rather than choosing first-key/last-key behavior.
 - Delivery attribution reuses transcript v2 event ID plus writer/generation and
   sequence. Transcript v2 remains backward compatible and unchanged.
 - Downstream implementations receive strict TypeScript/Python schemas and one

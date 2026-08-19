@@ -364,6 +364,61 @@
       "duration_lexeme": "30.5"
     }
   ],
+  "room_metadata_numeric_adversarial_cases": [
+    {
+      "name": "nested_canonical_decoy_top_level_fractional",
+      "nested_duration_lexeme": "30",
+      "top_level_duration_lexeme": "30.0",
+      "duplicate_top_level_brief": false,
+      "accepted": false
+    },
+    {
+      "name": "nested_fractional_decoy_top_level_canonical",
+      "nested_duration_lexeme": "30.0",
+      "top_level_duration_lexeme": "30",
+      "duplicate_top_level_brief": false,
+      "accepted": true
+    },
+    {
+      "name": "duplicate_top_level_brief",
+      "nested_duration_lexeme": "30",
+      "top_level_duration_lexeme": "30",
+      "duplicate_top_level_brief": true,
+      "accepted": false
+    }
+  ],
+  "integer_wire_cases": [
+    {
+      "name": "runtime_state_exponent_remaining_ms",
+      "contract": "interview_runtime_state",
+      "canonical_token": "\"remaining_ms\":1200000",
+      "noncanonical_token": "\"remaining_ms\":1.2e6"
+    },
+    {
+      "name": "move_fractional_writer_generation",
+      "contract": "interviewer_move",
+      "canonical_token": "\"writer_generation\":3",
+      "noncanonical_token": "\"writer_generation\":3.0"
+    },
+    {
+      "name": "tool_request_fractional_outer_writer_generation",
+      "contract": "interviewer_tool_request",
+      "canonical_token": "\"writer_generation\":3",
+      "noncanonical_token": "\"writer_generation\":3.0"
+    },
+    {
+      "name": "tool_result_exponent_observed_lifecycle_version",
+      "contract": "interviewer_tool_result",
+      "canonical_token": "\"observed_lifecycle_version\":2",
+      "noncanonical_token": "\"observed_lifecycle_version\":2e0"
+    },
+    {
+      "name": "director_fractional_based_on_state_revision",
+      "contract": "director_recommendation",
+      "canonical_token": "\"based_on_state_revision\":7",
+      "noncanonical_token": "\"based_on_state_revision\":7.0"
+    }
+  ],
   "canonical_transcript": [
     {
       "contract_version": 2,

@@ -111,6 +111,44 @@ test("brief numeric wire forms reject floats and exponents before hashing", () =
   }
 });
 
+test("room metadata validates only the unambiguous top-level brief numeric wire", () => {
+  for (const numericCase of fixtures.room_metadata_numeric_adversarial_cases) {
+    const nestedMarker = `nested-${numericCase.name}`;
+    const topLevelMarker = `top-level-${numericCase.name}`;
+    let wire = JSON.stringify({
+      ...fixtures.room_metadata_v1,
+      question: {
+        ...fixtures.room_metadata_v1.question,
+        interview_brief: { duration_minutes: nestedMarker },
+      },
+      interview_brief: {
+        ...fixtures.brief,
+        duration_minutes: topLevelMarker,
+      },
+    })
+      .replace(
+        `"duration_minutes":"${nestedMarker}"`,
+        `"duration_minutes":${numericCase.nested_duration_lexeme}`
+      )
+      .replace(
+        `"duration_minutes":"${topLevelMarker}"`,
+        `"duration_minutes":${numericCase.top_level_duration_lexeme}`
+      );
+    if (numericCase.duplicate_top_level_brief) {
+      wire = `${wire.slice(0, -1)},"interview_brief":${JSON.stringify(
+        fixtures.brief
+      )}}`;
+    }
+
+    const parsed = parseInterviewRoomMetadata(wire);
+    if (numericCase.accepted) {
+      assert.deepEqual(parsed.interview_brief, fixtures.brief);
+    } else {
+      assert.equal(parsed.interview_brief, undefined);
+    }
+  }
+});
+
 test("room metadata stays v1 and negotiates the optional nested brief", () => {
   const withBrief = parseInterviewRoomMetadata(
     JSON.stringify({

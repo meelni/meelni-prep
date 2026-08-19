@@ -68,6 +68,44 @@ class InterviewerContractTests(unittest.TestCase):
                 state["session_id"],
             )
 
+    def test_integer_bearing_wire_contracts_reject_float_and_exponent_lexemes(
+        self,
+    ):
+        fixtures = self._interviewer_contract_fixtures()
+        contracts = {
+            "interview_runtime_state": (
+                fixtures["runtime_state"],
+                parse_interview_runtime_state,
+            ),
+            "interviewer_move": (fixtures["move"], parse_interviewer_move),
+            "interviewer_tool_request": (
+                fixtures["tool_requests"][3],
+                parse_interviewer_tool_request,
+            ),
+            "interviewer_tool_result": (
+                fixtures["tool_results"][0],
+                parse_interviewer_tool_result,
+            ),
+            "director_recommendation": (
+                fixtures["director_recommendation"],
+                parse_director_recommendation,
+            ),
+        }
+
+        for wire_case in fixtures["integer_wire_cases"]:
+            with self.subTest(case=wire_case["name"]):
+                fixture, parser = contracts[wire_case["contract"]]
+                canonical = json.dumps(fixture, separators=(",", ":"))
+                adversarial = canonical.replace(
+                    wire_case["canonical_token"],
+                    wire_case["noncanonical_token"],
+                    1,
+                )
+                self.assertNotEqual(adversarial, canonical)
+                with self.assertRaises(InterviewerContractError) as invalid:
+                    parser(adversarial)
+                self.assertEqual(invalid.exception.code, "invalid_payload")
+
     def test_brief_digest_is_replay_stable_and_matches_hashlib(self):
         fixtures = self._interviewer_contract_fixtures()
         brief = parse_interview_brief_v2(fixtures["brief"])
@@ -145,6 +183,54 @@ class InterviewerContractTests(unittest.TestCase):
                 room = parse_room_metadata(replace_duration(canonical_room_wire))
                 self.assertIsNone(room["interview_brief"])
                 self.assertEqual(room["config"]["duration"], 30)
+
+    def test_room_metadata_numeric_validation_uses_unambiguous_top_level_brief(
+        self,
+    ):
+        fixtures = self._interviewer_contract_fixtures()
+        for numeric_case in fixtures["room_metadata_numeric_adversarial_cases"]:
+            with self.subTest(case=numeric_case["name"]):
+                nested_marker = f'nested-{numeric_case["name"]}'
+                top_level_marker = f'top-level-{numeric_case["name"]}'
+                wire = json.dumps(
+                    {
+                        **fixtures["room_metadata_v1"],
+                        "question": {
+                            **fixtures["room_metadata_v1"]["question"],
+                            "interview_brief": {
+                                "duration_minutes": nested_marker
+                            },
+                        },
+                        "interview_brief": {
+                            **fixtures["brief"],
+                            "duration_minutes": top_level_marker,
+                        },
+                    },
+                    separators=(",", ":"),
+                )
+                wire = wire.replace(
+                    f'"duration_minutes":"{nested_marker}"',
+                    '"duration_minutes":'
+                    f'{numeric_case["nested_duration_lexeme"]}',
+                ).replace(
+                    f'"duration_minutes":"{top_level_marker}"',
+                    '"duration_minutes":'
+                    f'{numeric_case["top_level_duration_lexeme"]}',
+                )
+                if numeric_case["duplicate_top_level_brief"]:
+                    brief_wire = json.dumps(
+                        fixtures["brief"], separators=(",", ":")
+                    )
+                    wire = (
+                        f'{wire[:-1]},"interview_brief":{brief_wire}'
+                        "}"
+                    )
+
+                room = parse_room_metadata(wire)
+                if numeric_case["accepted"]:
+                    self.assertEqual(room["interview_brief"], fixtures["brief"])
+                else:
+                    self.assertIsNone(room["interview_brief"])
 
     def test_room_metadata_v1_negotiates_nested_brief_without_v2_top_level(self):
         fixtures = self._interviewer_contract_fixtures()
@@ -771,6 +857,92 @@ class InterviewerContractTests(unittest.TestCase):
             ),
             "move_expired",
         )
+
+    def test_state_sensitive_tool_admission_fences_deadline_and_allowed_moves(self):
+        fixtures = self._interviewer_contract_fixtures()
+        state = parse_interview_runtime_state(
+            {
+                **fixtures["runtime_state"],
+                "clock": {
+                    **fixtures["runtime_state"]["clock"],
+                    "deadline_at": "2026-08-18T23:10:05.000Z",
+                    "remaining_ms": 5_000,
+                },
+            }
+        )
+        request_deadline = "2026-08-18T23:10:20.000Z"
+        before_deadline = "2026-08-18T23:10:04.999Z"
+        at_deadline = state["clock"]["deadline_at"]
+        after_deadline = "2026-08-18T23:10:05.001Z"
+        probe = parse_interviewer_tool_request(
+            {**fixtures["tool_requests"][2], "deadline_at": request_deadline}
+        )
+        commit_input = {
+            **parse_interviewer_tool_request(fixtures["tool_requests"][3]),
+            "deadline_at": request_deadline,
+        }
+        commit_input["request_digest"] = (
+            calculate_interviewer_mutation_request_digest(commit_input)
+        )
+        commit = parse_interviewer_tool_request(commit_input)
+        close_input = {
+            **parse_interviewer_tool_request(fixtures["tool_requests"][4]),
+            "deadline_at": request_deadline,
+        }
+        close_input["request_digest"] = (
+            calculate_interviewer_mutation_request_digest(close_input)
+        )
+        close = parse_interviewer_tool_request(close_input)
+
+        for request in (probe, commit, close):
+            self.assertEqual(
+                assess_interviewer_tool_request_against_state(
+                    request, state, before_deadline
+                ),
+                "eligible",
+            )
+            self.assertEqual(
+                assess_interviewer_tool_request_against_state(
+                    request, state, at_deadline
+                ),
+                "deadline_elapsed",
+            )
+            self.assertEqual(
+                assess_interviewer_tool_request_against_state(
+                    request, state, after_deadline
+                ),
+                "deadline_elapsed",
+            )
+
+        read_only = parse_interviewer_tool_request(
+            {**fixtures["tool_requests"][0], "deadline_at": request_deadline}
+        )
+        self.assertEqual(
+            assess_interviewer_tool_request_against_state(
+                read_only, state, at_deadline
+            ),
+            "eligible",
+        )
+        for request, denied_move in (
+            (probe, "probe"),
+            (commit, "challenge"),
+            (close, "close"),
+        ):
+            self.assertEqual(
+                assess_interviewer_tool_request_against_state(
+                    request,
+                    {
+                        **state,
+                        "allowed_moves": [
+                            move
+                            for move in state["allowed_moves"]
+                            if move != denied_move
+                        ],
+                    },
+                    before_deadline,
+                ),
+                "move_not_allowed",
+            )
 
     def test_tool_result_pending_request_correlation_matrix(self):
         fixtures = self._interviewer_contract_fixtures()

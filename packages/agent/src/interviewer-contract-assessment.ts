@@ -154,6 +154,12 @@ export function assessInterviewerToolRequestAgainstState(
   ) {
     return "eligible";
   }
+  if (
+    state.clock.remaining_ms === 0 ||
+    nowMs >= Date.parse(state.clock.deadline_at)
+  ) {
+    return "deadline_elapsed";
+  }
   if (request.expected_state_revision !== state.state_revision) {
     return "stale_state";
   }
@@ -161,9 +167,12 @@ export function assessInterviewerToolRequestAgainstState(
     return "stale_lifecycle";
   }
   if (request.tool_name === "get_probe_candidates") {
-    return request.active_question_id === state.active_question_id
+    if (request.active_question_id !== state.active_question_id) {
+      return "question_mismatch";
+    }
+    return state.allowed_moves.includes("probe")
       ? "eligible"
-      : "question_mismatch";
+      : "move_not_allowed";
   }
   if (state.lifecycle_snapshot.state !== "active") {
     return "lifecycle_not_active";
@@ -174,6 +183,13 @@ export function assessInterviewerToolRequestAgainstState(
     request.move.target.question_id !== state.active_question_id
   ) {
     return "question_mismatch";
+  }
+  const requestedMove =
+    request.tool_name === "commit_interviewer_move"
+      ? request.move.move_type
+      : "close";
+  if (!state.allowed_moves.includes(requestedMove)) {
+    return "move_not_allowed";
   }
   if (
     request.tool_name === "commit_interviewer_move" &&
