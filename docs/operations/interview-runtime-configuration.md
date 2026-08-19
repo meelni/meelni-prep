@@ -69,3 +69,17 @@ injects no application adapter, so even the exact value `true` resolves
 Preview or Production, add a `NEXT_PUBLIC_*` equivalent, or reuse the live
 interview model configuration as a Director selection. See
 [Interview Director Shadow](./interview-director-shadow.md).
+
+## Interview Director influence gate
+
+`MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED` is a separate server-only
+exact flag and defaults off. The synchronous influence policy reads the value
+on every interviewer-tool admission rather than caching it when the session is
+constructed. Removing it or setting any value other than exact lowercase
+`true` prevents even an already-ready recommendation from influencing the next
+admission, providing no-deploy rollback semantics.
+
+SAV-475 adds no provider adapter and does not authorize configuring this flag
+in Preview or Production. The existing five tools remain the only trigger, and
+the controller remains the sole admission authority. See
+[Interview Director Influence](./interview-director-influence.md).

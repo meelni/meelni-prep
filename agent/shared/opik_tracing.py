@@ -58,6 +58,10 @@ _NULLABLE_INTERVIEWER_EVENT_FIELDS = {
     "recommendation_age_ms",
     "recommendation_comparison",
     "estimated_cost_microusd",
+    "director_policy_version",
+    "director_adapter_version",
+    "planned_move_type",
+    "delivered_move_type",
     "recovery_latency_ms",
 }
 
@@ -107,6 +111,15 @@ _SAFE_ATTRIBUTES = {
     "meelni.interviewer.ready_latency_ms",
     "meelni.interviewer.recommendation_age_ms",
     "meelni.interviewer.estimated_cost_microusd",
+    "meelni.interviewer.influence_contract_version",
+    "meelni.interviewer.influence_policy_version",
+    "meelni.interviewer.influence_config_version",
+    "meelni.interviewer.influence_flag_state",
+    "meelni.interviewer.decision_outcome",
+    "meelni.interviewer.decision_reason",
+    "meelni.interviewer.influence_stage",
+    "meelni.interviewer.planned_move_type",
+    "meelni.interviewer.delivered_move_type",
     "meelni.interviewer.latency_kind",
     "meelni.interviewer.interruption_stage",
     "meelni.interviewer.delivery_observation",
@@ -549,6 +562,16 @@ def sanitize_interviewer_semantic_attributes(
                 "recommendation_age_ms",
                 "recommendation_comparison",
                 "estimated_cost_microusd",
+            }
+        )
+    elif event_kind == "director_influence":
+        nullable_fields.update(
+            {
+                "director_policy_version",
+                "director_adapter_version",
+                "planned_move_type",
+                "delivered_move_type",
+                "recommendation_age_ms",
             }
         )
     elif event_kind == "interruption":

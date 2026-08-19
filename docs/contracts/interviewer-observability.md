@@ -1,7 +1,7 @@
 # Adaptive Interviewer Observability
 
-Status: implemented contract for SAV-469; export and adaptive behavior remain
-default off
+Status: implemented contract for SAV-469 and SAV-475; export and adaptive
+behavior remain default off
 
 `interviewer-observability.v1` is the provider-neutral, content-free event
 contract for measuring the stateful interviewer defined by
@@ -56,6 +56,7 @@ prompt, identity, or transcript text.
 | `move`         | move contract version, stage, type, nullable probe target ID                                                      | Correlate planned through canonically delivered moves without prompt text.         |
 | `tool`         | tool contract version, tool name, typed outcome, latency                                                          | Observe a local interviewer-tool result without arguments or result content.       |
 | `director`     | recommendation/policy/adapter versions, outcome, freshness, comparison, ready latency, age, bounded cost estimate | Observe asynchronous Director readiness/comparison without recommendation content. |
+| `director_influence` | influence/recommendation/policy/adapter/config versions, flag state, closed decision outcome/reason, stage, nullable planned/delivered move types, age | Attribute synchronous influence decisions and planned-to-delivered outcomes without recommendation or target content. |
 | `latency`      | latency kind and milliseconds                                                                                     | Record measured user-speech or controller-decision to first audio.                 |
 | `interruption` | stage, delivery observation, nullable recovery latency                                                            | Observe interruption and recovery without speech text or provider IDs.             |
 | `fallback`     | closed reason and source                                                                                          | Observe policy, Director, tool, prompt, or runtime fallback.                       |
@@ -84,6 +85,12 @@ outside canonical years 0001–9999, or non-finite/negative latency above
   bounded non-negative integer in micro-USD supplied by the adapter contract;
   neither field contains prompt, transcript, recommendation prose, or provider
   identity, and neither establishes a quality/cost gate.
+- Director influence age is sampled only from an already-ready recommendation.
+  `planned`, `admitted`, and `canonically_delivered` are separate content-free
+  events. The latter is emitted only after controller-correlated canonical
+  transcript evidence; interrupted/aborted stages come only from controller
+  state. Flag, cohort, contract, configuration, policy, and adapter attribution
+  are explicit. No session, turn, question, topic, or probe identity is emitted.
 - Planned, admitted, generated, scheduled, spoken, interrupted/aborted, and
   canonically delivered move events use the accepted SAV-466 transition
   meanings. Only canonical transcript evidence can emit
@@ -113,6 +120,9 @@ cohort. It reports runtime and measured-turn counts; p50/p95 user-speech to
 first-audio, Director-ready, tool, and interruption-recovery latency; repeated
 canonically delivered probes; fallback and tool-failure rates; stale Director
 recommendations; interruption recovery; and canonical completion.
+It also reports Director-influence planned, admitted, and canonically-delivered
+counts plus delivered/planned rate. Rejected and ignored influence decisions do
+not increase the planned denominator.
 
 Director result events and comparison events are reduced separately. A
 comparison does not increment `director_result_count` or add another ready

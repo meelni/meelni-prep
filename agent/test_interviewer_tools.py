@@ -12,7 +12,9 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.interview_controller import (  # noqa: E402
+    ControllerError,
     TerminalSettled,
+    list_probe_candidates,
     reduce_controller,
 )
 from shared.interview_controller_adapter import (  # noqa: E402
@@ -27,6 +29,11 @@ from shared.interview_controller_adapter import (  # noqa: E402
 from shared.interviewer_contract_canonicalization import (  # noqa: E402
     calculate_interviewer_mutation_request_digest,
 )
+from shared.interview_director import DirectorRecommendationStore  # noqa: E402
+from shared.interview_director_influence import (  # noqa: E402
+    DIRECTOR_INFLUENCE_FEATURE_ENV,
+    DirectorInfluenceGate,
+)
 from shared.interviewer_contracts import (  # noqa: E402
     INTERVIEWER_TOOL_CONTRACT_VERSION,
     parse_interviewer_tool_result,
@@ -39,6 +46,7 @@ from shared.interviewer_tools import (  # noqa: E402
     TrustedLifecycleSnapshot,
     TrustedLifecycleSnapshotStore,
     create_session_scoped_interviewer_tools,
+    _synthesize_director_commit_request,
 )
 
 
@@ -162,6 +170,113 @@ class InterviewerToolsTests(unittest.IsolatedAsyncioTestCase):
         )
         return items, acceptance
 
+    def director_recommendation(
+        self,
+        state,
+        *,
+        move_type="transition",
+        recommendation_id="recommendation:475:1",
+    ):
+        topic = state.current_topic
+        probe_candidate_id = None
+        reasons = {
+            "probe": "deepen_reasoning",
+            "clarify": "resolve_ambiguity",
+            "challenge": "test_tradeoff",
+            "transition": "advance_round",
+            "close": "controller_fallback",
+        }
+        if move_type in ("probe", "clarify", "challenge"):
+            candidate = next(
+                item
+                for item in list_probe_candidates(state)
+                if item["move_type"] == move_type
+            )
+            probe_candidate_id = candidate["probe_candidate_id"]
+        if move_type == "transition":
+            topic = state.topic_catalog[
+                min(state.topic_index + 1, len(state.topic_catalog) - 1)
+            ]
+        return {
+            "contract_version": "director-recommendation.v1",
+            "policy_version": "interview-director-policy.v1",
+            "model_adapter_version": "interview-director-adapter.fake.v1",
+            "recommendation_id": recommendation_id,
+            "session_id": state.session_id,
+            "brief_id": state.brief_id,
+            "writer_id": state.writer_id,
+            "writer_generation": state.writer_generation,
+            "based_on_state_revision": state.state_revision,
+            "based_on_lifecycle_version": state.lifecycle_version,
+            "source_turn_id": state.last_finalized_candidate_turn_id,
+            "source_transcript_revision": (
+                state.last_finalized_candidate_transcript_revision
+            ),
+            "source_finality": "finalized",
+            "move_type": move_type,
+            "target": {
+                "question_id": state.active_question_id,
+                "topic": topic,
+                "source_turn_id": state.last_finalized_candidate_turn_id,
+                "probe_candidate_id": probe_candidate_id,
+            },
+            "reason_code": reasons[move_type],
+            "created_at": "2026-08-19T12:00:00.000Z",
+            "expires_at": "2026-08-19T12:00:05.000Z",
+        }
+
+    def make_influenced_runtime(
+        self,
+        *,
+        director_move_type="transition",
+        enabled=True,
+        observability=None,
+    ):
+        controller, _, lifecycle, clock, wall, directive = self.make_runtime()
+        state = controller.state
+        recommendation = self.director_recommendation(
+            state, move_type=director_move_type
+        )
+        director_store = DirectorRecommendationStore(
+            session_id=state.session_id,
+            writer_id=state.writer_id,
+            writer_generation=state.writer_generation,
+            capacity=8,
+        )
+        director_store.publish(
+            recommendation,
+            now="2026-08-19T12:00:00.000Z",
+        )
+        env = {
+            INTERVIEWER_TOOLS_FEATURE_ENV: "true",
+            DIRECTOR_INFLUENCE_FEATURE_ENV: "true" if enabled else "false",
+        }
+        gate = DirectorInfluenceGate(
+            env=env,
+            session_id=state.session_id,
+            recommendation_store=director_store,
+            observability=observability,
+        )
+        tools = create_session_scoped_interviewer_tools(
+            env=env,
+            controller=controller,
+            lifecycle_store=lifecycle,
+            observability=observability,
+            director_influence=gate,
+            monotonic_clock_ms=lambda: clock[0],
+            wall_clock=lambda: wall[0],
+        )
+        return (
+            controller,
+            tools,
+            gate,
+            env,
+            clock,
+            wall,
+            directive,
+            recommendation,
+        )
+
     async def test_all_five_tools_return_strict_typed_results(self):
         controller, tools, _, _, _, _ = self.make_runtime()
         state = controller.state
@@ -228,6 +343,235 @@ class InterviewerToolsTests(unittest.IsolatedAsyncioTestCase):
         parse_interviewer_tool_result(close_result.result)
         self.assertEqual(close_controller.state.close_state, "admitted")
         self.assertEqual(close_controller.state.move_ledger[-1].move_type, "close")
+
+    async def test_ready_director_move_is_controller_admitted_without_identity_drift(self):
+        (
+            controller,
+            tools,
+            _,
+            _,
+            _,
+            _,
+            _,
+            recommendation,
+        ) = self.make_influenced_runtime(director_move_type="transition")
+        state = controller.state
+        original_candidate = list_probe_candidates(state)[0]
+        request = tools.build_commit_request(
+            raw_call_id="director-effective-call",
+            contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            expected_state_revision=state.state_revision,
+            expected_lifecycle_version=state.lifecycle_version,
+            move_type="probe",
+            probe_candidate_id=original_candidate["probe_candidate_id"],
+            idempotency_key="director-effective-key",
+        )
+        effective = _synthesize_director_commit_request(request, recommendation)
+        for field in (
+            "contract_version",
+            "tool_name",
+            "call_id",
+            "session_id",
+            "writer_id",
+            "writer_generation",
+            "deadline_at",
+            "expected_state_revision",
+            "expected_lifecycle_version",
+            "idempotency_key",
+        ):
+            self.assertEqual(effective[field], request[field])
+        self.assertNotEqual(effective["request_digest"], request["request_digest"])
+        self.assertEqual(
+            effective["request_digest"],
+            calculate_interviewer_mutation_request_digest(effective),
+        )
+        self.assertEqual(effective["move"]["reason_code"], "advance_round")
+
+        result = await tools.execute(request)
+        self.assertEqual(result.status, "ok")
+        self.assertFalse(result.fallback_required)
+        self.assertEqual(
+            result.result["payload"]["committed_move"]["move_type"],
+            "transition",
+        )
+        self.assertEqual(controller.state.move_ledger[-1].move_type, "transition")
+
+    async def test_revocation_and_tool_kind_mismatch_use_original_path_without_fallback(self):
+        observability = FakeObservability()
+        (
+            controller,
+            tools,
+            gate,
+            env,
+            _,
+            _,
+            _,
+            _,
+        ) = self.make_influenced_runtime(
+            director_move_type="transition",
+            observability=observability,
+        )
+        state = controller.state
+        candidate = list_probe_candidates(state)[0]
+        request = tools.build_commit_request(
+            raw_call_id="revoked-call",
+            contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            expected_state_revision=state.state_revision,
+            expected_lifecycle_version=state.lifecycle_version,
+            move_type="probe",
+            probe_candidate_id=candidate["probe_candidate_id"],
+            idempotency_key="revoked-key",
+        )
+        env[DIRECTOR_INFLUENCE_FEATURE_ENV] = "false"
+        result = await tools.execute(request)
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(controller.state.move_ledger[-1].move_type, "probe")
+        self.assertEqual(gate.consumed_count, 0)
+        self.assertEqual(observability.fallbacks, [])
+
+        close_controller, close_tools, _, _, _, _, _, _ = (
+            self.make_influenced_runtime(director_move_type="probe")
+        )
+        close_state = close_controller.state
+        close = await close_tools.execute(
+            close_tools.build_close_request(
+                raw_call_id="close-nonclose-director",
+                expected_state_revision=close_state.state_revision,
+                expected_lifecycle_version=close_state.lifecycle_version,
+                idempotency_key="close-nonclose-key",
+                reason="candidate_request",
+            )
+        )
+        self.assertEqual(close.status, "ok")
+        self.assertEqual(close_controller.state.move_ledger[-1].move_type, "close")
+        self.assertEqual(
+            close_controller.state.move_ledger[-1].reason_code,
+            "candidate_requested_close",
+        )
+
+        commit_controller, commit_tools, _, _, _, _, _, _ = (
+            self.make_influenced_runtime(director_move_type="close")
+        )
+        commit_state = commit_controller.state
+        commit_candidate = list_probe_candidates(commit_state)[0]
+        commit = await commit_tools.execute(
+            commit_tools.build_commit_request(
+                raw_call_id="commit-close-director",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+                expected_state_revision=commit_state.state_revision,
+                expected_lifecycle_version=commit_state.lifecycle_version,
+                move_type="probe",
+                probe_candidate_id=commit_candidate["probe_candidate_id"],
+                idempotency_key="commit-close-key",
+            )
+        )
+        self.assertEqual(commit.status, "ok")
+        self.assertEqual(commit_controller.state.move_ledger[-1].move_type, "probe")
+
+    async def test_controller_denial_is_non_mutating_then_original_request_wins(self):
+        observability = FakeObservability()
+        controller, tools, gate, _, _, _, _, _ = self.make_influenced_runtime(
+            director_move_type="transition",
+            observability=observability,
+        )
+        state = controller.state
+        candidate = list_probe_candidates(state)[0]
+        request = tools.build_commit_request(
+            raw_call_id="director-denied-call",
+            contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            expected_state_revision=state.state_revision,
+            expected_lifecycle_version=state.lifecycle_version,
+            move_type="probe",
+            probe_candidate_id=candidate["probe_candidate_id"],
+            idempotency_key="director-denied-key",
+        )
+        original_apply = controller.apply_tool_move
+        calls = []
+
+        def deny_once(**kwargs):
+            calls.append(kwargs["move_type"])
+            if len(calls) == 1:
+                raise ControllerError("move_target_mismatch")
+            return original_apply(**kwargs)
+
+        controller.apply_tool_move = deny_once
+        result = await tools.execute(request)
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(calls, ["transition", "probe"])
+        self.assertEqual(len(controller.state.move_ledger), 1)
+        self.assertEqual(controller.state.move_ledger[-1].move_type, "probe")
+        self.assertEqual(gate.consumed_count, 1)
+        self.assertEqual(observability.fallbacks, [])
+        self.assertTrue(
+            any(
+                kind == "director_influence"
+                and fields["decision_reason"] == "controller_denied"
+                for kind, fields in observability.events
+            )
+        )
+
+    async def test_original_idempotency_replays_effective_result_and_conflict_rejects(self):
+        controller, tools, _, _, _, _, _, _ = self.make_influenced_runtime(
+            director_move_type="transition"
+        )
+        state = controller.state
+        candidate = list_probe_candidates(state)[0]
+        request = tools.build_commit_request(
+            raw_call_id="director-replay-call",
+            contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            expected_state_revision=state.state_revision,
+            expected_lifecycle_version=state.lifecycle_version,
+            move_type="probe",
+            probe_candidate_id=candidate["probe_candidate_id"],
+            idempotency_key="director-replay-key",
+        )
+        first = await tools.execute(request)
+        replay = copy.deepcopy(request)
+        replay["call_id"] = "call:director-replay"
+        duplicate = await tools.execute(replay)
+        self.assertEqual(duplicate.status, "duplicate")
+        self.assertEqual(duplicate.result["payload"], first.result["payload"])
+        self.assertEqual(
+            duplicate.result["payload"]["committed_move"]["move_type"],
+            "transition",
+        )
+        conflict = copy.deepcopy(request)
+        conflict["call_id"] = "call:director-conflict"
+        conflict["move"]["reason_code"] = "controller_fallback"
+        conflict["request_digest"] = (
+            calculate_interviewer_mutation_request_digest(conflict)
+        )
+        rejected = await tools.execute(conflict)
+        self.assertEqual(rejected.status, "idempotency_conflict")
+        self.assertEqual(len(controller.state.move_ledger), 1)
+
+    async def test_observability_exception_cannot_block_influence_admission(self):
+        class BrokenObservability:
+            def record(self, *_args, **_kwargs):
+                raise RuntimeError("telemetry unavailable")
+
+            def record_fallback(self, *_args, **_kwargs):
+                raise RuntimeError("telemetry unavailable")
+
+        controller, tools, _, _, _, _, _, _ = self.make_influenced_runtime(
+            director_move_type="transition",
+            observability=BrokenObservability(),
+        )
+        state = controller.state
+        candidate = list_probe_candidates(state)[0]
+        result = await tools.execute(
+            tools.build_commit_request(
+                raw_call_id="broken-observability-call",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+                expected_state_revision=state.state_revision,
+                expected_lifecycle_version=state.lifecycle_version,
+                move_type="probe",
+                probe_candidate_id=candidate["probe_candidate_id"],
+                idempotency_key="broken-observability-key",
+            )
+        )
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(controller.state.move_ledger[-1].move_type, "transition")
 
     async def test_malformed_timeout_disabled_and_unavailable_are_fallbacks(self):
         observability = FakeObservability()
