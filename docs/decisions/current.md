@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Gate Director Recommendations Through The Controller](2026-08-19-gate-director-recommendations-through-controller.md): Inspect only already-ready session-local advice at the serialized tool boundary, re-read the kill switch per admission, and preserve deterministic controller, delivery, and feedback authority.
 - [Bound Interviewer Tools To Fresh Session-Local Authority](2026-08-19-bounded-session-interviewer-tools.md): Expose exactly five local tools behind fresh current-writer lifecycle authority, preserve SAV-471 single-use identity, and keep delivery, fallback, and rollout ownership unchanged.
 - [Keep The Interview Director Read-Only In Shadow](2026-08-19-read-only-shadow-interview-director.md): Observe finalized interview context asynchronously through a bounded, default-off, no-adapter shadow whose recommendations and telemetry cannot affect live prompts, control, evidence, feedback, or customer output.
 - [Stateful Interviewer Contracts Preserve Existing Authorities](2026-08-18-stateful-interviewer-contracts.md): Keep top-level room metadata v1, add a deterministic independently versioned nested brief, put controller admission between Director advice and speech, and preserve lifecycle/transcript/feedback authority and human-owned rollout.

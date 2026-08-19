@@ -17,6 +17,54 @@ export const INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION =
   "interviewer-observability.v1" as const;
 export const INTERVIEWER_OBSERVABILITY_REPORT_VERSION =
   "interviewer-observability-report.v1" as const;
+export const DIRECTOR_INFLUENCE_CONTRACT_VERSION =
+  "interview-director-influence.v1" as const;
+export const DIRECTOR_INFLUENCE_POLICY_VERSION =
+  "interview-director-influence-policy.v1" as const;
+export const DIRECTOR_INFLUENCE_CONFIG_VERSION =
+  "interview-director-influence-config.v1" as const;
+
+export const DIRECTOR_INFLUENCE_DECISION_OUTCOMES = [
+  "accepted",
+  "rejected",
+  "ignored",
+] as const;
+export const DIRECTOR_INFLUENCE_DECISION_REASONS = [
+  "accepted",
+  "flag_disabled",
+  "director_unavailable",
+  "recommendation_missing",
+  "malformed",
+  "repeated",
+  "capacity",
+  "session_mismatch",
+  "brief_mismatch",
+  "stale_state",
+  "stale_lifecycle",
+  "source_not_final",
+  "source_turn_mismatch",
+  "source_transcript_revision_mismatch",
+  "question_mismatch",
+  "not_yet_valid",
+  "expired",
+  "deadline_elapsed",
+  "lifecycle_not_active",
+  "speech_fenced",
+  "move_not_allowed",
+  "target_mismatch",
+  "probe_ineligible",
+  "already_delivered",
+  "tool_kind_mismatch",
+  "controller_denied",
+] as const;
+export const DIRECTOR_INFLUENCE_STAGES = [
+  "evaluated",
+  "planned",
+  "admitted",
+  "canonically_delivered",
+  "interrupted",
+  "aborted",
+] as const;
 
 export const INTERVIEWER_ROLLOUT_COHORTS = [
   "current",
@@ -178,6 +226,22 @@ export type InterviewerObservabilityEvent =
       estimated_cost_microusd: number | null;
     })
   | (InterviewerObservabilityEventBase & {
+      event_kind: "director_influence";
+      influence_contract_version: typeof DIRECTOR_INFLUENCE_CONTRACT_VERSION;
+      influence_policy_version: typeof DIRECTOR_INFLUENCE_POLICY_VERSION;
+      influence_config_version: typeof DIRECTOR_INFLUENCE_CONFIG_VERSION;
+      influence_flag_state: "enabled" | "disabled";
+      recommendation_contract_version: typeof DIRECTOR_RECOMMENDATION_CONTRACT_VERSION;
+      director_policy_version: string | null;
+      director_adapter_version: string | null;
+      decision_outcome: (typeof DIRECTOR_INFLUENCE_DECISION_OUTCOMES)[number];
+      decision_reason: (typeof DIRECTOR_INFLUENCE_DECISION_REASONS)[number];
+      influence_stage: (typeof DIRECTOR_INFLUENCE_STAGES)[number];
+      planned_move_type: InterviewerMoveType | null;
+      delivered_move_type: InterviewerMoveType | null;
+      recommendation_age_ms: number | null;
+    })
+  | (InterviewerObservabilityEventBase & {
       event_kind: "latency";
       latency_kind: InterviewerLatencyKind;
       latency_ms: number;
@@ -284,6 +348,27 @@ export function isInterviewerObservabilityEvent(
         isNullableLatency(value.recommendation_age_ms) &&
         isNullableEstimatedCost(value.estimated_cost_microusd)
       );
+    case "director_influence":
+      return (
+        value.influence_contract_version ===
+          DIRECTOR_INFLUENCE_CONTRACT_VERSION &&
+        value.influence_policy_version === DIRECTOR_INFLUENCE_POLICY_VERSION &&
+        value.influence_config_version === DIRECTOR_INFLUENCE_CONFIG_VERSION &&
+        includes(["enabled", "disabled"] as const, value.influence_flag_state) &&
+        value.recommendation_contract_version ===
+          DIRECTOR_RECOMMENDATION_CONTRACT_VERSION &&
+        isNullableContractToken(value.director_policy_version) &&
+        isNullableContractToken(value.director_adapter_version) &&
+        includes(
+          DIRECTOR_INFLUENCE_DECISION_OUTCOMES,
+          value.decision_outcome
+        ) &&
+        includes(DIRECTOR_INFLUENCE_DECISION_REASONS, value.decision_reason) &&
+        includes(DIRECTOR_INFLUENCE_STAGES, value.influence_stage) &&
+        isNullableMoveType(value.planned_move_type) &&
+        isNullableMoveType(value.delivered_move_type) &&
+        isNullableLatency(value.recommendation_age_ms)
+      );
     case "latency":
       return (
         includes(INTERVIEWER_LATENCY_KINDS, value.latency_kind) &&
@@ -360,6 +445,23 @@ function eventKeys(eventKind: string): readonly string[] | null {
         "recommendation_age_ms",
         "estimated_cost_microusd",
       ];
+    case "director_influence":
+      return [
+        ...COMMON_KEYS,
+        "influence_contract_version",
+        "influence_policy_version",
+        "influence_config_version",
+        "influence_flag_state",
+        "recommendation_contract_version",
+        "director_policy_version",
+        "director_adapter_version",
+        "decision_outcome",
+        "decision_reason",
+        "influence_stage",
+        "planned_move_type",
+        "delivered_move_type",
+        "recommendation_age_ms",
+      ];
     case "latency":
       return [...COMMON_KEYS, "latency_kind", "latency_ms"];
     case "interruption":
@@ -398,6 +500,10 @@ export interface InterviewerObservabilityAggregate {
   tool_failure_count: number;
   tool_failure_rate: number | null;
   director_result_count: number;
+  director_influence_planned_count: number;
+  director_influence_admitted_count: number;
+  director_influence_delivered_count: number;
+  director_influence_delivery_rate: number | null;
   stale_recommendation_count: number;
   stale_recommendation_rate: number | null;
   interruption_count: number;
@@ -540,6 +646,9 @@ export function aggregateInterviewerObservabilityEvents(
   let toolCallCount = 0;
   let toolFailureCount = 0;
   let directorResultCount = 0;
+  let directorInfluencePlannedCount = 0;
+  let directorInfluenceAdmittedCount = 0;
+  let directorInfluenceDeliveredCount = 0;
   let staleRecommendationCount = 0;
   const interruptionStates = new Map<
     string,
@@ -610,6 +719,24 @@ export function aggregateInterviewerObservabilityEvents(
           event.recommendation_comparison === "recommendation_expired"
         ) {
           staleRecommendationCount += 1;
+        }
+        break;
+      case "director_influence":
+        if (
+          event.decision_outcome === "accepted" &&
+          event.influence_stage === "planned"
+        ) {
+          directorInfluencePlannedCount += 1;
+        } else if (
+          event.decision_outcome === "accepted" &&
+          event.influence_stage === "admitted"
+        ) {
+          directorInfluenceAdmittedCount += 1;
+        } else if (
+          event.decision_outcome === "accepted" &&
+          event.influence_stage === "canonically_delivered"
+        ) {
+          directorInfluenceDeliveredCount += 1;
         }
         break;
       case "tool":
@@ -690,6 +817,13 @@ export function aggregateInterviewerObservabilityEvents(
     tool_failure_count: toolFailureCount,
     tool_failure_rate: rate(toolFailureCount, toolCallCount),
     director_result_count: directorResultCount,
+    director_influence_planned_count: directorInfluencePlannedCount,
+    director_influence_admitted_count: directorInfluenceAdmittedCount,
+    director_influence_delivered_count: directorInfluenceDeliveredCount,
+    director_influence_delivery_rate: rate(
+      directorInfluenceDeliveredCount,
+      directorInfluencePlannedCount
+    ),
     stale_recommendation_count: boundedStaleRecommendationCount,
     stale_recommendation_rate: rate(
       boundedStaleRecommendationCount,
@@ -952,6 +1086,16 @@ function isContractToken(value: unknown): value is string {
     value.length <= 96 &&
     /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u.test(value)
   );
+}
+
+function isNullableContractToken(value: unknown): value is string | null {
+  return value === null || isContractToken(value);
+}
+
+function isNullableMoveType(
+  value: unknown
+): value is InterviewerMoveType | null {
+  return value === null || includes(INTERVIEWER_MOVE_TYPES, value);
 }
 
 function isNullableEstimatedCost(value: unknown): value is number | null {
