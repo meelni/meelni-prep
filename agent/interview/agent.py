@@ -45,10 +45,12 @@ from shared.interviewer_observability import (
 )
 from shared.interview_controller_adapter import (
     InterviewControllerAdapter,
+    MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
     ReplySuppressionGate,
     allow_controller_generation,
     create_interview_controller_adapter,
     measured_turn_duration_ms,
+    put_bounded_correlation,
     resolve_controller_runtime_mode,
 )
 from shared.mock_interview_opening import speak_mock_interview_opening
@@ -490,13 +492,14 @@ async def entrypoint(ctx: JobContext):
 
     async def publish_persisted_transcript(transcript_data: dict[str, object]):
         event_id = transcript_data.get("event_id")
+        source_message_id = (
+            transcript_message_ids_by_event_id.pop(event_id, None)
+            if isinstance(event_id, str)
+            else None
+        )
         controller_adapter.persisted_transcript(
             transcript_data,
-            source_message_id=(
-                transcript_message_ids_by_event_id.get(event_id)
-                if isinstance(event_id, str)
-                else None
-            ),
+            source_message_id=source_message_id,
         )
 
         async def project_to_room() -> None:
@@ -1275,7 +1278,12 @@ async def entrypoint(ctx: JobContext):
                 marker["sequence"] = writer_sequence.allocate(
                     event_id=event_id, kind="interruption_marker"
                 )
-                interruption_markers_by_id[event_id] = marker
+                put_bounded_correlation(
+                    interruption_markers_by_id,
+                    event_id,
+                    marker,
+                    limit=MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+                )
             elif marker["speaker"] != speaker or marker["reason"] != reason:
                 raise TranscriptIngestError(
                     "interruption marker identity was reused for different evidence"
@@ -1351,8 +1359,23 @@ async def entrypoint(ctx: JobContext):
                 transcript_data["sequence"] = writer_sequence.allocate(
                     event_id=transcript_event_id, kind="transcript"
                 )
-                transcript_events_by_id[transcript_event_id] = transcript_data
-                transcript_message_ids_by_event_id[transcript_event_id] = message_id
+                evicted_event_ids = put_bounded_correlation(
+                    transcript_events_by_id,
+                    transcript_event_id,
+                    transcript_data,
+                    limit=MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+                )
+                for evicted_event_id in evicted_event_ids:
+                    transcript_message_ids_by_event_id.pop(
+                        evicted_event_id,
+                        None,
+                    )
+                put_bounded_correlation(
+                    transcript_message_ids_by_event_id,
+                    transcript_event_id,
+                    message_id,
+                    limit=MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+                )
             transcript_queue.enqueue_transcript(
                 transcript_data,
                 measured_ended_at=measured_ended_at,
@@ -1423,7 +1446,10 @@ async def entrypoint(ctx: JobContext):
         """Persist a textless marker when interrupted output had no heard prefix."""
         handle = event.speech_handle
         runtime_settlement_evidence_gate.track_speech(handle.id)
-        controller_adapter.speech_created(handle_id=handle.id)
+        controller_adapter.speech_created(
+            handle_id=handle.id,
+            source=event.source,
+        )
 
         def on_speech_done(done_handle) -> None:
             interruption_observed_at = time.time()

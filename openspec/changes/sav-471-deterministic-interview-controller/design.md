@@ -17,11 +17,14 @@
    message ID plus its deterministically assigned canonical event identity; it
    does not claim that the later publisher has already persisted the event.
    One pending move blocks a second admission.
-5. `speech_created` establishes only handle correlation. At the public LLM
-   generation boundary, the adapter requires the finalized candidate message
-   ID and exact `controller:{move_id}` snapshot identity from the public chat
-   context before projecting monotonic time. A stale preemptive context is
-   denied without state mutation; the matching context may authorize once.
+5. Pinned LiveKit 1.6.5 emits public `speech_created` synchronously before it
+   creates that handle's pipeline task. A bounded per-adapter Python task
+   context carries only that candidate identity into the public LLM generation
+   boundary. The adapter then requires the finalized candidate message ID and
+   exact `controller:{move_id}` snapshot identity before promoting the handle
+   or projecting monotonic time. A stale, evicted, duplicate, or replayed
+   handle is denied without state or evidence-correlation mutation; the
+   matching context may authorize once.
    Speech events then advance only lifecycle evidence. The move joins committed
    probe history only after a successful canonical transcript write positively
    correlated through the move, speech handle, assistant item, and event ID.
@@ -55,8 +58,10 @@
   recorded separately from ordinary probing so repetition prevention remains
   inspectable.
 - Candidate exit intent uses a bounded, anchored stop/end/finish request
-  grammar. Ordinary answer content containing those verbs does not request an
-  exit; an unambiguous match admits the existing graceful close.
+  grammar that requires an interview/session target or clear temporal/deictic
+  termination context. Bare clauses and ordinary answer content containing
+  those verbs do not request an exit; an unambiguous match admits the existing
+  graceful close.
 - The controller computes time bands. The model never receives instructions to
   estimate elapsed or remaining time.
 - A canonically delivered transition at the final objective/topic exhausts the

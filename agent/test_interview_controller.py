@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 import unittest
+from contextvars import copy_context
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,10 +32,13 @@ from shared.interview_controller import (  # noqa: E402
 from shared.interview_controller_adapter import (  # noqa: E402
     CONTROLLER_ADAPTER_CONTRACT_VERSION,
     CONTROLLER_FEATURE_ENV,
+    MAX_PENDING_CORRELATIONS,
+    MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
     ReplySuppressionGate,
     allow_controller_generation,
     create_interview_controller_adapter,
     measured_turn_duration_ms,
+    put_bounded_correlation,
     resolve_controller_runtime_mode,
 )
 from shared.transcript_events import create_transcript_event  # noqa: E402
@@ -1008,6 +1012,337 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertIs(adapter.state, generated)
         self.assertTrue(adapter.enabled)
 
+    def test_public_speech_event_context_is_inherited_by_its_generation_task(self):
+        async def exercise():
+            adapter = self.make_adapter()
+            stale_release = asyncio.Event()
+            intended_release = asyncio.Event()
+
+            # Pinned LiveKit 1.6.5 emits public speech_created synchronously,
+            # then creates the pipeline task in that callback context.
+            adapter.speech_created(
+                handle_id="speech-preemptive",
+                source="generate_reply",
+                monotonic_ms=1_000,
+            )
+
+            async def authorize_after(release, items, monotonic_ms):
+                await release.wait()
+                return allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    items,
+                    monotonic_ms=monotonic_ms,
+                )
+
+            stale_task = asyncio.create_task(
+                authorize_after(
+                    stale_release,
+                    [SimpleNamespace(role="user", id="turn-preemptive")],
+                    1_002,
+                )
+            )
+            directive = adapter.complete_user_turn(
+                message_id="turn-finalized",
+                transcript_revision="writer-1:turn-finalized",
+                text="I would prioritize the highest-impact user need.",
+                duration_ms=8_000,
+                monotonic_ms=1_001,
+            )
+            admitted = adapter.state
+
+            adapter.speech_created(
+                handle_id="speech-intended",
+                source="generate_reply",
+                monotonic_ms=1_003,
+            )
+            intended_task = asyncio.create_task(
+                authorize_after(
+                    intended_release,
+                    [
+                        SimpleNamespace(role="user", id="turn-finalized"),
+                        SimpleNamespace(
+                            role="system",
+                            id=f"controller:{directive.move_id}",
+                        ),
+                    ],
+                    1_004,
+                )
+            )
+
+            stale_release.set()
+            self.assertFalse(await stale_task)
+            self.assertIs(adapter.state, admitted)
+            intended_release.set()
+            self.assertTrue(await intended_task)
+            self.assertEqual(adapter.state.move_ledger[-1].stage, "generated")
+
+        asyncio.run(exercise())
+
+    def test_denied_generation_handles_cannot_mutate_or_correlate_move(self):
+        completion_cases = (
+            {
+                "name": "scheduled",
+                "scheduled": True,
+                "interrupted": False,
+                "has_confirmed_prefix": True,
+            },
+            {
+                "name": "aborted",
+                "scheduled": False,
+                "interrupted": True,
+                "has_confirmed_prefix": False,
+            },
+            {
+                "name": "interrupted",
+                "scheduled": True,
+                "interrupted": True,
+                "has_confirmed_prefix": False,
+            },
+        )
+
+        for case in completion_cases:
+            with self.subTest(case=case["name"]):
+                adapter = self.make_adapter()
+                directive = adapter.complete_user_turn(
+                    message_id="turn-finalized",
+                    transcript_revision="writer-1:turn-finalized",
+                    text="I would prioritize the highest-impact user need.",
+                    duration_ms=8_000,
+                    monotonic_ms=1_001,
+                )
+                admitted = adapter.state
+                handle_id = f"speech-denied-{case['name']}"
+                assistant_id = f"assistant-denied-{case['name']}"
+
+                adapter.speech_created(
+                    handle_id=handle_id,
+                    source="generate_reply",
+                    monotonic_ms=1_002,
+                )
+                handle_context = copy_context()
+                self.assertFalse(
+                    handle_context.run(
+                        lambda: allow_controller_generation(
+                            adapter,
+                            ReplySuppressionGate(),
+                            [
+                                SimpleNamespace(
+                                    role="user",
+                                    id="turn-finalized",
+                                ),
+                                SimpleNamespace(
+                                    role="system",
+                                    id="controller:move:session-471:wrong",
+                                ),
+                            ],
+                            monotonic_ms=1_003,
+                        )
+                    )
+                )
+                self.assertIs(adapter.state, admitted)
+
+                adapter.speech_finished(
+                    handle_id=handle_id,
+                    scheduled=case["scheduled"],
+                    interrupted=case["interrupted"],
+                    has_confirmed_prefix=case["has_confirmed_prefix"],
+                    assistant_message_ids=(assistant_id,),
+                    monotonic_ms=1_004,
+                )
+                self.assertIs(adapter.state, admitted)
+                self.assertNotIn(
+                    f"writer-1:{assistant_id}",
+                    adapter._transcript_move_ids,
+                )
+                self.assertNotIn(
+                    f"writer-1:{handle_id}:unavailable",
+                    adapter._interruption_move_ids,
+                )
+
+                adapter.persisted_transcript(
+                    {
+                        "speaker": "interviewer",
+                        "event_id": f"writer-1:{assistant_id}",
+                        "writer_id": "writer-1",
+                        "writer_generation": 1,
+                        "sequence": 2,
+                        "delivery_state": "delivered",
+                    },
+                    monotonic_ms=1_005,
+                )
+                adapter.persisted_interruption_marker(
+                    {
+                        "speaker": "interviewer",
+                        "reason": "no_provider_confirmed_prefix",
+                        "event_id": f"writer-1:{handle_id}:unavailable",
+                        "writer_id": "writer-1",
+                        "writer_generation": 1,
+                        "sequence": 3,
+                    },
+                    monotonic_ms=1_006,
+                )
+                self.assertIs(adapter.state, admitted)
+                self.assertEqual(adapter.state.pending_move_id, directive.move_id)
+                self.assertTrue(adapter.enabled)
+
+    def test_replayed_handle_cannot_consume_authorized_handle_evidence(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        exact_items = [
+            SimpleNamespace(role="user", id="turn-finalized"),
+            SimpleNamespace(role="system", id=f"controller:{directive.move_id}"),
+        ]
+
+        adapter.speech_created(
+            handle_id="speech-intended",
+            source="generate_reply",
+            monotonic_ms=1_002,
+        )
+        intended_context = copy_context()
+        self.assertTrue(
+            intended_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    exact_items,
+                    monotonic_ms=1_003,
+                )
+            )
+        )
+        generated = adapter.state
+
+        adapter.speech_created(
+            handle_id="speech-replay",
+            source="generate_reply",
+            monotonic_ms=1_004,
+        )
+        replay_context = copy_context()
+        self.assertFalse(
+            replay_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    exact_items,
+                    monotonic_ms=1_005,
+                )
+            )
+        )
+        adapter.speech_finished(
+            handle_id="speech-replay",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-replay",),
+            monotonic_ms=1_006,
+        )
+        self.assertIs(adapter.state, generated)
+        self.assertNotIn(
+            "writer-1:assistant-replay",
+            adapter._transcript_move_ids,
+        )
+
+        adapter.speech_finished(
+            handle_id="speech-intended",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-intended",),
+            monotonic_ms=1_007,
+        )
+        self.assertEqual(adapter.state.move_ledger[-1].stage, "spoken")
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-intended",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 2,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_008,
+        )
+        self.assertEqual(
+            adapter.state.move_ledger[-1].stage,
+            "canonically_delivered",
+        )
+        self.assertTrue(adapter.enabled)
+
+    def test_speech_and_runtime_correlations_are_bounded(self):
+        adapter = self.make_adapter()
+        adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        admitted = adapter.state
+
+        for index in range(MAX_PENDING_CORRELATIONS + 3):
+            adapter.speech_created(
+                handle_id=f"speech-{index}",
+                source="generate_reply",
+                monotonic_ms=1_002 + index,
+            )
+        self.assertEqual(
+            len(adapter._created_speech_handles),
+            MAX_PENDING_CORRELATIONS,
+        )
+        self.assertEqual(len(adapter._speech_move_ids), 0)
+        self.assertEqual(
+            tuple(adapter._created_speech_handles),
+            tuple(
+                f"speech-{index}"
+                for index in range(3, MAX_PENDING_CORRELATIONS + 3)
+            ),
+        )
+
+        for index in range(MAX_PENDING_CORRELATIONS + 3):
+            adapter.speech_finished(
+                handle_id=f"speech-{index}",
+                scheduled=bool(index % 2),
+                interrupted=not bool(index % 2),
+                has_confirmed_prefix=bool(index % 2),
+                assistant_message_ids=(f"assistant-{index}",),
+                monotonic_ms=1_020 + index,
+            )
+        self.assertIs(adapter.state, admitted)
+        self.assertEqual(len(adapter._created_speech_handles), 0)
+        self.assertEqual(len(adapter._speech_move_ids), 0)
+        self.assertLessEqual(
+            len(adapter._retired_speech_handles),
+            MAX_PENDING_CORRELATIONS,
+        )
+
+        runtime_correlations = {}
+        evicted = ()
+        for index in range(MAX_RUNTIME_TRANSCRIPT_CORRELATIONS + 3):
+            evicted = put_bounded_correlation(
+                runtime_correlations,
+                f"event-{index}",
+                f"message-{index}",
+                limit=MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+            )
+        self.assertEqual(
+            len(runtime_correlations),
+            MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+        )
+        self.assertEqual(evicted, ("event-2",))
+        self.assertEqual(
+            tuple(runtime_correlations),
+            tuple(
+                f"event-{index}"
+                for index in range(3, MAX_RUNTIME_TRANSCRIPT_CORRELATIONS + 3)
+            ),
+        )
+
     def test_adapter_exit_intent_policy_is_bounded_and_graceful(self):
         positive_phrases = (
             "I would like to stop now.",
@@ -1018,12 +1353,18 @@ class InterviewControllerTests(unittest.TestCase):
             "I think we should finish the interview.",
         )
         negative_phrases = (
+            "I think we should stop.",
+            "We should end.",
+            "Can we finish?",
+            "I need to finish.",
             "I would stop investing in this segment.",
             "Please stop users from abandoning checkout.",
             "Can we end the roadmap discussion with next steps?",
             "I want to finish defining the success metrics.",
             "At the end, I would compare the tradeoffs.",
             "We should stop churn before it starts.",
+            "We should end the experiment after the next cohort.",
+            "Can we finish the prioritization exercise first?",
             "Do not stop the interview.",
         )
 

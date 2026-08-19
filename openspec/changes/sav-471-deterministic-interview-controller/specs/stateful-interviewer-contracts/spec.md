@@ -49,6 +49,14 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 - **THEN** generation is denied without mutating controller state
 - **AND** the matching finalized pipeline may authorize that move exactly once
 
+#### Scenario: A speech handle lacks exact generation authority
+
+- **WHEN** a created handle is denied, evicted, duplicated, or replayed instead
+  of receiving exact finalized-turn and move authorization
+- **THEN** its scheduled, aborted, or interrupted completion does not mutate
+  controller state
+- **AND** it cannot correlate transcript or interruption evidence to the move
+
 #### Scenario: Deadline has elapsed
 
 - **WHEN** projected remaining time reaches zero
@@ -105,7 +113,8 @@ conversation-item persistence path.
 #### Scenario: Candidate explicitly exits before the deadline
 
 - **WHEN** a finalized candidate turn makes an unambiguous, bounded
-  stop/end/finish interview request while time remains
+  stop/end/finish request with an interview/session target or clear
+  temporal/deictic termination context while time remains
 - **THEN** the controller admits one graceful `close` move
 - **AND** terminal state begins only after canonical close delivery
 - **AND** ordinary answer content using those verbs does not request exit

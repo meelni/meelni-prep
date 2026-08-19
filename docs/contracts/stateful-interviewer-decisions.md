@@ -225,6 +225,13 @@ uses a separately created candidate message, so a stale or mismatched context
 is denied without clock, revision, or move-stage mutation. Only the exact
 finalized context can authorize the admitted move, and it can do so once.
 
+Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
+before creating that handle's pipeline task. A bounded per-adapter Python task
+context carries the candidate handle identity across that ordering boundary.
+Creation is not move authority: only exact finalized-turn and move
+authorization binds a handle to lifecycle changes or delivery correlation.
+Denied, evicted, duplicate, and replayed handles are operational no-ops.
+
 A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
 candidate message ID plus the canonical transcript event identity assigned to
 that message. This identity is not represented as durably persisted at hook
@@ -236,8 +243,9 @@ permits one substantive interviewer question.
 A normal pre-deadline explicit exit admits one graceful
 `candidate_requested_close` and becomes terminal only after canonical close
 delivery. The adapter recognizes only bounded, anchored stop/end/finish
-interview requests; ordinary answer clauses using those verbs do not request
-exit. A completed turn that instead projects elapsed, and every
+requests with an explicit interview/session target or clear temporal/deictic
+termination context; bare or ordinary answer clauses using those verbs do not
+request exit. A completed turn that instead projects elapsed, and every
 already-terminal turn, returns normally from the pinned LiveKit user-turn hook
 and uses an empty public-LLM-node result so LiveKit still commits/emits the
 finalized user item through `conversation_item_added` exactly once. Raising
