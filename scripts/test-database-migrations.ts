@@ -7567,17 +7567,36 @@ async function verifyQuestionRankingAdapter(
     )
     SELECT
       (
-        '47000000-0000-4000-8000-' || lpad(candidate::text, 12, '0')
+        '47000000-0000-4000-8000-' || lpad((
+          (question_type.ordinality - 1) * 4000 +
+          (difficulty.ordinality - 1) * 1000 +
+          candidate
+        )::text, 12, '0')
       )::uuid,
       NULL,
-      'Synthetic earlier-ID non-matching candidate ' || candidate,
-      'Behavioral',
-      'Easy',
+      'Synthetic exact-bucket planner candidate ' ||
+        question_type.value || ' / ' ||
+        coalesce(difficulty.value, 'null') || ' / ' || candidate,
+      question_type.value,
+      difficulty.value,
       '2026-08-18T12:00:00.000Z'::timestamptz -
         candidate * interval '1 second',
       'published',
       true
-    FROM generate_series(1, 70) AS candidate
+    FROM unnest(ARRAY[
+      'A/B Testing',
+      'Product design/strategy',
+      'Behavioral',
+      'Execution',
+      'Product Sense',
+      'Pricing',
+      'Estimation',
+      'Product Strategy'
+    ]::text[]) WITH ORDINALITY AS question_type(value, ordinality)
+    CROSS JOIN unnest(ARRAY[
+      'Easy', 'Medium', 'Hard', NULL
+    ]::text[]) WITH ORDINALITY AS difficulty(value, ordinality)
+    CROSS JOIN generate_series(1, 1000) AS candidate
   `;
   await sql`
     INSERT INTO interview_question (
@@ -7590,43 +7609,115 @@ async function verifyQuestionRankingAdapter(
         'Synthetic requested-round and requested-difficulty candidate',
         'Product Sense',
         'Medium',
-        '2026-08-01T12:00:00.000Z'::timestamptz,
+        '2026-08-19T12:00:00.000Z'::timestamptz,
         'published',
         true
       ),
       (
         ${nullDifficultyQuestionId}::uuid,
-        NULL,
+        'Planner Null Co',
         'Synthetic requested-round nullable-difficulty candidate',
         'Product Sense',
         NULL,
-        '2026-08-17T12:00:00.000Z'::timestamptz,
+        '2026-08-19T11:00:00.000Z'::timestamptz,
         'published',
         true
       )
   `;
+  await sql`ANALYZE interview_question`;
 
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = databaseUrl;
   try {
-    const { createDrizzleQuestionRankingContextStore } = await import(
-      "../lib/db/question-ranking"
+    const {
+      buildBoundedCandidateWindowQuery,
+      createDrizzleQuestionRankingContextStore,
+    } = await import("../lib/db/question-ranking");
+    const rankingStore = createDrizzleQuestionRankingContextStore();
+    const candidates = await rankingStore.loadCandidates(
+      {
+        roundType: "product_sense",
+        difficulty: "intermediate",
+        company: null,
+      },
+      64
     );
-    const candidates =
-      await createDrizzleQuestionRankingContextStore().loadCandidates(
+    assert.equal(candidates.length, 64);
+    assert.equal(candidates[0]?.id, matchingQuestionId);
+    const companyCandidates = await rankingStore.loadCandidates(
+      {
+        roundType: "product_sense",
+        difficulty: "intermediate",
+        company: "Planner Null Co",
+      },
+      64
+    );
+    assert.equal(companyCandidates[0]?.id, nullDifficultyQuestionId);
+    assert.equal(companyCandidates[0]?.difficulty, null);
+
+    const explainRows = await drizzle(sql).execute<{
+      "QUERY PLAN": QuestionRankingExplainDocument[] | string;
+    }>(drizzleSql`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+      ${buildBoundedCandidateWindowQuery(
         {
           roundType: "product_sense",
           difficulty: "intermediate",
           company: null,
         },
         64
-      );
-    assert.equal(candidates.length, 64);
-    assert.equal(candidates[0]?.id, matchingQuestionId);
-    assert.equal(
-      candidates.find(({ id }) => id === nullDifficultyQuestionId)?.difficulty,
-      null
+      )}
+    `);
+    const explainPayload = explainRows[0]?.["QUERY PLAN"];
+    const explainDocuments =
+      typeof explainPayload === "string"
+        ? (JSON.parse(explainPayload) as QuestionRankingExplainDocument[])
+        : explainPayload;
+    assert.ok(Array.isArray(explainDocuments));
+    const explainRoot = explainDocuments[0]?.Plan;
+    assert.ok(explainRoot);
+    const planEntries = collectQuestionRankingExplainPlan(explainRoot);
+    const bucketIndexScans = planEntries.filter(
+      ({ node }) =>
+        node["Index Name"] === "interview_question_ranking_bucket_idx"
     );
+    assert.equal(
+      bucketIndexScans.length,
+      32,
+      `expected 32 exact type/difficulty index paths:\n${JSON.stringify(
+        planEntries.map(({ node, parent }) => ({
+          nodeType: node["Node Type"],
+          parentType: parent?.["Node Type"] ?? null,
+          indexName: node["Index Name"] ?? null,
+          indexCondition: node["Index Cond"] ?? null,
+          actualRows: node["Actual Rows"] ?? null,
+          actualLoops: node["Actual Loops"] ?? null,
+          rowsRemovedByFilter: node["Rows Removed by Filter"] ?? 0,
+        })),
+        null,
+        2
+      )}`
+    );
+    const nonNullScans = bucketIndexScans.filter(({ node }) =>
+      /difficulty\s*=/.test(node["Index Cond"] ?? "")
+    );
+    const nullScans = bucketIndexScans.filter(({ node }) =>
+      /difficulty\s+IS NULL/.test(node["Index Cond"] ?? "")
+    );
+    assert.equal(nonNullScans.length, 24);
+    assert.equal(nullScans.length, 8);
+    for (const scan of nonNullScans) {
+      assertQuestionRankingBucketIndexPlan(scan, {
+        expectedLoops: 1,
+        difficultyCondition: /difficulty\s*=/,
+      });
+    }
+    for (const scan of nullScans) {
+      assertQuestionRankingBucketIndexPlan(scan, {
+        expectedLoops: 1,
+        difficultyCondition: /difficulty\s+IS NULL/,
+      });
+    }
 
     const indexes = await sql<{ indexname: string; indexdef: string }[]>`
       SELECT indexname, indexdef
@@ -7655,6 +7746,55 @@ async function verifyQuestionRankingAdapter(
       WHERE id::text LIKE ${`${fixtureIdPrefix}%`}
     `;
   }
+}
+
+interface QuestionRankingExplainNode {
+  "Node Type": string;
+  "Index Name"?: string;
+  "Index Cond"?: string;
+  "Scan Direction"?: string;
+  "Actual Rows"?: number;
+  "Actual Loops"?: number;
+  "Rows Removed by Filter"?: number;
+  Plans?: QuestionRankingExplainNode[];
+}
+
+interface QuestionRankingExplainDocument {
+  Plan: QuestionRankingExplainNode;
+}
+
+interface QuestionRankingExplainEntry {
+  node: QuestionRankingExplainNode;
+  parent: QuestionRankingExplainNode | null;
+}
+
+function collectQuestionRankingExplainPlan(
+  node: QuestionRankingExplainNode,
+  parent: QuestionRankingExplainNode | null = null
+): QuestionRankingExplainEntry[] {
+  return [
+    { node, parent },
+    ...(node.Plans ?? []).flatMap((child) =>
+      collectQuestionRankingExplainPlan(child, node)
+    ),
+  ];
+}
+
+function assertQuestionRankingBucketIndexPlan(
+  entry: QuestionRankingExplainEntry | undefined,
+  input: { expectedLoops: number; difficultyCondition: RegExp }
+) {
+  assert.ok(entry, "missing exact question-ranking bucket index scan");
+  assert.equal(entry.node["Node Type"], "Index Scan");
+  assert.equal(entry.node["Scan Direction"], "Forward");
+  assert.match(entry.node["Index Cond"] ?? "", /question_type\s*=/);
+  assert.match(entry.node["Index Cond"] ?? "", input.difficultyCondition);
+  assert.equal(entry.node["Actual Rows"], 64);
+  assert.equal(entry.node["Actual Loops"], input.expectedLoops);
+  assert.equal(entry.node["Rows Removed by Filter"] ?? 0, 0);
+  assert.equal(entry.parent?.["Node Type"], "Limit");
+  assert.equal(entry.parent?.["Actual Rows"], 64);
+  assert.equal(entry.parent?.["Actual Loops"], input.expectedLoops);
 }
 
 async function verifyFocusedPracticePersistence(
