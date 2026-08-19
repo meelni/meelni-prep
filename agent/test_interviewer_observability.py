@@ -17,6 +17,11 @@ from shared.interviewer_observability import (
     drain_transcript_before_observability_close,
     is_interviewer_observability_event,
 )
+from shared.interview_director_influence import (
+    DIRECTOR_INFLUENCE_CONFIG_VERSION,
+    DIRECTOR_INFLUENCE_CONTRACT_VERSION,
+    DIRECTOR_INFLUENCE_POLICY_VERSION,
+)
 
 
 RUNTIME_UUID = "11111111-1111-1111-1111-111111111111"
@@ -176,6 +181,50 @@ class InterviewerObservabilityTests(unittest.TestCase):
             "candidate_identity",
             "provider_identity",
             "hidden_reasoning",
+        ):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_influence_event_has_canary_attribution_without_content_ids(self):
+        tracer = FakeTracer()
+        observability = create_interviewer_observability(
+            configured_env(
+                MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED="true"
+            ),
+            tracer=tracer,
+            clock=lambda: 1787102400.0,
+            id_factory=lambda: RUNTIME_UUID,
+        )
+        self.assertEqual(observability.rollout_cohort, "canary")
+        self.assertEqual(observability.runtime_version, "adaptive-canary.v1")
+        self.assertTrue(
+            observability.record(
+                "director_influence",
+                turn_correlation_id=None,
+                influence_contract_version=DIRECTOR_INFLUENCE_CONTRACT_VERSION,
+                influence_policy_version=DIRECTOR_INFLUENCE_POLICY_VERSION,
+                influence_config_version=DIRECTOR_INFLUENCE_CONFIG_VERSION,
+                influence_flag_state="enabled",
+                recommendation_contract_version=(
+                    DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
+                ),
+                director_policy_version="interview-director-policy.v1",
+                director_adapter_version="interview-director-adapter.fake.v1",
+                decision_outcome="accepted",
+                decision_reason="accepted",
+                influence_stage="canonically_delivered",
+                planned_move_type="transition",
+                delivered_move_type="transition",
+                recommendation_age_ms=125,
+            )
+        )
+        serialized = json.dumps(tracer.spans[-1].attributes)
+        for forbidden in (
+            "session_id",
+            "turn_id",
+            "question_id",
+            "topic",
+            "probe_candidate_id",
+            "transcript",
         ):
             self.assertNotIn(forbidden, serialized)
 

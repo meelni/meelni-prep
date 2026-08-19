@@ -61,6 +61,32 @@
     }
   },
   {
+    "name": "canonical Director influence delivered",
+    "valid": true,
+    "event": {
+      "contract_version": "interviewer-observability.v1",
+      "event_kind": "director_influence",
+      "runtime_correlation_id": "run:11111111-1111-1111-1111-111111111111",
+      "turn_correlation_id": null,
+      "runtime_version": "adaptive-canary.v1",
+      "rollout_cohort": "canary",
+      "emitted_at": "2026-08-19T01:20:00.000Z",
+      "influence_contract_version": "interview-director-influence.v1",
+      "influence_policy_version": "interview-director-influence-policy.v1",
+      "influence_config_version": "interview-director-influence-config.v1",
+      "influence_flag_state": "enabled",
+      "recommendation_contract_version": "director-recommendation.v1",
+      "director_policy_version": "interview-director-policy.v1",
+      "director_adapter_version": "interview-director-adapter.fake.v1",
+      "decision_outcome": "accepted",
+      "decision_reason": "accepted",
+      "influence_stage": "canonically_delivered",
+      "planned_move_type": "transition",
+      "delivered_move_type": "transition",
+      "recommendation_age_ms": 125
+    }
+  },
+  {
     "name": "year zero is not canonical",
     "valid": false,
     "event": {

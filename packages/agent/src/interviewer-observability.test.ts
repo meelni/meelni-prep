@@ -7,6 +7,9 @@ import wireFixtures from "../../test-fixtures/interviewer-observability-wire.jso
 import {
   aggregateInterviewerObservabilityEvents,
   buildInterviewerObservabilityComparisonReport,
+  DIRECTOR_INFLUENCE_CONFIG_VERSION,
+  DIRECTOR_INFLUENCE_CONTRACT_VERSION,
+  DIRECTOR_INFLUENCE_POLICY_VERSION,
   INTERVIEWER_OBSERVABILITY_CONTRACT_VERSION,
   isInterviewerObservabilityEvent,
   parseInterviewerObservabilityEvent,
@@ -356,6 +359,52 @@ test("Director comparisons do not double-count results or dilute stale rate", ()
   assert.equal(aggregate.stale_recommendation_count, 1);
   assert.equal(aggregate.stale_recommendation_rate, 1);
   assert.equal(aggregate.director_ready_ms.count, 1);
+});
+
+test("Director influence aggregates planned, admitted, and delivered without identifiers", () => {
+  const influence = (
+    stage: "planned" | "admitted" | "canonically_delivered"
+  ) =>
+    parseInterviewerObservabilityEvent({
+      ...common("run:influence", "canary", "adaptive-canary.v1", null),
+      event_kind: "director_influence",
+      influence_contract_version: DIRECTOR_INFLUENCE_CONTRACT_VERSION,
+      influence_policy_version: DIRECTOR_INFLUENCE_POLICY_VERSION,
+      influence_config_version: DIRECTOR_INFLUENCE_CONFIG_VERSION,
+      influence_flag_state: "enabled",
+      recommendation_contract_version: DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
+      director_policy_version: DIRECTOR_POLICY_CONTRACT_VERSION,
+      director_adapter_version: DIRECTOR_FAKE_ADAPTER_VERSION,
+      decision_outcome: "accepted",
+      decision_reason: "accepted",
+      influence_stage: stage,
+      planned_move_type: "transition",
+      delivered_move_type:
+        stage === "canonically_delivered" ? "transition" : null,
+      recommendation_age_ms: 25,
+    });
+
+  const events = [
+    influence("planned"),
+    influence("admitted"),
+    influence("canonically_delivered"),
+  ];
+  const aggregate = aggregateInterviewerObservabilityEvents(events);
+  assert.equal(aggregate.director_influence_planned_count, 1);
+  assert.equal(aggregate.director_influence_admitted_count, 1);
+  assert.equal(aggregate.director_influence_delivered_count, 1);
+  assert.equal(aggregate.director_influence_delivery_rate, 1);
+  const serialized = JSON.stringify(events);
+  for (const forbidden of [
+    "session_id",
+    "turn_id",
+    "question_id",
+    "topic",
+    "probe_candidate_id",
+    "transcript",
+  ]) {
+    assert.equal(serialized.includes(forbidden), false);
+  }
 });
 
 test("phase-only and partial cohorts hold for insufficient metric evidence", () => {

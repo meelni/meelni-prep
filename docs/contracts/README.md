@@ -10,6 +10,7 @@ Good candidates:
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [stateful interviewer briefs, decisions, tools, and Director authority](./stateful-interviewer-decisions.md);
 - [default-off read-only Interview Director shadow](./interview-director-shadow.md);
+- [default-off synchronous Interview Director influence gate](./interview-director-influence.md);
 - [versioned synthetic interviewer-quality benchmark and owner calibration gate](./interviewer-benchmark.md);
 - [versioned transcript events](./transcript-events.md);
 - [derived candidate answer blocks](./answer-blocks.md);

@@ -19,6 +19,10 @@ from shared.interview_controller import (
     project_controller_state,
 )
 from shared.interview_controller_adapter import InterviewControllerAdapter
+from shared.interview_director_influence import (
+    DirectorInfluenceDecision,
+    DirectorInfluenceGate,
+)
 from shared.interviewer_contract_assessment import (
     assess_interviewer_tool_request_against_state,
 )
@@ -228,6 +232,7 @@ class SessionScopedInterviewerTools:
         lifecycle_store: TrustedLifecycleSnapshotStore | None,
         enabled: bool,
         observability: object | None = None,
+        director_influence: DirectorInfluenceGate | None = None,
         call_timeout_ms: int = INTERVIEWER_TOOL_CALL_TIMEOUT_MS,
         monotonic_clock_ms: Callable[[], int] | None = None,
         wall_clock: Callable[[], float] = time.time,
@@ -239,6 +244,7 @@ class SessionScopedInterviewerTools:
         self._lifecycle_store = lifecycle_store
         self._configured_enabled = enabled
         self._observability = observability
+        self._director_influence = director_influence
         self._call_timeout_ms = call_timeout_ms
         self._monotonic_clock_ms = monotonic_clock_ms or (
             lambda: time.monotonic_ns() // 1_000_000
@@ -737,7 +743,52 @@ class SessionScopedInterviewerTools:
                 state=state,
             )
 
-        name = request["tool_name"]
+        original_request = request
+        effective_request = request
+        influence_decision: DirectorInfluenceDecision | None = None
+        if request["tool_name"] in (
+            "commit_interviewer_move",
+            "request_graceful_close",
+        ):
+            influence_decision = self._evaluate_director_influence(
+                state=state,
+                tool_name=request["tool_name"],
+                now=now,
+            )
+            if influence_decision is not None and influence_decision.accepted:
+                try:
+                    if request["tool_name"] == "commit_interviewer_move":
+                        effective_request = _synthesize_director_commit_request(
+                            request,
+                            influence_decision.recommendation,
+                        )
+                    effective_admission = (
+                        assess_interviewer_tool_request_against_state(
+                            effective_request,
+                            state.to_runtime_state(),
+                            now,
+                        )
+                    )
+                    if effective_admission != "eligible":
+                        self._record_director_controller_result(
+                            influence_decision,
+                            move_id=_request_move_id(effective_request, state),
+                            admitted=False,
+                            now=now,
+                        )
+                        influence_decision = None
+                        effective_request = original_request
+                except Exception:
+                    self._record_director_controller_result(
+                        influence_decision,
+                        move_id=_request_move_id(effective_request, state),
+                        admitted=False,
+                        now=now,
+                    )
+                    influence_decision = None
+                    effective_request = original_request
+
+        name = effective_request["tool_name"]
         if name in ("read_interview_state", "read_interview_clock"):
             projected = project_controller_state(
                 state,
@@ -771,7 +822,7 @@ class SessionScopedInterviewerTools:
                 lifecycle_version=lifecycle.version,
             )
         if name == "commit_interviewer_move":
-            move = request["move"]
+            move = effective_request["move"]
             target = move["target"]
             try:
                 committed = self._controller.apply_tool_move(
@@ -782,30 +833,78 @@ class SessionScopedInterviewerTools:
                     topic=target["topic"],
                     source_turn_id=target["source_turn_id"],
                     probe_candidate_id=target["probe_candidate_id"],
-                    expected_state_revision=request["expected_state_revision"],
+                    expected_state_revision=effective_request[
+                        "expected_state_revision"
+                    ],
                     monotonic_ms=current_ms,
                     handle_id=handle_id,
                 )
             except ControllerError as error:
-                return self._execution_result(
-                    status=_controller_error_status(error.code),
-                    payload=None,
-                    state=self._controller.state,
-                )
+                if influence_decision is not None:
+                    self._record_director_controller_result(
+                        influence_decision,
+                        move_id=move["move_id"],
+                        admitted=False,
+                        now=now,
+                    )
+                    influence_decision = None
+                    effective_request = original_request
+                    move = effective_request["move"]
+                    target = move["target"]
+                    try:
+                        committed = self._controller.apply_tool_move(
+                            move_id=move["move_id"],
+                            move_type=move["move_type"],
+                            reason_code=move["reason_code"],
+                            question_id=target["question_id"],
+                            topic=target["topic"],
+                            source_turn_id=target["source_turn_id"],
+                            probe_candidate_id=target["probe_candidate_id"],
+                            expected_state_revision=effective_request[
+                                "expected_state_revision"
+                            ],
+                            monotonic_ms=current_ms,
+                            handle_id=handle_id,
+                        )
+                    except ControllerError as fallback_error:
+                        return self._execution_result(
+                            status=_controller_error_status(
+                                fallback_error.code
+                            ),
+                            payload=None,
+                            state=self._controller.state,
+                        )
+                else:
+                    return self._execution_result(
+                        status=_controller_error_status(error.code),
+                        payload=None,
+                        state=self._controller.state,
+                    )
             result = self._execution_result(
                 status="ok",
                 payload={"committed_move": deepcopy(move)},
                 state=committed,
                 lifecycle_version=lifecycle.version,
             )
-            self._remember_mutation(request, result)
+            self._remember_mutation(original_request, result)
+            if influence_decision is not None:
+                self._record_director_controller_result(
+                    influence_decision,
+                    move_id=move["move_id"],
+                    admitted=True,
+                    now=now,
+                )
             return result
 
         close_reason = {
             "deadline": "deadline_close",
             "candidate_request": "candidate_requested_close",
             "controller_policy": "controller_fallback",
-        }[request["reason"]]
+        }[original_request["reason"]]
+        close_target = None
+        if influence_decision is not None and influence_decision.recommendation:
+            close_reason = influence_decision.recommendation["reason_code"]
+            close_target = influence_decision.recommendation["target"]
         source_turn_id = state.last_finalized_candidate_turn_id
         if source_turn_id is None:
             return self._execution_result(
@@ -819,28 +918,119 @@ class SessionScopedInterviewerTools:
                 move_id=move_id,
                 move_type="close",
                 reason_code=close_reason,
-                question_id=state.active_question_id,
-                topic=state.current_topic,
-                source_turn_id=source_turn_id,
+                question_id=(
+                    close_target["question_id"]
+                    if close_target is not None
+                    else state.active_question_id
+                ),
+                topic=(
+                    close_target["topic"]
+                    if close_target is not None
+                    else state.current_topic
+                ),
+                source_turn_id=(
+                    close_target["source_turn_id"]
+                    if close_target is not None
+                    else source_turn_id
+                ),
                 probe_candidate_id=None,
-                expected_state_revision=request["expected_state_revision"],
+                expected_state_revision=original_request[
+                    "expected_state_revision"
+                ],
                 monotonic_ms=current_ms,
                 handle_id=handle_id,
             )
         except ControllerError as error:
-            return self._execution_result(
-                status=_controller_error_status(error.code),
-                payload=None,
-                state=self._controller.state,
+            if influence_decision is None:
+                return self._execution_result(
+                    status=_controller_error_status(error.code),
+                    payload=None,
+                    state=self._controller.state,
+                )
+            self._record_director_controller_result(
+                influence_decision,
+                move_id=move_id,
+                admitted=False,
+                now=now,
             )
+            influence_decision = None
+            fallback_reason = {
+                "deadline": "deadline_close",
+                "candidate_request": "candidate_requested_close",
+                "controller_policy": "controller_fallback",
+            }[original_request["reason"]]
+            try:
+                closed = self._controller.apply_tool_move(
+                    move_id=move_id,
+                    move_type="close",
+                    reason_code=fallback_reason,
+                    question_id=state.active_question_id,
+                    topic=state.current_topic,
+                    source_turn_id=source_turn_id,
+                    probe_candidate_id=None,
+                    expected_state_revision=original_request[
+                        "expected_state_revision"
+                    ],
+                    monotonic_ms=current_ms,
+                    handle_id=handle_id,
+                )
+            except ControllerError as fallback_error:
+                return self._execution_result(
+                    status=_controller_error_status(fallback_error.code),
+                    payload=None,
+                    state=self._controller.state,
+                )
         result = self._execution_result(
             status="ok",
             payload={"close_state": closed.close_state},
             state=closed,
             lifecycle_version=lifecycle.version,
         )
-        self._remember_mutation(request, result)
+        self._remember_mutation(original_request, result)
+        if influence_decision is not None:
+            self._record_director_controller_result(
+                influence_decision,
+                move_id=move_id,
+                admitted=True,
+                now=now,
+            )
         return result
+
+    def _evaluate_director_influence(
+        self,
+        *,
+        state: ControllerState,
+        tool_name: str,
+        now: datetime,
+    ) -> DirectorInfluenceDecision | None:
+        gate = self._director_influence
+        if gate is None:
+            return None
+        try:
+            return gate.evaluate(state=state, tool_name=tool_name, now=now)
+        except Exception:
+            return None
+
+    def _record_director_controller_result(
+        self,
+        decision: DirectorInfluenceDecision,
+        *,
+        move_id: str,
+        admitted: bool,
+        now: datetime,
+    ) -> None:
+        gate = self._director_influence
+        if gate is None:
+            return
+        try:
+            gate.record_controller_result(
+                decision,
+                move_id=move_id,
+                admitted=admitted,
+                now=now,
+            )
+        except Exception:
+            return
 
     async def _fence_handle_after_failure(
         self,
@@ -1090,6 +1280,7 @@ def create_session_scoped_interviewer_tools(
     controller: InterviewControllerAdapter,
     lifecycle_store: TrustedLifecycleSnapshotStore | None,
     observability: object | None = None,
+    director_influence: DirectorInfluenceGate | None = None,
     call_timeout_ms: int = INTERVIEWER_TOOL_CALL_TIMEOUT_MS,
     monotonic_clock_ms: Callable[[], int] | None = None,
     wall_clock: Callable[[], float] = time.time,
@@ -1100,11 +1291,38 @@ def create_session_scoped_interviewer_tools(
         lifecycle_store=lifecycle_store,
         enabled=env.get(INTERVIEWER_TOOLS_FEATURE_ENV) == "true",
         observability=observability,
+        director_influence=director_influence,
         call_timeout_ms=call_timeout_ms,
         monotonic_clock_ms=monotonic_clock_ms,
         wall_clock=wall_clock,
         operation_barrier=operation_barrier,
     )
+
+
+def _synthesize_director_commit_request(
+    request: dict[str, Any],
+    recommendation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if recommendation is None:
+        raise InterviewerToolsError("invalid_director_recommendation")
+    effective = deepcopy(request)
+    move = effective["move"]
+    move["move_type"] = recommendation["move_type"]
+    move["target"] = deepcopy(recommendation["target"])
+    move["reason_code"] = recommendation["reason_code"]
+    effective["request_digest"] = calculate_interviewer_mutation_request_digest(
+        effective
+    )
+    return parse_interviewer_tool_request(effective)
+
+
+def _request_move_id(
+    request: Mapping[str, Any], state: ControllerState
+) -> str:
+    move = request.get("move")
+    if isinstance(move, Mapping) and isinstance(move.get("move_id"), str):
+        return move["move_id"]
+    return f"move:{state.session_id}:{state.move_ordinal + 1}"
 
 
 def _admission_status(admission: str) -> ToolStatus:

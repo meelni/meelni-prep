@@ -549,7 +549,8 @@ Recommendation TTL is positive and at most 10,000 milliseconds; an admitted
 move TTL is positive and at most 30,000 milliseconds. These are bounded
 freshness windows, not claims about the measured latency baseline.
 
-The deterministic controller may admit a recommendation only when:
+The synchronous SAV-475 influence policy may propose a recommendation at the
+existing serialized tool boundary only when:
 
 - session, brief, writer, state revision, and lifecycle version are current;
 - the source is the latest finalized candidate turn at the exact authoritative
@@ -560,6 +561,14 @@ The deterministic controller may admit a recommendation only when:
   is strictly before the canonical runtime deadline;
 - the move remains allowed by phase, ledger, and close policy; and
 - influence is enabled for the authorized rollout cohort.
+
+The policy re-reads exact server-owned enablement/configuration on every
+admission. It never awaits or starts Director work. An eligible recommendation
+may replace only the current tool request's move type, target, and that move's
+closed controller-validated reason code. Commit remains non-close and graceful-
+close remains close-only. The existing request assessor and deterministic
+controller independently admit or reject the effective request. Every non-
+accepted outcome executes the original deterministic request unchanged.
 
 The exact canonical deadline is already elapsed for admission purposes: a
 recommendation evaluated at `now == deadline_at` returns `deadline_elapsed`, as
@@ -640,16 +649,19 @@ benchmark, controller/tools disabled, Director read-only shadow, owner-controlle
 Preview influence, then an explicitly authorized canary. Shadow results must
 not enter the live prompt or state transition path.
 
-Rollback disables influence, Director, tools, controller, and brief emission
-in that order. Existing v1 room metadata and prompt-led behavior require no
-data migration, and stored canonical transcripts/answer blocks remain valid.
+Rollback disables influence first. Because influence policy is read on every
+admission, revocation blocks recommendations that were already ready before
+the change. Director, tools, controller, and brief emission may then be
+disabled in that order. Existing v1 room metadata and prompt-led behavior
+require no data migration, and stored canonical transcripts/answer blocks
+remain valid.
 
 Production, default-on behavior, and launch remain human-owner decisions under
 the accepted launch contract. A passing gate is evidence, not authorization.
 
 ## Non-goals
 
-- local-tool or live Director-influence implementation;
+- a sixth tool or any Director-direct tool/speech path;
 - an application Director provider/model adapter or Preview/Production shadow execution;
 - provider/model selection or migration;
 - a new feedback rubric, live scoring, or incremental feedback authority;
