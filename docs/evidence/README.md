@@ -4,6 +4,20 @@ This directory contains reproducible, machine-readable evidence generated from
 non-secret repository inputs. Reports must not contain customer data, provider
 credentials, recordings, or real transcripts.
 
+`sav-477-adaptive-interviewer-readiness.json` is a provider-free, digest-bound
+repository readiness packet. It verifies the exact SAV-467 current-runtime
+baseline/adjudication, synthetic adaptive-feedback fixture, and observability
+wire fixture bytes. Its recommendation is `hold_at_synthetic` and its owner
+decision is `pending`; it proves no adaptive quality improvement or live
+feedback/observability outcome and grants no adapter, provider, spend,
+deployment, room, Preview influence, Production/default-on, or launch authority.
+Its owner-preparation section records a null/unselected v2 request template,
+not approval. Any later v1 preparation authorization must carry the complete
+closed selection and domain-separated selected-candidate digest, remain within
+its seven-day window, and have its external owner-decision reference verified
+outside the parser. The all-round/adverse-voice live rehearsal matrix remains
+unbound and unperformed.
+
 Live calibration reports additionally exclude prompt and transcript text and
 record only sanitized case-level diagnostics plus aggregate call/cost
 accounting. Spend authorization does not satisfy the separately required PM or
