@@ -517,7 +517,8 @@ export function aggregateInterviewerObservabilityEvents(
     string,
     {
       interrupted: boolean;
-      terminal: "recovered" | "unrecovered" | null;
+      recovered: boolean;
+      unrecovered: boolean;
       recoveryLatencyMs: number | null;
     }
   >();
@@ -554,10 +555,14 @@ export function aggregateInterviewerObservabilityEvents(
         ) {
           const state = interruptionStates.get(event.turn_correlation_id) ?? {
             interrupted: false,
-            terminal: null,
+            recovered: false,
+            unrecovered: false,
             recoveryLatencyMs: null,
           };
-          state.recoveryLatencyMs ??= event.latency_ms;
+          state.recoveryLatencyMs = Math.max(
+            state.recoveryLatencyMs ?? 0,
+            event.latency_ms
+          );
           interruptionStates.set(event.turn_correlation_id, state);
         }
         break;
@@ -584,23 +589,22 @@ export function aggregateInterviewerObservabilityEvents(
         if (event.turn_correlation_id !== null) {
           const state = interruptionStates.get(event.turn_correlation_id) ?? {
             interrupted: false,
-            terminal: null,
+            recovered: false,
+            unrecovered: false,
             recoveryLatencyMs: null,
           };
           if (event.interruption_stage === "interrupted") {
             state.interrupted = true;
-          } else if (
-            (event.interruption_stage === "recovered" ||
-              event.interruption_stage === "unrecovered") &&
-            state.terminal === null
-          ) {
-            state.terminal = event.interruption_stage;
-            if (
-              event.interruption_stage === "recovered" &&
-              event.recovery_latency_ms !== null
-            ) {
-              state.recoveryLatencyMs = event.recovery_latency_ms;
+          } else if (event.interruption_stage === "recovered") {
+            state.recovered = true;
+            if (event.recovery_latency_ms !== null) {
+              state.recoveryLatencyMs = Math.max(
+                state.recoveryLatencyMs ?? 0,
+                event.recovery_latency_ms
+              );
             }
+          } else if (event.interruption_stage === "unrecovered") {
+            state.unrecovered = true;
           }
           interruptionStates.set(event.turn_correlation_id, state);
         }
@@ -627,7 +631,7 @@ export function aggregateInterviewerObservabilityEvents(
   for (const state of interruptionStates.values()) {
     if (!state.interrupted) continue;
     interruptionCount += 1;
-    if (state.terminal !== "recovered") continue;
+    if (!state.recovered || state.unrecovered) continue;
     recoveredInterruptionCount += 1;
     if (state.recoveryLatencyMs !== null) {
       latencies.recovery.push(state.recoveryLatencyMs);

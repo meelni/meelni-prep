@@ -114,9 +114,10 @@ Completion counts only `close` events whose authority is
 and cannot raise or lower completion rate.
 
 Interruption recovery is correlated only by a non-null opaque turn ID. An
-interrupted turn contributes at most once, accepts at most one terminal
-`recovered`/`unrecovered` state, and ignores duplicate, unpaired, or null-ID
-recovery events. Every public rate is bounded to `[0, 1]`.
+interrupted turn contributes at most once and ignores unpaired or null-ID
+recovery events. The per-turn reduction is input-order independent: duplicate
+latencies retain the conservative maximum, and contradictory terminal evidence
+resolves to `unrecovered`. Every public rate is bounded to `[0, 1]`.
 
 The comparison function requires caller-supplied minimum samples and regression
 thresholds. It compares shadow/canary versions with an explicitly named
@@ -133,8 +134,10 @@ Construction, validation, span creation, export, and close failures are caught
 at the telemetry boundary. They cannot block or replace speech, transcript
 admission/projection/settlement, runtime close, lifecycle finalization, or
 feedback. The one runtime shutdown callback completes the authoritative bounded
-transcript drain before starting semantic close work, including on a slow or
-failing tracer.
+transcript drain before starting semantic close work. Synchronous semantic
+close is isolated on a daemon thread and receives a 50 ms deadline. After that
+deadline the callback returns without waiting; slow, stuck, or failing telemetry
+cannot delay transcript settlement or keep process shutdown alive.
 
 The semantic event module is not imported by feedback preparation. Director,
 tool, move, and semantic trace fields are excluded before trusted answer-block
