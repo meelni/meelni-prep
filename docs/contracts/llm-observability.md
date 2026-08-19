@@ -30,6 +30,12 @@ explicitly enables prompt, transcript, and response capture.
   visible at both trace and span levels. Root aggregation is memory-bounded;
   the individual turn spans remain the content source of truth. These
   projections exist only in content mode.
+- The full-interview worker may add the content-free
+  `interviewer_observability_session` / `interviewer_semantic_event` subtree
+  under the same trace and enablement gate. Its exact event, privacy, latency,
+  aggregate, and rollback contract is
+  [Adaptive Interviewer Observability](./interviewer-observability.md). Those
+  spans never inherit conversation content, including when content mode is on.
 
 Calibration paid-mode requests are excluded from Opik. Their separate
 authorization, evidence, and private-capture contracts remain authoritative.
@@ -49,6 +55,11 @@ names, job IDs, provider request IDs, tool arguments/results, exception text,
 stack traces, headers, tokens, API keys, and credentials. Voice traces keep
 OpenTelemetry trace context so spans within one runtime trace remain grouped,
 but do not add a Meelni customer/session correlation identifier.
+
+Adaptive-interviewer semantic spans apply a narrower allowlist than other
+LiveKit spans. They additionally exclude provider/model identity and accept
+only closed `meelni.interviewer.*` fields. Their opaque run/turn correlation
+values are generated independently and never copy a product or provider ID.
 
 The separate `meelni_feedback_generation_attempt` operational event is always
 content-free, regardless of the Opik capture setting. It records the bounded
@@ -74,6 +85,11 @@ best-effort and cannot replace the product workflow result. Feedback waits for
 the bounded SDK flush after the provider result so serverless completion does
 not abandon a queued trace. LiveKit uses a batch exporter and shuts it down
 through the worker telemetry lifecycle.
+
+Adaptive-interviewer emitters and timing trackers catch their own construction,
+record, and close failures. Runtime hooks run only after canonical transcript
+admission and do not participate in speech, transcript settlement, close, or
+feedback control flow.
 
 The workflow also attempts one durable stage-attempt batch after the
 authoritative feedback outcome. It invokes the recorder inside a promise
