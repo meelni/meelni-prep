@@ -26,18 +26,34 @@ from shared.session_deadline import parse_deadline_at, serialize_deadline_at
 CONTROLLER_ADAPTER_CONTRACT_VERSION = "interview-controller-adapter.v1"
 CONTROLLER_FEATURE_ENV = "MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED"
 MAX_PENDING_CORRELATIONS = 8
+MAX_GENERATION_CONTEXT_ITEMS = 16
+MAX_EXIT_INTENT_WORDS = 12
 
-_EXIT_UTTERANCES = {
-    "end interview",
-    "end the interview",
-    "i want to stop",
-    "i would like to stop",
-    "let's stop",
-    "lets stop",
-    "stop",
-    "stop interview",
-    "stop the interview",
-}
+_EXIT_ACTION = r"(?:stop|end|finish)"
+_EXIT_TARGET = r"(?:(?:the|this|our) )?(?:mock interview|interview|session)"
+_EXIT_WHEN = r"(?:now|here|today|for now|for today|at this point)"
+_EXIT_REQUEST_PATTERNS = (
+    re.compile(
+        rf"^(?:please )?{_EXIT_ACTION}(?: {_EXIT_TARGET})?"
+        rf"(?: {_EXIT_WHEN})?(?: please)?$"
+    ),
+    re.compile(
+        rf"^(?:i (?:want|need) to|i would like to|id like to) {_EXIT_ACTION}"
+        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+    ),
+    re.compile(
+        rf"^(?:can|could|would|will) (?:we|you) (?:please )?{_EXIT_ACTION}"
+        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+    ),
+    re.compile(
+        rf"^lets {_EXIT_ACTION}(?: {_EXIT_TARGET})?"
+        rf"(?: {_EXIT_WHEN})?(?: please)?$"
+    ),
+    re.compile(
+        rf"^(?:i think )?(?:we can|we should) {_EXIT_ACTION}"
+        rf"(?: {_EXIT_TARGET})?(?: {_EXIT_WHEN})?(?: please)?$"
+    ),
+)
 _CLARIFICATION_PATTERNS = (
     re.compile(r"\bcan you clarify\b"),
     re.compile(r"\bcould you clarify\b"),
@@ -77,19 +93,14 @@ class ReplySuppressionGate:
             self._message_ids.pop(next(iter(self._message_ids)))
 
     def consume_for_items(self, items: object) -> bool:
-        if not isinstance(items, (list, tuple)):
+        message_id, _ = _generation_context_identity(items)
+        return self.consume(message_id)
+
+    def consume(self, message_id: str | None) -> bool:
+        if message_id is None or message_id not in self._message_ids:
             return False
-        for item in reversed(items):
-            if getattr(item, "role", None) != "user":
-                continue
-            message_id = getattr(item, "id", None)
-            if not isinstance(message_id, str):
-                return False
-            if message_id not in self._message_ids:
-                return False
-            self._message_ids.pop(message_id, None)
-            return True
-        return False
+        self._message_ids.pop(message_id, None)
+        return True
 
 
 def allow_controller_generation(
@@ -100,9 +111,14 @@ def allow_controller_generation(
     monotonic_ms: int | None = None,
 ) -> bool:
     """Resolve the provider-free decision used by the public LiveKit LLM node."""
-    if suppression_gate.consume_for_items(chat_items):
+    finalized_turn_id, move_id = _generation_context_identity(chat_items)
+    if suppression_gate.consume(finalized_turn_id):
         return False
-    return adapter.authorize_generation(monotonic_ms=monotonic_ms)
+    return adapter.authorize_generation(
+        finalized_turn_id=finalized_turn_id,
+        move_id=move_id,
+        monotonic_ms=monotonic_ms,
+    )
 
 
 class InterviewControllerAdapter:
@@ -203,12 +219,33 @@ class InterviewControllerAdapter:
         except Exception as error:
             self._disable(error)
 
-    def authorize_generation(self, *, monotonic_ms: int | None = None) -> bool:
+    def authorize_generation(
+        self,
+        *,
+        finalized_turn_id: str | None,
+        move_id: str | None,
+        monotonic_ms: int | None = None,
+    ) -> bool:
         """Observe the canonical clock before allowing provider generation."""
         state = self._state
         if not self.enabled or state is None:
             return True
+        if (
+            not isinstance(finalized_turn_id, str)
+            or not finalized_turn_id
+            or not isinstance(move_id, str)
+            or not move_id
+        ):
+            return False
         try:
+            if state.terminal or state.pending_move_id != move_id:
+                return False
+            pending_move = _find_move(state, move_id)
+            if (
+                pending_move.source_turn_id != finalized_turn_id
+                or pending_move.stage != "admitted"
+            ):
+                return False
             current_ms = _monotonic_ms(monotonic_ms)
             state = reduce_controller(
                 state,
@@ -218,13 +255,13 @@ class InterviewControllerAdapter:
                 ),
             ).state
             self._state = state
-            if state.terminal or state.pending_move_id is None:
+            if state.terminal or state.pending_move_id != move_id:
                 return False
             self._state = reduce_controller(
                 state,
                 MoveStageAdvanced(
                     expected_state_revision=state.state_revision,
-                    move_id=state.pending_move_id,
+                    move_id=move_id,
                     stage="generated",
                     monotonic_ms=current_ms,
                 ),
@@ -570,13 +607,41 @@ def measured_turn_duration_ms(metrics: object) -> int:
 
 
 def _requests_exit(text: str) -> bool:
-    normalized = " ".join(text.casefold().strip(" .!?,'\"").split())
-    return normalized in _EXIT_UTTERANCES
+    normalized = _normalize_intent_text(text)
+    if not normalized or len(normalized.split()) > MAX_EXIT_INTENT_WORDS:
+        return False
+    return any(pattern.fullmatch(normalized) for pattern in _EXIT_REQUEST_PATTERNS)
 
 
 def _requests_clarification(text: str) -> bool:
     normalized = " ".join(text.casefold().split())
     return any(pattern.search(normalized) is not None for pattern in _CLARIFICATION_PATTERNS)
+
+
+def _normalize_intent_text(text: str) -> str:
+    normalized = text.casefold().replace("\u2019", "'").replace("'", "")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+
+def _generation_context_identity(
+    items: object,
+) -> tuple[str | None, str | None]:
+    if not isinstance(items, (list, tuple)):
+        return None, None
+    finalized_turn_id: str | None = None
+    move_id: str | None = None
+    for item in reversed(items[-MAX_GENERATION_CONTEXT_ITEMS:]):
+        item_id = getattr(item, "id", None)
+        if not isinstance(item_id, str) or not item_id:
+            continue
+        role = getattr(item, "role", None)
+        if finalized_turn_id is None and role == "user":
+            finalized_turn_id = item_id
+        if move_id is None and role == "system" and item_id.startswith("controller:move:"):
+            move_id = item_id.removeprefix("controller:")
+        if finalized_turn_id is not None and move_id is not None:
+            break
+    return finalized_turn_id, move_id
 
 
 def _monotonic_ms(value: int | None) -> int:

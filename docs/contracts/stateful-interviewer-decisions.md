@@ -218,6 +218,13 @@ generation, while elapsed aborts and fences every pending move. A close already
 admitted inside the pre-deadline closing band remains eligible. The model never
 owns this check.
 
+Before that projection, the public chat context must carry both the finalized
+candidate `ChatMessage.id` bound to the move and the exact
+`controller:{move_id}` snapshot identity. Pinned LiveKit preemptive generation
+uses a separately created candidate message, so a stale or mismatched context
+is denied without clock, revision, or move-stage mutation. Only the exact
+finalized context can authorize the admitted move, and it can do so once.
+
 A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
 candidate message ID plus the canonical transcript event identity assigned to
 that message. This identity is not represented as durably persisted at hook
@@ -228,7 +235,9 @@ permits one substantive interviewer question.
 
 A normal pre-deadline explicit exit admits one graceful
 `candidate_requested_close` and becomes terminal only after canonical close
-delivery. A completed turn that instead projects elapsed, and every
+delivery. The adapter recognizes only bounded, anchored stop/end/finish
+interview requests; ordinary answer clauses using those verbs do not request
+exit. A completed turn that instead projects elapsed, and every
 already-terminal turn, returns normally from the pinned LiveKit user-turn hook
 and uses an empty public-LLM-node result so LiveKit still commits/emits the
 finalized user item through `conversation_item_added` exactly once. Raising

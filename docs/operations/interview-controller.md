@@ -20,10 +20,15 @@ controller state. It schedules no speech, emits no prompt snapshot, and never
 delays or replaces the existing hard-deadline watchdog.
 
 The adapter observes the monotonic clock again at the public LiveKit LLM node,
-before provider generation. A normal/warning move that has crossed into closing
-is aborted and leaves only `close` admissible; a move at elapsed is fenced. A
-pre-deadline close may still generate. `speech_created` alone establishes
-correlation and does not advance the move to generated.
+before provider generation. Authorization first requires both the finalized
+candidate `ChatMessage.id` and the exact `controller:{move_id}` snapshot ID in
+the public chat context. LiveKit 1.6.5 creates preemptive messages with distinct
+IDs before the finalized hook, so a stale preemptive task is denied without
+clock, revision, or move-stage mutation. The matching finalized pipeline may
+authorize once. A normal/warning move that has crossed into closing is aborted
+and leaves only `close` admissible; a move at elapsed is fenced. A pre-deadline
+close may still generate. `speech_created` alone establishes correlation and
+does not advance the move to generated.
 
 ## Flag and fallback
 
@@ -66,7 +71,9 @@ pipeline, commits/emits the finalized user `ChatMessage` once, and the existing
 `conversation_item_added` handler queues it for canonical persistence without
 interviewer output. A normal pre-deadline explicit exit still admits one
 graceful `candidate_requested_close`; canonical close delivery then makes the
-controller terminal.
+controller terminal. Exit classification is a bounded anchored grammar for
+unambiguous stop/end/finish interview requests; those words inside ordinary PM
+answer content do not trigger close.
 
 An interviewer move commits only in the `TranscriptIngestQueue.publisher`
 success callback, after positive move-to-speech-handle-to-assistant-item-to-event
