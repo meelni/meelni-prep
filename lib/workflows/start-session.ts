@@ -1,7 +1,11 @@
 import {
+  addInterviewBriefV2ToStartConfig,
   buildInterviewRoomMetadata,
+  compileInterviewBriefV2,
   interviewRuntimeSettingsFromEnv,
+  isInterviewBriefV2EmissionEnabled,
   normalizeInterviewClientPreferences,
+  readInterviewBriefV2FromStartConfig,
   resolveInterviewRuntimeConfig,
   type InterviewClientPreferences,
   type InterviewRuntimeConfig,
@@ -179,6 +183,7 @@ export interface StartInterviewSessionDeps {
   resolveRuntimeConfig(
     preferences: InterviewClientPreferences
   ): InterviewRuntimeConfig;
+  interviewBriefV2Enabled?: boolean;
   now(): Date;
   createLeaseId(): string;
   monotonicNow?(): number;
@@ -293,6 +298,32 @@ export async function startInterviewSessionWorkflow(
       resolvedRoundType = selection.roundType;
     }
     const startedAt = existing?.startedAt ?? deps.now();
+    const startConfig =
+      existing?.config ??
+      addInterviewBriefV2ToStartConfig(
+        { ...runtimeConfig },
+        compileInterviewBriefV2({
+          sessionId: startAttemptId,
+          sessionStartFingerprint: `sha256:${requestFingerprint}`,
+          deadlineAt: serializeInterviewDeadlineAt(
+            deriveInterviewDeadlineAt({
+              startedAt,
+              durationMinutes: runtimeConfig.duration,
+            })
+          ),
+          roundType: resolvedRoundType,
+          difficulty: runtimeConfig.difficulty,
+          durationMinutes: normalizeInterviewDurationMinutes(
+            runtimeConfig.duration
+          ),
+          selectedQuestion: {
+            id: question.id,
+            text: question.questionText,
+            company: question.company,
+            type: question.questionType,
+          },
+        })
+      );
     start = await measureStartStage(
       deps,
       "durable_session_credit_reservation",
@@ -306,7 +337,7 @@ export async function startInterviewSessionWorkflow(
             roundType: resolvedRoundType,
             mode,
             roomName,
-            config: { ...runtimeConfig },
+            config: startConfig,
             startedAt,
             question,
           },
@@ -459,6 +490,7 @@ export async function startInterviewSessionWorkflow(
         },
       };
     }
+    const interviewBrief = readInterviewBriefV2FromStartConfig(start.config);
     const roomMetadata = buildInterviewRoomMetadata({
       session_id: start.sessionId,
       candidate_identity: input.user.id,
@@ -468,6 +500,9 @@ export async function startInterviewSessionWorkflow(
       deadline_at: serializeInterviewDeadlineAt(deadlineAt),
       config: runtimeConfig,
       question: toRoomQuestion(start.question),
+      ...(deps.interviewBriefV2Enabled && interviewBrief
+        ? { interview_brief: interviewBrief }
+        : {}),
     });
     let livekitResult;
     try {
@@ -860,6 +895,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
         preferences,
         interviewRuntimeSettingsFromEnv(process.env)
       ),
+    interviewBriefV2Enabled: isInterviewBriefV2EmissionEnabled(process.env),
     now: () => new Date(),
     createLeaseId: randomUUID,
     monotonicNow: () => performance.now(),

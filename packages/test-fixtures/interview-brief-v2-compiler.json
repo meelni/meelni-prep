@@ -1,0 +1,83 @@
+{
+  "contract": "interview-brief-v2-compiler-fixtures.v1",
+  "cases": [
+    {
+      "name": "behavioral",
+      "input": {
+        "sessionId": "50000000-0000-4000-8000-000000000001",
+        "sessionStartFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "deadlineAt": "2026-08-18T20:45:00.000Z",
+        "roundType": "behavioral",
+        "difficulty": "beginner",
+        "durationMinutes": 30,
+        "selectedQuestion": {
+          "id": "60000000-0000-4000-8000-000000000001",
+          "text": "Exact behavioral question — case 1?",
+          "company": null,
+          "type": "behavioral"
+        },
+        "candidatePracticeGoal": "Practice concise leadership tradeoff reasoning."
+      },
+      "expected_wire": "{\"contract_version\":\"interview-brief.v2\",\"brief_id\":\"brief:3e82393de35401db58558500f9e9fdec6ff72b363fa8940eec5955dc203ce968\",\"payload_digest\":\"sha256:3e82393de35401db58558500f9e9fdec6ff72b363fa8940eec5955dc203ce968\",\"session_id\":\"50000000-0000-4000-8000-000000000001\",\"session_start_fingerprint\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"deadline_at\":\"2026-08-18T20:45:00.000Z\",\"round_type\":\"behavioral\",\"difficulty\":\"beginner\",\"duration_minutes\":30,\"selected_question\":{\"id\":\"60000000-0000-4000-8000-000000000001\",\"text\":\"Exact behavioral question — case 1?\",\"company\":null,\"type\":\"behavioral\"},\"company_context\":null,\"candidate_practice_goal\":\"Practice concise leadership tradeoff reasoning.\",\"round_pack\":{\"contract_version\":\"pm-round-pack.v1\",\"round_type\":\"behavioral\",\"objectives\":[\"establish_situation_and_role\",\"surface_specific_decisions_and_actions\",\"examine_stakeholder_judgment\",\"verify_outcomes_and_impact\",\"extract_learning_and_adaptation\"],\"probe_families\":[\"ownership\",\"chronology\",\"alternatives_considered\",\"stakeholder_conflict\",\"influence_without_authority\",\"failure_and_recovery\",\"measurable_impact\",\"learning_and_adaptation\"],\"transition_guidance\":[\"Move forward after the candidate has made their own role, actions, and judgment concrete.\",\"Use a transition to change the evidence being explored, never to prescribe an answer framework.\"],\"close_guidance\":[\"Invite a concise final reflection on impact or learning when time remains.\",\"Close without grading, coaching, or previewing post-interview feedback.\"],\"forbidden_behaviors\":[\"coaching\",\"hinting\",\"mid_session_evaluation\"]},\"policy\":{\"contract_version\":\"full-interview-policy.v1\",\"prompt_contract_version\":\"full_interview_prompt_v1\",\"interviewer_mode\":\"full_interview\",\"coaching\":\"forbidden\",\"hints\":\"forbidden\",\"evaluation_timing\":\"post_interview_only\",\"selected_question_policy\":\"exact_first_turn\",\"one_substantive_question_per_turn\":true}}"
+    },
+    {
+      "name": "product_sense",
+      "input": {
+        "sessionId": "50000000-0000-4000-8000-000000000002",
+        "sessionStartFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "deadlineAt": "2026-08-18T20:45:00.000Z",
+        "roundType": "product_sense",
+        "difficulty": "intermediate",
+        "durationMinutes": 45,
+        "selectedQuestion": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "text": "Exact product_sense question — case 2?",
+          "company": "Acme",
+          "type": "product_sense"
+        },
+        "companyContext": {
+          "company_name": "Acme",
+          "context_version": "company-context.v1",
+          "summary": "A fictional collaboration product used only by this fixture."
+        }
+      },
+      "expected_wire": "{\"contract_version\":\"interview-brief.v2\",\"brief_id\":\"brief:18d783778ce810aa7649e0e8cdc62b36f9ca0875b9f2a71fca2d07124d37d382\",\"payload_digest\":\"sha256:18d783778ce810aa7649e0e8cdc62b36f9ca0875b9f2a71fca2d07124d37d382\",\"session_id\":\"50000000-0000-4000-8000-000000000002\",\"session_start_fingerprint\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"deadline_at\":\"2026-08-18T20:45:00.000Z\",\"round_type\":\"product_sense\",\"difficulty\":\"intermediate\",\"duration_minutes\":45,\"selected_question\":{\"id\":\"60000000-0000-4000-8000-000000000002\",\"text\":\"Exact product_sense question — case 2?\",\"company\":\"Acme\",\"type\":\"product_sense\"},\"company_context\":{\"company_name\":\"Acme\",\"context_version\":\"company-context.v1\",\"summary\":\"A fictional collaboration product used only by this fixture.\"},\"candidate_practice_goal\":null,\"round_pack\":{\"contract_version\":\"pm-round-pack.v1\",\"round_type\":\"product_sense\",\"objectives\":[\"clarify_product_goal\",\"prioritize_target_user\",\"identify_core_problem\",\"compare_solution_options\",\"make_product_recommendation\",\"define_success_and_risks\"],\"probe_families\":[\"objective_and_scope\",\"user_segmentation\",\"problem_evidence\",\"prioritization_rationale\",\"solution_tradeoffs\",\"product_detail\",\"success_metrics\",\"failure_modes\"],\"transition_guidance\":[\"Advance after the candidate has made a defensible choice, without requiring a named framework.\",\"Move from problem understanding to solution reasoning without supplying ideas or priorities.\"],\"close_guidance\":[\"When time remains, invite a concise recommendation, primary success measure, or material risk.\",\"Close without grading, coaching, or previewing post-interview feedback.\"],\"forbidden_behaviors\":[\"coaching\",\"hinting\",\"mid_session_evaluation\"]},\"policy\":{\"contract_version\":\"full-interview-policy.v1\",\"prompt_contract_version\":\"full_interview_prompt_v1\",\"interviewer_mode\":\"full_interview\",\"coaching\":\"forbidden\",\"hints\":\"forbidden\",\"evaluation_timing\":\"post_interview_only\",\"selected_question_policy\":\"exact_first_turn\",\"one_substantive_question_per_turn\":true}}"
+    },
+    {
+      "name": "execution",
+      "input": {
+        "sessionId": "50000000-0000-4000-8000-000000000003",
+        "sessionStartFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "deadlineAt": "2026-08-18T20:45:00.000Z",
+        "roundType": "execution",
+        "difficulty": "advanced",
+        "durationMinutes": 45,
+        "selectedQuestion": {
+          "id": "60000000-0000-4000-8000-000000000003",
+          "text": "Exact execution question — case 3?",
+          "company": "Acme",
+          "type": "execution"
+        }
+      },
+      "expected_wire": "{\"contract_version\":\"interview-brief.v2\",\"brief_id\":\"brief:fd52687de7b8e8c7b85c48600815f4f624a32020f0358184e04004ac97a4e5cd\",\"payload_digest\":\"sha256:fd52687de7b8e8c7b85c48600815f4f624a32020f0358184e04004ac97a4e5cd\",\"session_id\":\"50000000-0000-4000-8000-000000000003\",\"session_start_fingerprint\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"deadline_at\":\"2026-08-18T20:45:00.000Z\",\"round_type\":\"execution\",\"difficulty\":\"advanced\",\"duration_minutes\":45,\"selected_question\":{\"id\":\"60000000-0000-4000-8000-000000000003\",\"text\":\"Exact execution question — case 3?\",\"company\":\"Acme\",\"type\":\"execution\"},\"company_context\":null,\"candidate_practice_goal\":null,\"round_pack\":{\"contract_version\":\"pm-round-pack.v1\",\"round_type\":\"execution\",\"objectives\":[\"clarify_decision_context\",\"define_primary_metric_and_guardrails\",\"diagnose_causal_drivers\",\"evaluate_execution_tradeoffs\",\"propose_experiment_or_execution_plan\",\"define_decision_thresholds\"],\"probe_families\":[\"metric_definition\",\"segmentation\",\"causal_chain\",\"instrumentation\",\"execution_tradeoffs\",\"experiment_design\",\"operational_risk\",\"rollout_and_learning\"],\"transition_guidance\":[\"Advance once the candidate has stated a testable diagnosis or decision, without completing the analysis for them.\",\"Move between metrics, causes, and action while preserving the candidate's ownership of the reasoning.\"],\"close_guidance\":[\"When time remains, invite a concise decision, threshold, or next validation step.\",\"Close without grading, coaching, or previewing post-interview feedback.\"],\"forbidden_behaviors\":[\"coaching\",\"hinting\",\"mid_session_evaluation\"]},\"policy\":{\"contract_version\":\"full-interview-policy.v1\",\"prompt_contract_version\":\"full_interview_prompt_v1\",\"interviewer_mode\":\"full_interview\",\"coaching\":\"forbidden\",\"hints\":\"forbidden\",\"evaluation_timing\":\"post_interview_only\",\"selected_question_policy\":\"exact_first_turn\",\"one_substantive_question_per_turn\":true}}"
+    },
+    {
+      "name": "strategy",
+      "input": {
+        "sessionId": "50000000-0000-4000-8000-000000000004",
+        "sessionStartFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "deadlineAt": "2026-08-18T20:45:00.000Z",
+        "roundType": "strategy",
+        "difficulty": "intermediate",
+        "durationMinutes": 45,
+        "selectedQuestion": {
+          "id": "60000000-0000-4000-8000-000000000004",
+          "text": "Exact strategy question — case 4?",
+          "company": "Acme",
+          "type": "strategy"
+        }
+      },
+      "expected_wire": "{\"contract_version\":\"interview-brief.v2\",\"brief_id\":\"brief:dfa28ca3b318ad8ced2f1113d69cd52ef93f0125c45e2603e0591292c1d0f418\",\"payload_digest\":\"sha256:dfa28ca3b318ad8ced2f1113d69cd52ef93f0125c45e2603e0591292c1d0f418\",\"session_id\":\"50000000-0000-4000-8000-000000000004\",\"session_start_fingerprint\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"deadline_at\":\"2026-08-18T20:45:00.000Z\",\"round_type\":\"strategy\",\"difficulty\":\"intermediate\",\"duration_minutes\":45,\"selected_question\":{\"id\":\"60000000-0000-4000-8000-000000000004\",\"text\":\"Exact strategy question — case 4?\",\"company\":\"Acme\",\"type\":\"strategy\"},\"company_context\":null,\"candidate_practice_goal\":null,\"round_pack\":{\"contract_version\":\"pm-round-pack.v1\",\"round_type\":\"strategy\",\"objectives\":[\"define_strategic_objective\",\"assess_market_and_company_position\",\"compare_strategic_alternatives\",\"reason_about_economics\",\"recommend_and_sequence\",\"identify_risks_and_reversal_conditions\"],\"probe_families\":[\"objective_and_constraints\",\"market_structure\",\"customer_value\",\"competition_and_moats\",\"business_model_economics\",\"strategic_tradeoffs\",\"sequencing\",\"critical_assumptions\",\"reversal_conditions\"],\"transition_guidance\":[\"Advance after the candidate commits to a strategic premise or choice that can be examined.\",\"Move from landscape to recommendation without supplying the missing analysis or preferred option.\"],\"close_guidance\":[\"When time remains, invite a concise recommendation, sequencing choice, or reversal condition.\",\"Close without grading, coaching, or previewing post-interview feedback.\"],\"forbidden_behaviors\":[\"coaching\",\"hinting\",\"mid_session_evaluation\"]},\"policy\":{\"contract_version\":\"full-interview-policy.v1\",\"prompt_contract_version\":\"full_interview_prompt_v1\",\"interviewer_mode\":\"full_interview\",\"coaching\":\"forbidden\",\"hints\":\"forbidden\",\"evaluation_timing\":\"post_interview_only\",\"selected_question_policy\":\"exact_first_turn\",\"one_substantive_question_per_turn\":true}}"
+    }
+  ]
+}

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from shared.prompt_contracts import FULL_INTERVIEW_PROMPT_CONTRACT
+
 DEFAULT_OPIK_API_URL = "https://www.comet.com/opik/api"
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,11 @@ _SAFE_ATTRIBUTES = {
     "lk.response.ttft",
     "lk.response.ttfb",
     "lk.e2e_latency",
+    "meelni.interview.brief_contract_version",
+    "meelni.interview.brief_resolution",
+    "meelni.interview.policy_contract_version",
+    "meelni.interview.prompt_contract_version",
+    "meelni.interview.round_pack_contract_version",
 }
 
 _CONTENT_ATTRIBUTES = {
@@ -92,6 +99,58 @@ _SAFE_RESOURCE_ATTRIBUTES = {
     "service.version",
     "deployment.environment.name",
 }
+
+
+def interview_contract_trace_attributes(
+    metadata: Mapping[str, Any],
+) -> dict[str, str]:
+    """Return content-free version markers for the validated room context."""
+    resolution = metadata.get("interview_brief_resolution")
+    if resolution not in {
+        "brief_v2",
+        "absent",
+        "unsupported_contract",
+        "invalid_payload",
+    }:
+        resolution = "invalid_payload"
+    attributes = {
+        "meelni.interview.prompt_contract_version":
+            FULL_INTERVIEW_PROMPT_CONTRACT.version,
+        "meelni.interview.brief_resolution": resolution,
+    }
+    brief = metadata.get("interview_brief")
+    if (
+        isinstance(brief, dict)
+        and brief.get("contract_version") == "interview-brief.v2"
+        and isinstance(brief.get("policy"), dict)
+        and brief["policy"].get("contract_version")
+        == "full-interview-policy.v1"
+        and isinstance(brief.get("round_pack"), dict)
+        and brief["round_pack"].get("contract_version") == "pm-round-pack.v1"
+    ):
+        attributes.update(
+            {
+                "meelni.interview.brief_contract_version": brief[
+                    "contract_version"
+                ],
+                "meelni.interview.policy_contract_version": brief["policy"][
+                    "contract_version"
+                ],
+                "meelni.interview.round_pack_contract_version": brief[
+                    "round_pack"
+                ]["contract_version"],
+            }
+        )
+    return attributes
+
+
+def set_interview_contract_trace_attributes(metadata: Mapping[str, Any]) -> None:
+    """Attach only sanitized contract versions to the current runtime span."""
+    from opentelemetry import trace
+
+    span = trace.get_current_span()
+    for key, value in interview_contract_trace_attributes(metadata).items():
+        span.set_attribute(key, value)
 
 
 @dataclass(frozen=True)

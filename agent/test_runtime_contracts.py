@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from test_interviewer_contracts import InterviewerContractTests
 from shared.config import parse_room_metadata
+from shared.interviewer_contracts import parse_interview_brief_v2
 from shared.dispatch import (
     BUILD_ASSET_DISPATCH_NAME,
     require_dispatch_name,
@@ -4124,6 +4125,92 @@ class SessionDeadlineWatchdogTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(calls, ["close", "terminate"])
+
+
+class InterviewBriefCompilerParityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        fixture_path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "interview-brief-v2-compiler.json"
+        )
+        cls.fixtures = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    def test_typescript_wires_parse_and_drive_each_round_pack(self):
+        for fixture in self.fixtures["cases"]:
+            with self.subTest(round_type=fixture["name"]):
+                brief = parse_interview_brief_v2(fixture["expected_wire"])
+                source = fixture["input"]
+                self.assertEqual(brief["round_type"], source["roundType"])
+                self.assertEqual(
+                    brief["selected_question"], source["selectedQuestion"]
+                )
+                prompt = build_agent_prompt(
+                    source["roundType"],
+                    {
+                        "mode": "mock_interview",
+                        "difficulty": source["difficulty"],
+                        "duration": source["durationMinutes"],
+                    },
+                    {
+                        "id": source["selectedQuestion"]["id"],
+                        "text": source["selectedQuestion"]["text"],
+                        "company": source["selectedQuestion"]["company"],
+                        "type": source["selectedQuestion"]["type"],
+                    },
+                    interview_brief=brief,
+                )
+                self.assertIn("bounded objective and probe-family catalog", prompt)
+                self.assertIn(brief["round_pack"]["objectives"][0], prompt)
+                self.assertIn(brief["round_pack"]["probe_families"][0], prompt)
+                self.assertIn("coaching and hints are\nforbidden", prompt)
+                self.assertIn(source["selectedQuestion"]["text"], prompt)
+
+    def test_v1_context_still_builds_and_invalid_nested_versions_fall_back(self):
+        source = self.fixtures["cases"][0]["input"]
+        brief = json.loads(self.fixtures["cases"][0]["expected_wire"])
+        room = {
+            "contract_version": 1,
+            "session_id": source["sessionId"],
+            "candidate_identity": "candidate-fixture",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+            "deadline_at": source["deadlineAt"],
+            "round_type": source["roundType"],
+            "mode": "voice_video",
+            "config": {
+                "difficulty": source["difficulty"],
+                "duration": source["durationMinutes"],
+            },
+            "question": {
+                "id": source["selectedQuestion"]["id"],
+                "text": source["selectedQuestion"]["text"],
+                "company": source["selectedQuestion"]["company"],
+                "type": source["selectedQuestion"]["type"],
+            },
+        }
+        parsed_v1 = parse_room_metadata(json.dumps(room))
+        self.assertIsNone(parsed_v1["interview_brief"])
+        self.assertEqual(parsed_v1["interview_brief_resolution"], "absent")
+        self.assertIn(
+            source["selectedQuestion"]["text"],
+            build_agent_prompt(
+                source["roundType"],
+                parsed_v1["config"],
+                parsed_v1["question"],
+            ),
+        )
+
+        brief["contract_version"] = "interview-brief.v999"
+        parsed_invalid = parse_room_metadata(
+            json.dumps({**room, "interview_brief": brief})
+        )
+        self.assertIsNone(parsed_invalid["interview_brief"])
+        self.assertEqual(
+            parsed_invalid["interview_brief_resolution"],
+            "unsupported_contract",
+        )
 
 
 if __name__ == "__main__":

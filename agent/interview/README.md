@@ -87,7 +87,8 @@ Uses shared modules from `../shared/`:
    - Interview type (determines the round-specific areas to probe)
    - Difficulty level (adjusts the interview bar and follow-up depth)
    - Canonical feedback and hint defaults (`end_only` and `off`)
-   - Question from bank (or generates own questions)
+   - Exact selected question from the bank (or generates its own primary)
+   - Optional validated `InterviewBriefV2` round-pack constraints
 6. Agent starts AgentSession with configured models
 7. Agent speaks the canonical mock-interview opening and conducts the interview;
    when a selected question is present, that exact question is part of the first
@@ -99,6 +100,11 @@ During step 7 the agent remains a PM interviewer. It does not teach a framework,
 offer suggested answers, or evaluate response quality. Those outputs belong to
 the post-interview feedback workflow. The public demo agent is separate and
 retains its short feedback-preview behavior.
+
+Missing, unsupported, malformed, or room-inconsistent nested briefs use the
+same v1 prompt path. A valid round pack constrains adaptive objectives, probes,
+transitions, and closing; it is never treated as a script, coaching plan, or
+evaluator.
 
 The runtime uses `deadline_at` to close `AgentSession` immediately without
 draining queued speech and to terminate the room. Missing deadlines remain
