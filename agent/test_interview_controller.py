@@ -8,6 +8,7 @@ import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -30,10 +31,13 @@ from shared.interview_controller import (  # noqa: E402
 from shared.interview_controller_adapter import (  # noqa: E402
     CONTROLLER_ADAPTER_CONTRACT_VERSION,
     CONTROLLER_FEATURE_ENV,
+    ReplySuppressionGate,
+    allow_controller_generation,
     create_interview_controller_adapter,
     measured_turn_duration_ms,
     resolve_controller_runtime_mode,
 )
+from shared.transcript_events import create_transcript_event  # noqa: E402
 from shared.transcript_ingest import (  # noqa: E402
     IngestResponse,
     TranscriptIngestQueue,
@@ -389,6 +393,55 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(closing.state.move_ledger[-1].reason_code, "deadline_close")
         self.assertEqual(closing.snapshot.payload["constraints"]["substantive_question_budget"], 0)
 
+    def test_catalog_tail_closes_after_its_final_delivered_transition(self):
+        state = replace(
+            self.make_state(),
+            round_objectives=("only_objective",),
+            topic_catalog=("only_topic",),
+        )
+        probe = self.complete_turn(state, turn=1)
+        state = self.deliver(probe.state, probe.state.pending_move_id, sequence=1)
+        final_transition = self.complete_turn(
+            state,
+            turn=2,
+            text="I would next compare evidence quality and execution tradeoffs.",
+        )
+        self.assertEqual(
+            final_transition.state.move_ledger[-1].move_type,
+            "transition",
+        )
+        state = self.deliver(
+            final_transition.state,
+            final_transition.state.pending_move_id,
+            sequence=2,
+        )
+
+        close = self.complete_turn(state, turn=3)
+        self.assertEqual(close.state.move_ledger[-1].move_type, "close")
+        self.assertEqual(close.state.move_ledger[-1].reason_code, "catalog_exhausted")
+        self.assertEqual(
+            close.snapshot.payload["constraints"]["substantive_question_budget"],
+            0,
+        )
+
+        warning = replace(
+            self.make_state(observed_at="2026-08-19T12:28:30.000Z"),
+            round_objectives=("only_objective",),
+            topic_catalog=("only_topic",),
+        )
+        warned_transition = self.complete_turn(warning, turn=1)
+        warning = self.deliver(
+            warned_transition.state,
+            warned_transition.state.pending_move_id,
+            sequence=1,
+        )
+        warned_close = self.complete_turn(warning, turn=2)
+        self.assertEqual(warned_close.state.move_ledger[-1].move_type, "close")
+        self.assertNotEqual(
+            warned_close.state.move_ledger[-1].move_type,
+            "transition",
+        )
+
     def test_elapsed_deadline_admits_no_move_or_snapshot(self):
         state = self.make_state(observed_at="2026-08-19T12:30:00.000Z")
         self.assertTrue(state.terminal)
@@ -447,24 +500,123 @@ class InterviewControllerTests(unittest.TestCase):
                 self.assertEqual(state.clock.remaining_ms, expected_remaining)
                 self.assertEqual(state.clock.band, expected_band)
 
-    def test_explicit_exit_admits_deterministic_close_and_post_close_is_silent(self):
+    def test_explicit_exit_admits_graceful_close_then_post_close_is_silent(self):
         closing = self.complete_turn(
             self.make_state(), turn=1, text="I would like to stop now.", requested_exit=True
         )
         move_id = closing.state.pending_move_id
-        self.assertEqual(closing.state.move_ledger[-1].reason_code, "candidate_requested_close")
-        closed = self.deliver(closing.state, move_id, sequence=1)
-        self.assertTrue(closed.terminal)
-        self.assertEqual(closed.phase, "closed")
-        self.assertEqual(closed.allowed_moves, ())
+        self.assertIsNotNone(closing.snapshot)
+        self.assertFalse(closing.state.terminal)
+        self.assertEqual(
+            closing.state.move_ledger[-1].reason_code,
+            "candidate_requested_close",
+        )
+        closed_state = self.deliver(closing.state, move_id, sequence=1)
+        self.assertTrue(closed_state.terminal)
+        self.assertEqual(closed_state.phase, "closed")
+        self.assertEqual(closed_state.allowed_moves, ())
+        self.assertEqual(
+            closed_state.move_ledger[-1].stage,
+            "canonically_delivered",
+        )
 
-        closed_wire = json.dumps(closed.to_wire(), sort_keys=True)
-        after = self.complete_turn(closed, turn=2, text="Are you still there?")
+        closed_wire = json.dumps(closed_state.to_wire(), sort_keys=True)
+        after = self.complete_turn(closed_state, turn=2, text="Are you still there?")
         self.assertIsNone(after.snapshot)
-        self.assertIs(after.state, closed)
+        self.assertIs(after.state, closed_state)
         self.assertEqual(json.dumps(after.state.to_wire(), sort_keys=True), closed_wire)
-        self.assertEqual(len(after.state.move_ledger), 1)
-        self.assertEqual(after.state.move_ledger[-1].stage, "canonically_delivered")
+        self.assertEqual(after.state.move_ledger, closed_state.move_ledger)
+
+    def test_every_event_is_an_exact_no_op_after_terminal(self):
+        initial = self.make_state()
+        terminal = reduce_controller(
+            initial,
+            TerminalSettled(
+                expected_state_revision=initial.state_revision,
+                monotonic_ms=initial.clock.monotonic_anchor_ms + 1,
+            ),
+        ).state
+        revision = terminal.state_revision
+        monotonic_ms = terminal.clock.monotonic_anchor_ms + 50_000
+        transcript = DeliveryEvidence(
+            evidence_type="transcript_event",
+            event_id="event:terminal:transcript",
+            writer_id=terminal.writer_id,
+            writer_generation=terminal.writer_generation,
+            sequence=7,
+            delivery_state="delivered",
+        )
+        marker = DeliveryEvidence(
+            evidence_type="interruption_marker",
+            event_id="event:terminal:marker",
+            writer_id=terminal.writer_id,
+            writer_generation=terminal.writer_generation,
+            sequence=8,
+            reason="no_provider_confirmed_prefix",
+        )
+        events = [
+            CandidateTurnCompleted(
+                expected_state_revision=revision,
+                turn_id="turn-terminal",
+                transcript_revision="revision-terminal",
+                text="This late turn must remain transcript-only.",
+                duration_ms=3_000,
+                monotonic_ms=monotonic_ms,
+            ),
+            ClockObserved(revision, monotonic_ms),
+            WriterReconnected(
+                revision,
+                "writer-2",
+                2,
+                2,
+                monotonic_ms,
+            ),
+            TerminalSettled(revision, monotonic_ms),
+            SpeechInterrupted(revision, "move:terminal:1", monotonic_ms),
+            SpeechInterrupted(
+                revision,
+                "move:terminal:1",
+                monotonic_ms,
+                persisted_marker=marker,
+            ),
+            PersistedTranscriptEvidence(
+                revision,
+                "move:terminal:1",
+                transcript,
+                monotonic_ms,
+            ),
+            *[
+                MoveStageAdvanced(
+                    revision,
+                    "move:terminal:1",
+                    stage,
+                    monotonic_ms,
+                )
+                for stage in ("generated", "scheduled", "spoken")
+            ],
+        ]
+        terminal_wire = json.dumps(terminal.to_wire(), sort_keys=True)
+        for event in events:
+            with self.subTest(event=type(event).__name__, stage=getattr(event, "stage", None)):
+                result = reduce_controller(terminal, event)
+                self.assertIs(result.state, terminal)
+                self.assertIsNone(result.snapshot)
+                self.assertEqual(json.dumps(result.state.to_wire(), sort_keys=True), terminal_wire)
+
+        with self.assertRaises(ControllerError) as invalid:
+            reduce_controller(
+                terminal,
+                CandidateTurnCompleted(
+                    revision,
+                    "turn-invalid",
+                    "revision-invalid",
+                    "Stop.",
+                    1_000,
+                    monotonic_ms,
+                    requested_exit="true",
+                ),
+            )
+        self.assertEqual(invalid.exception.code, "invalid_turn")
 
     def test_reconnect_aborts_only_pending_move_and_preserves_delivered_history(self):
         first = self.complete_turn(self.make_state(), turn=1)
@@ -744,6 +896,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.move_ledger[-1].stage, "admitted")
 
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         self.assertEqual(adapter.state.move_ledger[-1].stage, "generated")
         adapter.speech_finished(
             handle_id="speech-1",
@@ -770,6 +923,71 @@ class InterviewControllerTests(unittest.TestCase):
         )
         self.assertEqual(adapter.state.move_ledger[-1].stage, "spoken")
 
+    def test_adapter_rechecks_clock_before_provider_generation(self):
+        crossing_closing = self.make_adapter(
+            observed_at="2026-08-19T12:29:14.900Z"
+        )
+        directive = crossing_closing.complete_user_turn(
+            message_id="turn-1",
+            transcript_revision="writer-1:turn-1",
+            text="I would compare the highest-impact user needs first.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        self.assertEqual(
+            crossing_closing.state.move_ledger[-1].move_type,
+            "transition",
+        )
+        crossing_closing.speech_created(
+            handle_id="speech-warning",
+            monotonic_ms=1_002,
+        )
+        self.assertFalse(
+            crossing_closing.authorize_generation(monotonic_ms=1_101)
+        )
+        self.assertEqual(crossing_closing.state.clock.band, "closing")
+        self.assertEqual(crossing_closing.state.move_ledger[-1].stage, "aborted")
+        self.assertIsNone(crossing_closing.state.pending_move_id)
+        self.assertEqual(crossing_closing.state.allowed_moves, ("close",))
+        self.assertIsNotNone(directive.instruction)
+
+        crossing_elapsed = self.make_adapter(
+            observed_at="2026-08-19T12:29:59.900Z"
+        )
+        close = crossing_elapsed.complete_user_turn(
+            message_id="turn-1",
+            transcript_revision="writer-1:turn-1",
+            text="My final recommendation focuses on the primary user.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        self.assertEqual(crossing_elapsed.state.move_ledger[-1].move_type, "close")
+        crossing_elapsed.speech_created(
+            handle_id="speech-close",
+            monotonic_ms=1_002,
+        )
+        self.assertFalse(crossing_elapsed.authorize_generation(monotonic_ms=1_100))
+        self.assertTrue(crossing_elapsed.state.terminal)
+        self.assertEqual(crossing_elapsed.state.move_ledger[-1].stage, "aborted")
+        self.assertIsNotNone(close.instruction)
+
+        predeadline_close = self.make_adapter(
+            observed_at="2026-08-19T12:29:30.000Z"
+        )
+        predeadline_close.complete_user_turn(
+            message_id="turn-1",
+            transcript_revision="writer-1:turn-1",
+            text="My final recommendation is intentionally narrow.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        predeadline_close.speech_created(
+            handle_id="speech-close",
+            monotonic_ms=1_002,
+        )
+        self.assertTrue(predeadline_close.authorize_generation(monotonic_ms=1_002))
+        self.assertEqual(predeadline_close.state.move_ledger[-1].stage, "generated")
+
     def test_adapter_commits_only_the_persisted_interviewer_transcript(self):
         adapter = self.make_adapter()
         directive = adapter.complete_user_turn(
@@ -780,6 +998,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -815,6 +1034,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -864,6 +1084,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.move_ledger[-1].move_type, "close")
         self.assertFalse(directive.suppress_reply)
         adapter.speech_created(handle_id="speech-close", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-close",
             scheduled=True,
@@ -935,6 +1156,7 @@ class InterviewControllerTests(unittest.TestCase):
         self.assertEqual(adapter.state.pending_move_id, directive.move_id)
 
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_003)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_003))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -967,6 +1189,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1032,6 +1255,7 @@ class InterviewControllerTests(unittest.TestCase):
             monotonic_ms=1_001,
         )
         adapter.speech_created(handle_id="speech-1", monotonic_ms=1_002)
+        self.assertTrue(adapter.authorize_generation(monotonic_ms=1_002))
         adapter.speech_finished(
             handle_id="speech-1",
             scheduled=True,
@@ -1096,6 +1320,113 @@ class InterviewControllerTests(unittest.TestCase):
             self.assertEqual(observed, [marker])
 
         asyncio.run(exercise())
+
+    def test_pinned_suppression_keeps_exactly_one_user_persistence_path(self):
+        persisted_event_ids = []
+        transport_event_ids = []
+        conversation_callbacks = {}
+
+        async def exercise():
+            adapter = self.make_adapter(
+                observed_at="2026-08-19T12:29:59.999Z"
+            )
+            gate = ReplySuppressionGate()
+            source_message_ids = {}
+
+            async def transport(_url, body, _headers):
+                envelope = json.loads(body)
+                transport_event_ids.append(envelope["event"]["event_id"])
+                return IngestResponse(200)
+
+            async def publisher(event):
+                event_id = str(event["event_id"])
+                persisted_event_ids.append(event_id)
+                adapter.persisted_transcript(
+                    event,
+                    source_message_id=source_message_ids[event_id],
+                )
+
+            queue = TranscriptIngestQueue(
+                ingest_url="https://meelni.com/api/internal/transcript",
+                livekit_api_secret="livekit-secret",
+                transport=transport,
+                publisher=publisher,
+                now=lambda: 1787112000,
+            )
+
+            async def simulate_pinned_turn(message_id, text, sequence):
+                directive = adapter.complete_user_turn(
+                    message_id=message_id,
+                    transcript_revision=f"writer-1:{message_id}",
+                    text=text,
+                    duration_ms=1_000,
+                    monotonic_ms=1_000 + sequence,
+                )
+                self.assertTrue(directive.suppress_reply)
+                self.assertIsNone(directive.instruction)
+
+                gate.arm(message_id)
+                turn_items = [
+                    SimpleNamespace(role="user", id=message_id),
+                    SimpleNamespace(
+                        role="system",
+                        id=f"controller:suppress:{message_id}",
+                    ),
+                ]
+                # LiveKit schedules the empty generation before committing the
+                # same finalized item through conversation_item_added.
+                llm_result = (
+                    "provider"
+                    if allow_controller_generation(adapter, gate, turn_items)
+                    else None
+                )
+                self.assertIsNone(llm_result)
+                self.assertFalse(gate.consume_for_items(turn_items))
+
+                conversation_callbacks[message_id] = (
+                    conversation_callbacks.get(message_id, 0) + 1
+                )
+                event_id = f"writer-1:{message_id}"
+                source_message_ids[event_id] = message_id
+                event = create_transcript_event(
+                    event_id=event_id,
+                    writer_id="writer-1",
+                    writer_generation=1,
+                    sequence=sequence,
+                    session_id="session-471",
+                    room_name="room-471",
+                    speaker="user",
+                    text=text,
+                    started_at=1787112000 + sequence * 10,
+                    ended_at=1787112001 + sequence * 10,
+                    audio_duration_ms=1_000,
+                    section="product_sense",
+                )
+                self.assertTrue(queue.enqueue_transcript(event))
+                result = await queue.flush(0.5)
+                self.assertTrue(result.settled)
+
+            await simulate_pinned_turn(
+                "turn-crossed-elapsed",
+                "One final candidate detail.",
+                1,
+            )
+            terminal_state = adapter.state
+            self.assertTrue(terminal_state.terminal)
+            await simulate_pinned_turn("turn-after-terminal", "Are you there?", 2)
+            self.assertIs(adapter.state, terminal_state)
+
+        asyncio.run(exercise())
+        expected = [
+            "writer-1:turn-crossed-elapsed",
+            "writer-1:turn-after-terminal",
+        ]
+        self.assertEqual(transport_event_ids, expected)
+        self.assertEqual(persisted_event_ids, expected)
+        self.assertEqual(
+            conversation_callbacks,
+            {"turn-crossed-elapsed": 1, "turn-after-terminal": 1},
+        )
 
     def test_throwing_marker_observer_cannot_retry_or_fail_settlement(self):
         attempts = []
