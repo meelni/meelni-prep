@@ -5,12 +5,41 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 
 export const INTERVIEWER_BENCHMARK_EVIDENCE_PATH =
   "docs/evidence/sav-467-current-interviewer-baseline.json" as const;
+export const INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH =
+  "docs/evidence/sav-467-interviewer-adjudication-approval.json" as const;
 
 export async function readInterviewerBenchmarkEvidence(
   repoRoot: string,
   requestedPath: string
 ): Promise<string> {
-  const validated = await resolveEvidenceTarget(repoRoot, requestedPath);
+  return readLockedFile(
+    repoRoot,
+    requestedPath,
+    INTERVIEWER_BENCHMARK_EVIDENCE_PATH
+  );
+}
+
+export async function readInterviewerBenchmarkAdjudicationApproval(
+  repoRoot: string,
+  requestedPath: string
+): Promise<string> {
+  return readLockedFile(
+    repoRoot,
+    requestedPath,
+    INTERVIEWER_BENCHMARK_ADJUDICATION_APPROVAL_PATH
+  );
+}
+
+async function readLockedFile(
+  repoRoot: string,
+  requestedPath: string,
+  expectedPath: string
+): Promise<string> {
+  const validated = await resolveEvidenceTarget(
+    repoRoot,
+    requestedPath,
+    expectedPath
+  );
   const handle = await open(
     validated.target,
     constants.O_RDONLY | constants.O_NOFOLLOW
@@ -36,7 +65,11 @@ export async function writeInterviewerBenchmarkEvidence(
   requestedPath: string,
   contents: string
 ): Promise<void> {
-  const validated = await resolveEvidenceTarget(repoRoot, requestedPath);
+  const validated = await resolveEvidenceTarget(
+    repoRoot,
+    requestedPath,
+    INTERVIEWER_BENCHMARK_EVIDENCE_PATH
+  );
   const { directory, target } = validated;
   const temporary = resolve(
     directory,
@@ -88,7 +121,8 @@ export async function writeInterviewerBenchmarkEvidence(
 
 async function resolveEvidenceTarget(
   repoRoot: string,
-  requestedPath: string
+  requestedPath: string,
+  expectedPath: string
 ): Promise<{
   directory: string;
   directoryIdentity: FileIdentity;
@@ -98,12 +132,12 @@ async function resolveEvidenceTarget(
   if (
     !isAbsolute(repoRoot) ||
     isAbsolute(requestedPath) ||
-    requestedPath !== INTERVIEWER_BENCHMARK_EVIDENCE_PATH
+    requestedPath !== expectedPath
   ) {
     throw new Error("interviewer_benchmark_evidence_path_invalid");
   }
 
-  const target = resolve(repoRoot, INTERVIEWER_BENCHMARK_EVIDENCE_PATH);
+  const target = resolve(repoRoot, expectedPath);
   const pathFromRoot = relative(resolve(repoRoot), target);
   if (
     pathFromRoot === "" ||
@@ -123,10 +157,7 @@ async function resolveEvidenceTarget(
     realpath(repoRoot),
     realpath(target),
   ]);
-  if (
-    canonicalTarget !==
-    resolve(canonicalRoot, INTERVIEWER_BENCHMARK_EVIDENCE_PATH)
-  ) {
+  if (canonicalTarget !== resolve(canonicalRoot, expectedPath)) {
     throw new Error("interviewer_benchmark_evidence_path_invalid");
   }
   return {

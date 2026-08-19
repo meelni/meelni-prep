@@ -63,9 +63,27 @@ questions, repeated probes, deadline violations, and post-close speech.
 
 ### Requirement: human-owned calibration authority
 
-The benchmark SHALL never label agent-authored examples human-adjudicated.
+The benchmark SHALL never treat an agent-authored fixture status as human
+adjudication; only a separately sourced exact owner approval may resolve the
+report status.
 
 #### Scenario: missing owner review
 
 - **WHEN** the eight v1 examples have not been accepted or rejected by the product owner
 - **THEN** baseline execution remains usable but shadow entry remains ineligible.
+
+#### Scenario: exact owner approval
+
+- **WHEN** a separate approval binds the current manifest hash, fixture/suite
+  versions, and all eight ordered scenario/label/seed decisions
+- **THEN** the report records the semantic labels accepted, removes only the
+  owner-calibration blocker, and keeps shadow entry ineligible until its other
+  evidence requirements are met.
+
+#### Scenario: invalid or broadened approval
+
+- **WHEN** approval is missing, reordered, duplicated, altered, stale, partial,
+  contradictory, falsely signed, or grants runtime/provider/rollout authority
+- **THEN** missing approval remains pending and invalid approval fails before
+  any judge invocation without authorizing provider calls, canary, launch,
+  default-on, Production, or SAV-476 GO/NO-GO action.
