@@ -30973,8 +30973,8 @@ function planFeedbackProviderAttempt(input) {
     remainingBudgetMs
   };
 }
-function deadlineExceededFailure(stage) {
-  return failure(stage, "deadline_exceeded");
+function deadlineExceededFailure(stage2) {
+  return failure(stage2, "deadline_exceeded");
 }
 function classifyFeedbackGenerationFailure(error, fallbackStage) {
   if (error instanceof FeedbackGenerationPolicyError) return error.failure;
@@ -31093,17 +31093,17 @@ function classifyFeedbackGenerationFailure(error, fallbackStage) {
     fallbackStage === "claim" || fallbackStage === "evidence_preparation"
   );
 }
-function assertFeedbackGenerationBudget(deadlineAtMs, nowMs, stage) {
+function assertFeedbackGenerationBudget(deadlineAtMs, nowMs, stage2) {
   if (getFeedbackGenerationRemainingBudgetMs(deadlineAtMs, nowMs) <= 0) {
-    throw new FeedbackGenerationPolicyError(deadlineExceededFailure(stage));
+    throw new FeedbackGenerationPolicyError(deadlineExceededFailure(stage2));
   }
 }
 function feedbackGenerationStatusReason(value) {
   return `feedback_generation_${value.failureClass}`;
 }
-function failure(stage, failureClass, retryable = false) {
+function failure(stage2, failureClass, retryable = false) {
   return {
-    stage,
+    stage: stage2,
     failureClass,
     retryable,
     retryAfterMs: null,
@@ -31257,6 +31257,253 @@ var DEFAULT_INTERVIEW_RUNTIME_SETTINGS = {
   llm_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.llm_model,
   tts_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.tts_model
 };
+
+// packages/agent/src/interviewer-rollout.ts
+var ADAPTIVE_INTERVIEWER_HARD_STOP_SIGNALS = [
+  "evidence_digest_drift",
+  "version_pin_mismatch",
+  "unauthorized_stage_or_cohort",
+  "deterministic_invariant_regression",
+  "quality_threshold_regression",
+  "p95_first_audio_regression",
+  "completion_rate_regression",
+  "fallback_rate_regression",
+  "tool_failure_rate_regression",
+  "director_freshness_regression",
+  "interruption_recovery_regression",
+  "feedback_integrity_regression",
+  "session_or_transcript_loss",
+  "spend_cap_exceeded",
+  "kill_switch_failure"
+];
+var FLAGS_OFF = {
+  brief_v2: false,
+  controller_v1: false,
+  tools_v1: false,
+  director_shadow_v1: false,
+  director_influence_v1: false
+};
+var SHADOW_FLAGS = {
+  brief_v2: true,
+  controller_v1: true,
+  tools_v1: true,
+  director_shadow_v1: true,
+  director_influence_v1: false
+};
+var INFLUENCE_FLAGS = {
+  brief_v2: true,
+  controller_v1: true,
+  tools_v1: true,
+  director_shadow_v1: true,
+  director_influence_v1: true
+};
+var ADAPTIVE_INTERVIEWER_STAGE_DEFINITIONS = [
+  stage("disabled", "repository", "none", "none", "current", FLAGS_OFF),
+  stage("synthetic", "repository", "none", "none", "current", FLAGS_OFF),
+  stage(
+    "preview_shadow",
+    "preview",
+    "shadow",
+    "none",
+    "shadow",
+    SHADOW_FLAGS,
+    true,
+    true
+  ),
+  stage(
+    "preview_influence",
+    "preview",
+    "influence",
+    "owner_only",
+    "canary",
+    INFLUENCE_FLAGS,
+    true,
+    true
+  ),
+  stage(
+    "production_shadow",
+    "production",
+    "shadow",
+    "none",
+    "shadow",
+    SHADOW_FLAGS,
+    true,
+    true
+  ),
+  stage(
+    "production_canary",
+    "production",
+    "influence",
+    "bounded_candidates",
+    "canary",
+    INFLUENCE_FLAGS,
+    true,
+    true
+  ),
+  stage(
+    "candidate_default",
+    "production",
+    "influence",
+    "default",
+    "canary",
+    INFLUENCE_FLAGS,
+    true,
+    true
+  )
+];
+function stage(name, environment, directorMode, exposure, cohort, flags, requiresOwnerAuthorization = false, requiresLiveEvidence = false) {
+  return {
+    stage: name,
+    environment,
+    director_mode: directorMode,
+    exposure,
+    expected_rollout_cohort: cohort,
+    required_flags: { ...flags },
+    ...stageControls(name),
+    requires_separate_owner_authorization: requiresOwnerAuthorization,
+    requires_live_evidence: requiresLiveEvidence
+  };
+}
+function stageControls(stageName) {
+  const commonLiveEntry = [
+    "prior_stage_exit_passed",
+    "exact_candidate_and_configuration_pinned",
+    "separate_owner_authorization",
+    "director_adapter_provider_model_pinned",
+    "environment_isolation_verified",
+    "spend_privacy_retention_accepted",
+    "numeric_entry_stop_thresholds_accepted"
+  ];
+  const commonLiveStops = ADAPTIVE_INTERVIEWER_HARD_STOP_SIGNALS;
+  switch (stageName) {
+    case "disabled":
+      return {
+        entry_requirements: [],
+        exit_requirements: [],
+        hard_stop_signals: [],
+        rollback_target: null
+      };
+    case "synthetic":
+      return {
+        entry_requirements: [
+          "frozen_evidence_digests_match",
+          "provider_free_verification_passes",
+          "all_adaptive_flags_off",
+          "director_adapter_absent"
+        ],
+        exit_requirements: [
+          "frozen_evidence_digests_match",
+          "provider_free_verification_passes",
+          "selected_adapter_candidate_provider_free_validation_passes"
+        ],
+        hard_stop_signals: [
+          "evidence_digest_drift",
+          "version_pin_mismatch",
+          "deterministic_invariant_regression",
+          "feedback_integrity_regression",
+          "kill_switch_failure"
+        ],
+        rollback_target: "disabled"
+      };
+    case "preview_shadow":
+      return {
+        entry_requirements: commonLiveEntry,
+        exit_requirements: liveExitRequirements(),
+        hard_stop_signals: commonLiveStops,
+        rollback_target: "synthetic"
+      };
+    case "preview_influence":
+      return {
+        entry_requirements: [
+          ...commonLiveEntry,
+          "minimum_live_sample_satisfied",
+          "quality_threshold_satisfied",
+          "latency_completion_thresholds_satisfied",
+          "feedback_integrity_threshold_satisfied",
+          "rollback_rehearsal_passed"
+        ],
+        exit_requirements: liveExitRequirements(),
+        hard_stop_signals: commonLiveStops,
+        rollback_target: "preview_shadow"
+      };
+    case "production_shadow":
+      return {
+        entry_requirements: [
+          ...commonLiveEntry,
+          "minimum_live_sample_satisfied",
+          "quality_threshold_satisfied",
+          "latency_completion_thresholds_satisfied",
+          "feedback_integrity_threshold_satisfied",
+          "rollback_rehearsal_passed",
+          "production_action_authorized"
+        ],
+        exit_requirements: liveExitRequirements(),
+        hard_stop_signals: commonLiveStops,
+        rollback_target: "disabled"
+      };
+    case "production_canary":
+      return {
+        entry_requirements: [
+          ...commonLiveEntry,
+          "minimum_live_sample_satisfied",
+          "quality_threshold_satisfied",
+          "latency_completion_thresholds_satisfied",
+          "feedback_integrity_threshold_satisfied",
+          "rollback_rehearsal_passed",
+          "production_action_authorized"
+        ],
+        exit_requirements: [
+          ...liveExitRequirements(),
+          "owner_launch_go_recorded"
+        ],
+        hard_stop_signals: commonLiveStops,
+        rollback_target: "production_shadow"
+      };
+    case "candidate_default":
+      return {
+        entry_requirements: [
+          ...commonLiveEntry,
+          "minimum_live_sample_satisfied",
+          "quality_threshold_satisfied",
+          "latency_completion_thresholds_satisfied",
+          "feedback_integrity_threshold_satisfied",
+          "rollback_rehearsal_passed",
+          "owner_launch_go_recorded",
+          "production_action_authorized"
+        ],
+        exit_requirements: [],
+        hard_stop_signals: commonLiveStops,
+        rollback_target: "production_canary"
+      };
+  }
+}
+function liveExitRequirements() {
+  return [
+    "owner_accepted_minimum_sample_satisfied",
+    "owner_accepted_quality_threshold_satisfied",
+    "owner_accepted_latency_completion_thresholds_satisfied",
+    "owner_accepted_feedback_integrity_threshold_satisfied",
+    "rollback_rehearsal_passed"
+  ];
+}
+
+// packages/agent/src/interviewer-preparation-authorization.ts
+var ADAPTIVE_INTERVIEWER_PREPARATION_ALLOWED_REPOSITORY_ACTIONS = Object.freeze([
+  "implement_selected_director_adapter_candidate",
+  "configure_selected_director_adapter_candidate",
+  "add_provider_free_candidate_validation"
+]);
+var ADAPTIVE_INTERVIEWER_PREPARATION_DENIED_AUTHORITY = Object.freeze([
+  "provider_calls",
+  "provider_spend",
+  "deployment",
+  "live_rooms",
+  "preview_influence",
+  "production",
+  "default_on",
+  "launch_go_no_go"
+]);
+var ADAPTIVE_INTERVIEWER_PREPARATION_AUTHORIZATION_MAX_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
 
 // lib/analytics/types.ts
 var LEGACY_INTERVIEW_LAUNCH_EVENTS = {
@@ -33412,12 +33659,12 @@ async function runObservedFeedbackStage(input, work) {
   }
   return result.value;
 }
-function observedStageRejectionFailure(result, stage, deadlineAtMs, completedAtMs) {
+function observedStageRejectionFailure(result, stage2, deadlineAtMs, completedAtMs) {
   if (result !== false && result !== null) return null;
-  if (completedAtMs >= deadlineAtMs) return deadlineExceededFailure(stage);
+  if (completedAtMs >= deadlineAtMs) return deadlineExceededFailure(stage2);
   return classifyFeedbackGenerationFailure(
     new Error("feedback_generation_fenced"),
-    stage
+    stage2
   );
 }
 function lastSuccessfulProviderCompletion(attempts) {
@@ -33441,10 +33688,10 @@ function isClosedEvaluationFailure(error) {
 function safeFeedbackGenerationErrorMessage(error, failure2) {
   return error instanceof Error && /^feedback_generation_[a-z0-9_]+$/.test(error.message) ? error.message : error instanceof FeedbackProviderInvocationError ? error.code : feedbackGenerationStatusReason(failure2);
 }
-function throwFeedbackGenerationPolicyFailure(message, stage) {
+function throwFeedbackGenerationPolicyFailure(message, stage2) {
   const error = new Error(message);
   throw new FeedbackGenerationPolicyError(
-    classifyFeedbackGenerationFailure(error, stage),
+    classifyFeedbackGenerationFailure(error, stage2),
     message
   );
 }
