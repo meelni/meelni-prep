@@ -200,6 +200,28 @@ test("requested difficulty and company are scored independently", () => {
   assert.equal(company.receipt.reasonCode, "requested_company");
 });
 
+test("a catalog question with null difficulty is eligible but earns no requested-difficulty weight", () => {
+  const result = rankInterviewQuestions(
+    rankingInput({
+      candidates: [
+        candidate("neutral", "product_sense", { difficulty: null }),
+        candidate("exact"),
+      ],
+    })
+  );
+
+  const neutral = result.ordered.find(
+    ({ candidate: ranked }) => ranked.id === "neutral"
+  );
+  assert.equal(result.selected?.id, "exact");
+  assert.equal(neutral?.factorCodes.includes("requestedDifficulty"), false);
+  assert.equal(
+    result.bounds.candidateCount,
+    2,
+    "null difficulty remains a neutral eligible catalog state"
+  );
+});
+
 test("published provenance and dated evidence improve corpus quality rank", () => {
   const result = rankInterviewQuestions(
     rankingInput({

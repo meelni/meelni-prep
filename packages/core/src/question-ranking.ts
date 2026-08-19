@@ -69,7 +69,7 @@ export interface QuestionRankingCandidate {
   text: string;
   company: string | null;
   roundType: RoundType;
-  difficulty: DifficultyLevel;
+  difficulty: DifficultyLevel | null;
   sourceKind: QuestionRankingSourceKind;
   qualityStatus: QuestionRankingQualityStatus;
   askedAt: string | null;
@@ -392,7 +392,8 @@ function isEligibleCandidate(
         QUESTION_RANKING_LIMITS.companyLength
       )) &&
     isRoundType(value.roundType) &&
-    ["beginner", "intermediate", "advanced"].includes(value.difficulty) &&
+    (value.difficulty === null ||
+      ["beginner", "intermediate", "advanced"].includes(value.difficulty)) &&
     ["google_sheets", "legacy"].includes(value.sourceKind) &&
     value.qualityStatus === "published" &&
     value.isActive === true &&

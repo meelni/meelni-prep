@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { INTERACTIVE_READ_STATEMENT_TIMEOUT_MS } from "@/lib/http/deadline";
 import { db } from "./index";
 
-export type InteractiveReadDatabase = Pick<typeof db, "select">;
+export type InteractiveReadDatabase = Pick<typeof db, "select" | "execute">;
 
 export function getInteractiveReadStatementTimeoutSql(): string {
   return `set local statement_timeout = '${INTERACTIVE_READ_STATEMENT_TIMEOUT_MS}ms'`;

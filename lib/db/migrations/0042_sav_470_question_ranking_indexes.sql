@@ -1,0 +1,2 @@
+CREATE INDEX "interview_question_ranking_bucket_idx" ON "interview_question" USING btree ("question_type","difficulty","asked_at" DESC NULLS LAST,"id") WHERE "interview_question"."is_active" = true AND "interview_question"."quality_status" = 'published';--> statement-breakpoint
+CREATE INDEX "interview_session_question_ranking_history_idx" ON "interview_session" USING btree ("user_id","activated_at" DESC NULLS LAST,"id") WHERE "interview_session"."activated_at" IS NOT NULL;

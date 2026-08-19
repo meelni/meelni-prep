@@ -23,6 +23,8 @@ valid feedback evidence, compiles into the SAV-468 brief, and replays exactly.
 - Affected specs: full-interview question selection and stable start replay.
 - Affected code: `packages/core`, `lib/db`, session-start workflow, shared
   synthetic fixtures.
-- Data: existing session `config` JSON only; no migration.
+- Data: existing session `config` JSON plus migration
+  `0042_sav_470_question_ranking_indexes`, which adds only the bounded
+  candidate/history read indexes.
 - Provider/Production behavior: no provider mutation, Python read, launch
   decision, merge, or Production action is included.

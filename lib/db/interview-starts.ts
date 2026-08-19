@@ -465,7 +465,7 @@ async function createOrLoadInTransaction(
   transaction: StartDatabase,
   input: StableInterviewStartInput
 ): Promise<PersistedStableInterviewStart> {
-  await transaction
+  const inserted = await transaction
     .insert(interviewSession)
     .values({
       id: input.startAttemptId,
@@ -482,7 +482,8 @@ async function createOrLoadInTransaction(
       startRequestFingerprint: input.requestFingerprint,
       provisioningState: "pending",
     })
-    .onConflictDoNothing({ target: interviewSession.id });
+    .onConflictDoNothing({ target: interviewSession.id })
+    .returning({ id: interviewSession.id });
 
   const rows = await transaction
     .select()
@@ -492,13 +493,20 @@ async function createOrLoadInTransaction(
     .for("update");
   assertMatchingStart(rows[0], input);
 
-  const persistedSelection = readQuestionSelectionFromStartConfig(input.config);
-  if (!persistedSelection || !isEmbeddedQuestionSelection(persistedSelection)) {
+  const persistedAuthority = resolvePersistedStartQuestionAuthority(
+    rows[0]!.config
+  );
+  const relationQuestionId = persistedAuthority
+    ? persistedAuthority.relationQuestionId
+    : inserted.length === 1
+      ? input.question.id
+      : null;
+  if (relationQuestionId) {
     await transaction
       .insert(sessionQuestion)
       .values({
         sessionId: input.startAttemptId,
-        questionId: input.question.id,
+        questionId: relationQuestionId,
         startContractVersion: INTERVIEW_START_CONTRACT_VERSION,
         startAttemptId: input.startAttemptId,
       })
@@ -542,32 +550,20 @@ async function loadStart(
   if (!isProvisioningState(row.session.provisioningState)) {
     throw new InterviewStartConflictError();
   }
-  const persistedSelection = readQuestionSelectionFromStartConfig(
+  const persistedAuthority = resolvePersistedStartQuestionAuthority(
     row.session.config
   );
-  const question = row.question
-    ? {
-        id: row.question.id,
-        company: row.question.company,
-        questionText: row.question.questionText,
-        questionType: row.question.questionType,
-        askedAt: row.question.askedAt,
-        isActive: row.question.isActive,
-        createdAt: row.question.createdAt,
-      }
-    : persistedSelection && isEmbeddedQuestionSelection(persistedSelection)
+  const question = persistedAuthority
+    ? persistedAuthority.question
+    : row.question
       ? {
-          id: persistedSelection.question.id,
-          company: persistedSelection.question.company,
-          questionText: persistedSelection.question.text,
-          questionType: persistedSelection.question.type,
-          askedAt: persistedSelection.question.askedAt
-            ? new Date(persistedSelection.question.askedAt)
-            : null,
-          isActive: persistedSelection.question.isActive,
-          createdAt: persistedSelection.question.createdAt
-            ? new Date(persistedSelection.question.createdAt)
-            : null,
+          id: row.question.id,
+          company: row.question.company,
+          questionText: row.question.questionText,
+          questionType: row.question.questionType,
+          askedAt: row.question.askedAt,
+          isActive: row.question.isActive,
+          createdAt: row.question.createdAt,
         }
       : null;
   if (!question) throw new Error("interview_start_question_missing");
@@ -587,6 +583,32 @@ async function loadStart(
     lifecycleVersion: row.session.lifecycleVersion,
     endedAt: row.session.endedAt,
     question,
+  };
+}
+
+export function resolvePersistedStartQuestionAuthority(config: unknown): {
+  relationQuestionId: string | null;
+  question: QuestionBankRecord;
+} | null {
+  const selection = readQuestionSelectionFromStartConfig(config);
+  if (!selection) return null;
+  return {
+    relationQuestionId: isEmbeddedQuestionSelection(selection)
+      ? null
+      : selection.questionId,
+    question: {
+      id: selection.question.id,
+      company: selection.question.company,
+      questionText: selection.question.text,
+      questionType: selection.question.type,
+      askedAt: selection.question.askedAt
+        ? new Date(selection.question.askedAt)
+        : null,
+      isActive: selection.question.isActive,
+      createdAt: selection.question.createdAt
+        ? new Date(selection.question.createdAt)
+        : null,
+    },
   };
 }
 

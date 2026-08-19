@@ -19470,6 +19470,9 @@ var interviewSession = pgTable(
       table.userId,
       table.status
     ),
+    questionRankingHistoryIdx: index(
+      "interview_session_question_ranking_history_idx"
+    ).on(table.userId, table.activatedAt.desc().nullsLast(), table.id.asc()).where(sql`${table.activatedAt} IS NOT NULL`),
     endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
     lifecycleStateTransitionIdx: index(
       "interview_session_lifecycle_state_transition_idx"
@@ -21601,6 +21604,14 @@ var interviewQuestion = pgTable(
     askedAtIdx: index("interview_question_asked_at_idx").on(table.askedAt),
     qualityStatusIdx: index("interview_question_quality_status_idx").on(
       table.qualityStatus
+    ),
+    rankingBucketIdx: index("interview_question_ranking_bucket_idx").on(
+      table.questionType.asc(),
+      table.difficulty.asc(),
+      table.askedAt.desc().nullsLast(),
+      table.id.asc()
+    ).where(
+      sql`${table.isActive} = true AND ${table.qualityStatus} = 'published'`
     )
   })
 );

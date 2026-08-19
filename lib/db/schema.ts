@@ -1760,6 +1760,16 @@ export const interviewQuestion = pgTable(
     qualityStatusIdx: index("interview_question_quality_status_idx").on(
       table.qualityStatus
     ),
+    rankingBucketIdx: index("interview_question_ranking_bucket_idx")
+      .on(
+        table.questionType.asc(),
+        table.difficulty.asc(),
+        table.askedAt.desc().nullsLast(),
+        table.id.asc()
+      )
+      .where(
+        sql`${table.isActive} = true AND ${table.qualityStatus} = 'published'`
+      ),
   })
 );
 
