@@ -32,22 +32,25 @@ close may still generate.
 Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
 before it creates that handle's pipeline task. The adapter uses Python task
 context to carry the exact candidate handle identity across that public
-ordering boundary. Creation alone grants no move authority. Only a successful
-finalized-turn plus move authorization promotes the handle. Authorization also
-requires an opaque, cryptographically random, single-use generation nonce
-minted when that turn's directive is admitted. The nonce is carried only in the
-temporary controller system-message ID and atomically consumed with the
-candidate handle before clock or reducer mutation. An ambient sibling with the
-inherited handle but only predictable turn/move IDs cannot consume authority.
+ordering boundary and stamps each created handle with the current internal
+generation epoch. Admission advances the epoch and mints an opaque,
+cryptographically random, single-use generation nonce. Authorization requires
+the first public `generate_reply` handle bound in that epoch plus the exact
+finalized turn, move, and nonce before clock or reducer mutation. A
+pre-admission handle and every later same-epoch handle are therefore stale even
+if they receive the exact current chat context. An ambient sibling with only
+predictable turn/move IDs cannot consume authority.
 
 Pinned LiveKit 1.6.5 `generation.py` serializes the temporary chat context into
 `ATTR_CHAT_CTX` immediately before invoking `llm_node`, so that opaque nonce may
 appear in the SDK's pre-node trace. There is no await between node entry and
-nonce consumption. The adapter then redacts the nonce from the temporary item
-ID before provider conversion. It is absent from controller snapshots and
-message content, is not added to the durable conversation or customer
-transcript, and is not written by Meelni application logs. Trace observation
-after synchronous consumption cannot replay authority.
+nonce consumption. LiveKit 1.6.5 `ChatContext.copy()` is shallow, so the
+adapter never redacts a denied context in place. After successful authorization
+only, it replaces the nonce-bearing message with an isolated clone in the
+provider-bound copy. The nonce is absent from provider input, controller
+snapshots, and message content, is not added to the durable conversation or
+customer transcript, and is not written by Meelni application logs. Trace
+observation after synchronous consumption cannot replay authority.
 
 Denied, evicted, duplicate, and replayed handles cannot stage or abort the move
 and cannot correlate transcript or interruption evidence. Candidate,
