@@ -1,6 +1,7 @@
 # Stateful Interviewer And Decision Contracts
 
-Status: accepted contract for SAV-466; runtime implementation remains disabled
+Status: accepted contract for SAV-466; SAV-471 controller implementation is
+available but disabled by default
 
 ## Purpose
 
@@ -37,6 +38,23 @@ policy in focused internal modules. Both runtimes read the shared
 | Director recommendation   | `director-recommendation.v1` |
 
 Unknown versions are never reinterpreted as a known contract.
+
+SAV-471 also uses two implementation-local versions:
+
+- `deterministic-interview-controller.v1` for immutable reducer state; and
+- `interview-controller-snapshot.v1` for the bounded turn-local model context.
+
+These envelopes are internal to the Python runtime adapter. They project the
+accepted `interview-runtime-state.v1` contract and do not widen its shared
+TypeScript/Python wire shape.
+
+The projection requires an exact durable lifecycle state and positive version
+from a trusted boundary. The current runtime writer-registration response does
+not contain that snapshot, so the SAV-471 entrypoint supplies neither and the
+adapter remains fenced to the existing interviewer even if its controller flag
+is set. Tests may provide an explicit fixture snapshot to exercise the boundary.
+SAV-472 must add an authoritative initial and refresh path before any live
+controller can claim lifecycle CAS.
 
 ## Room-metadata compatibility
 
@@ -178,6 +196,100 @@ Move IDs are unique within the bounded ledger. A `closing` phase requires a
 requested or admitted close, an admitted close requires the `closing` phase,
 and a zero lifecycle version is invalid.
 
+### SAV-471 controller projection
+
+The first controller implementation is a provider-free, immutable reducer with
+closed event, move, lifecycle-stage, and failure vocabularies. Its internal
+ledger retains at most 24 moves and eight candidate-turn fingerprints, then
+projects the accepted runtime-state contract without changing that wire.
+
+The controller anchors the accepted wall-clock deadline to a monotonic start
+value and uses exact integer timedelta arithmetic. Its first disabled-by-default
+policy uses these remaining-time bands: `normal` above 120,000 milliseconds,
+`warning` from 120,000 through 45,001, `closing` from 45,000 through 1, and
+`elapsed` at zero. At elapsed it emits neither a move nor a snapshot. It aborts
+any active undelivered move and fences its operational state; the existing
+hard-deadline watchdog remains the exclusive settlement and termination
+authority.
+
+The runtime projects the clock again at the public LLM generation boundary.
+Crossing into closing aborts a pending non-close move before provider
+generation, while elapsed aborts and fences every pending move. A close already
+admitted inside the pre-deadline closing band remains eligible. The model never
+owns this check.
+
+Before that projection, the public chat context must carry both the finalized
+candidate `ChatMessage.id` bound to the move and the exact
+`controller:{move_id}` snapshot identity. Pinned LiveKit preemptive generation
+uses a separately created candidate message, so a stale or mismatched context
+is denied without clock, revision, or move-stage mutation. Only the exact
+finalized context can authorize the admitted move, and it can do so once.
+
+Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
+before creating that handle's pipeline task. A bounded per-adapter Python task
+context carries the candidate handle identity across that ordering boundary,
+and the adapter records its internal generation epoch at handle creation. The
+epoch advances only when a new directive nonce is admitted. Creation and
+ambient task context are not move authority. The adapter also mints an opaque
+cryptographically random, single-use nonce for the admitted turn. Exact current
+epoch, the first public `generate_reply` handle bound in that epoch,
+finalized-turn identity, move identity, and nonce must match; the nonce and
+candidate entry are consumed atomically before clock or reducer mutation. A
+handle created before the current epoch or later in the same epoch is denied
+even if handed the exact new chat context. Denied or replayed authorization is
+state-stable, and denied, evicted, duplicate, and replayed handles remain
+operational no-ops.
+
+Every accepted public speech creation also receives an opaque, identity-only
+completion acceptance that is captured by that event instance's done callback.
+Controller completion must present that exact object before it can remove a
+created or authorized correlation, advance lifecycle, or correlate transcript
+or interruption evidence. A duplicate creation with a reused handle ID receives
+no acceptance, so its callback cannot consume or impersonate the still-live
+original even when the duplicate callback runs first. The acceptance is
+bounded with the in-flight record, never serialized, and cannot readdress an
+evicted record. Generic runtime interruption and settlement processing remains
+outside this controller check and still runs for every public done callback.
+
+The nonce exists only in the temporary controller system-message ID. Pinned
+LiveKit serializes that temporary context to the pre-node `ATTR_CHAT_CTX` SDK
+trace before invoking `llm_node`; the nonce may therefore appear in that trace.
+The synchronous node consumes it without awaiting. Only after successful
+authorization does the runtime replace the nonce-bearing item in an isolated
+provider-bound `ChatContext` copy; denied paths do not mutate the shallow-shared
+source item. The nonce is absent from provider input, is not snapshot or
+message content, is never added to the durable/customer transcript, and is not
+emitted by Meelni application logs. A trace observation after consumption
+carries no replay authority.
+
+The adapter retains every observed speech-handle identity for the session in a
+non-evicting replay ledger with an explicit 1,000-identity cap. In-flight
+correlations remain smaller and may evict, but an evicted identity cannot be
+accepted again. Capacity exhaustion disables the controller before accepting a
+new identity and restores the existing prompt-led interviewer path.
+
+A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
+candidate message ID plus the canonical transcript event identity assigned to
+that message. This identity is not represented as durably persisted at hook
+time: LiveKit invokes the hook before the normal conversation-item publisher.
+The later persisted publisher reconciles that same identity. Each snapshot is
+limited to 2,048 UTF-8 bytes, includes no more than eight delivered moves, and
+permits one substantive interviewer question.
+
+A normal pre-deadline explicit exit admits one graceful
+`candidate_requested_close` and becomes terminal only after canonical close
+delivery. The adapter recognizes only bounded, anchored stop/end/finish
+requests with an explicit interview/session target or clear temporal/deictic
+termination context; bare or ordinary answer clauses using those verbs do not
+request exit. A completed turn that instead projects elapsed, and every
+already-terminal turn, returns normally from the pinned LiveKit user-turn hook
+and uses an empty public-LLM-node result so LiveKit still commits/emits the
+finalized user item through `conversation_item_added` exactly once. Raising
+`StopResponse` for those suppressed turns is forbidden because it bypasses that
+commit in LiveKit Agents 1.6.5. After terminal, every recognized shape-valid
+event at the exact revision is an identical state no-op; transcript persistence
+continues under its independent authority.
+
 ### Move lifecycle
 
 The following states are intentionally distinct:
@@ -201,6 +313,20 @@ The following states are intentionally distinct:
 Only stage 7 commits delivered history. Generated, scheduled, spoken, aborted,
 and unheard interrupted content never enters answer blocks or feedback.
 
+SAV-471 observes delivery only after `TranscriptIngestQueue.publisher` receives
+a successful response for the canonical event. An interviewer event may commit
+a pending move only when the adapter has positively correlated that move to the
+speech handle, assistant item ID, and canonical event ID. The first such event
+is the sole commit; unrelated events and later correlated items from the same
+speech are ignored at this adapter boundary. Explicit conflicting recommit
+evidence remains an error in the pure reducer.
+
+A persisted no-confirmed-prefix interruption marker may upgrade a correlated
+aborted move to interrupted only after the queue receives a successful
+response and the marker has the active writer, interviewer speaker, and exact
+`no_provider_confirmed_prefix` reason. This observer is operational evidence
+only and cannot settle the queue or session.
+
 ## `InterviewerMove`
 
 An admitted move has exactly one type:
@@ -219,8 +345,12 @@ creation/expiry, and idempotency key.
 
 Reason codes are closed by move type: probe/deepen reasoning,
 clarify/resolve ambiguity, challenge/test tradeoff, transition/advance round,
-and close/deadline or candidate request. `controller_fallback` is permitted for
-every move type. Probe, clarify, and challenge require a finalized source turn.
+and close/deadline, candidate request, or catalog exhausted.
+`controller_fallback` is permitted for every move type. Probe, clarify, and
+challenge require a finalized source turn. Once a delivered transition reaches
+the final objective/topic, the catalog is exhausted and the next policy move is
+close, including during warning; clamped tail indexes cannot authorize another
+transition.
 
 The live interviewer may phrase an admitted move naturally but may not change
 its type/target, add another substantive question, coach, hint, score, or speak
