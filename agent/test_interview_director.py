@@ -244,6 +244,68 @@ class InterviewDirectorSchemaAndStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(DirectorError, "invalid_config"):
             DirectorLimits(deadline_ms=5_001)
 
+    def test_disabled_entrypoints_never_materialize_controller_state(self):
+        cases = (
+            (
+                "flag_disabled",
+                DirectorShadowConfig(enabled=False),
+                DeterministicFakeDirectorAdapter(),
+            ),
+            (
+                "adapter_unavailable",
+                DirectorShadowConfig(enabled=True),
+                None,
+            ),
+        )
+        for expected_reason, config, adapter in cases:
+            with self.subTest(expected_reason=expected_reason):
+                state_provider_calls = 0
+
+                def state_provider():
+                    nonlocal state_provider_calls
+                    state_provider_calls += 1
+                    return DirectorHarness.make_state().to_runtime_state()
+
+                session = InterviewDirectorShadowSession(
+                    config=config,
+                    session_id="session-474",
+                    adapter=adapter,
+                    state_provider=state_provider,
+                )
+                self.assertFalse(session.enabled)
+                self.assertEqual(session.failure_reason, expected_reason)
+                self.assertEqual(state_provider_calls, 0)
+                self.assertEqual(
+                    session.observe_interim(
+                        turn_id="turn-disabled",
+                        transcript_revision="interim:disabled",
+                        sequence=1,
+                        text="bounded provider-free observation",
+                        observed_at=iso(),
+                    ),
+                    "disabled",
+                )
+                self.assertEqual(
+                    session.observe_persisted_transcript(
+                        {
+                            "contract_version": 2,
+                            "event_id": "event:user:disabled",
+                            "session_id": "session-474",
+                            "speaker": "user",
+                            "text": "bounded provider-free observation",
+                            "is_final": True,
+                            "delivery_state": "delivered",
+                            "sequence": 1,
+                            "writer_id": "writer-1",
+                            "writer_generation": 1,
+                            "ended_at": iso(),
+                        },
+                        source_turn_id="turn-disabled",
+                    ),
+                    "disabled",
+                )
+                self.assertEqual(state_provider_calls, 0)
+
     def test_versioned_recommendation_fails_closed_without_hidden_reasoning(self):
         parsed = parse_director_recommendation(self.recommendation())
         self.assertEqual(parsed["policy_version"], DIRECTOR_POLICY_CONTRACT_VERSION)
