@@ -15,6 +15,7 @@ import {
   parseInterviewBriefV2,
   resolveInterviewRuntimeConfig,
 } from "@meelni/agent";
+import { readQuestionSelectionFromStartConfig } from "@meelni/core";
 
 import {
   buildInterviewReservationKey,
@@ -63,6 +64,15 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
 test("brief v2 reaches LiveKit with exact selected-question authority and minimized context", async () => {
   const fixture = createFixture();
   fixture.deps.interviewBriefV2Enabled = true;
+  fixture.deps.getQuestionById = async () => ({
+    id: QUESTION_ID,
+    company: "Acme & Co.",
+    questionText: "How would you improve Acme — for first-time users?",
+    questionType: "Product design/strategy",
+    askedAt: STARTED_AT,
+    isActive: true,
+    createdAt: STARTED_AT,
+  });
 
   const result = await startInterviewSessionWorkflow(input(), fixture.deps);
 
@@ -70,24 +80,56 @@ test("brief v2 reaches LiveKit with exact selected-question authority and minimi
   const brief = parseInterviewBriefV2(fixture.metadata?.interview_brief);
   assert.deepEqual(brief.selected_question, {
     id: QUESTION_ID,
-    text: "How would you improve Acme?",
-    company: "Acme",
-    type: "Product Sense",
+    text: "How would you improve Acme — for first-time users?",
+    company: "Acme & Co.",
+    type: "Product design/strategy",
   });
   assert.equal(brief.company_context, null);
   assert.equal(brief.candidate_practice_goal, null);
   assert.equal(JSON.stringify(brief).includes(USER_ID), false);
   assert.equal(JSON.stringify(brief).includes("@"), false);
+  assert.equal(fixture.rankingContextCalls, 0);
+  assert.equal(
+    readQuestionSelectionFromStartConfig(fixture.store.current?.config)
+      ?.reasonCode,
+    "explicit_override"
+  );
+  assert.deepEqual(
+    readQuestionSelectionFromStartConfig(fixture.store.current?.config)
+      ?.question,
+    {
+      id: QUESTION_ID,
+      company: "Acme & Co.",
+      text: "How would you improve Acme — for first-time users?",
+      type: "Product design/strategy",
+      roundType: "product_sense",
+      askedAt: STARTED_AT.toISOString(),
+      isActive: true,
+      createdAt: STARTED_AT.toISOString(),
+    }
+  );
 });
 
-test("retry reuses the exact persisted brief bytes before room entry", async () => {
+test("question-free retry ranks once and reuses exact persisted selection and brief bytes", async () => {
   const fixture = createFixture({ providerFailures: 1 });
   fixture.deps.interviewBriefV2Enabled = true;
+  const questionFreeInput = input({
+    body: { ...input().body, questionId: undefined },
+  });
 
-  const first = await startInterviewSessionWorkflow(input(), fixture.deps);
+  const first = await startInterviewSessionWorkflow(
+    questionFreeInput,
+    fixture.deps
+  );
   const firstWire =
     fixture.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY];
-  const replay = await startInterviewSessionWorkflow(input(), fixture.deps);
+  const firstSelection = readQuestionSelectionFromStartConfig(
+    fixture.store.current?.config
+  );
+  const replay = await startInterviewSessionWorkflow(
+    questionFreeInput,
+    fixture.deps
+  );
   const replayWire =
     fixture.store.current?.config[INTERVIEW_BRIEF_V2_START_CONFIG_KEY];
 
@@ -95,6 +137,12 @@ test("retry reuses the exact persisted brief bytes before room entry", async () 
   assert.equal(replay.ok, true);
   assert.equal(typeof firstWire, "string");
   assert.equal(replayWire, firstWire);
+  assert.equal(fixture.rankingContextCalls, 1);
+  assert.deepEqual(
+    readQuestionSelectionFromStartConfig(fixture.store.current?.config),
+    firstSelection
+  );
+  assert.equal(firstSelection?.reasonCode, "requested_round");
   assert.deepEqual(
     fixture.metadata?.interview_brief,
     parseInterviewBriefV2(String(firstWire))
@@ -561,6 +609,7 @@ function createFixture({
   let remainingAuthorizationFailures = authorizationFailures;
   let lifecycleState: "created" | "connecting" | "failed" = "created";
   let metadata: Record<string, unknown> | null = null;
+  let rankingContextCalls = 0;
   let currentTime = STARTED_AT;
   const store = createMemoryStartStore({
     acknowledgementCommitThenThrow,
@@ -589,8 +638,27 @@ function createFixture({
       isActive: true,
       createdAt: STARTED_AT,
     }),
-    getRandomQuestion: async () => null,
-    getRandomRecentQuestion: async () => null,
+    getQuestionRankingContext: async () => {
+      rankingContextCalls += 1;
+      return {
+        catalogVersion: "question-catalog:test-v1",
+        candidates: [
+          {
+            id: QUESTION_ID,
+            company: "Acme",
+            text: "How would you improve Acme?",
+            roundType: "product_sense",
+            difficulty: "intermediate",
+            sourceKind: "google_sheets",
+            qualityStatus: "published",
+            askedAt: STARTED_AT.toISOString(),
+            isActive: true,
+          },
+        ],
+        history: [],
+        feedbackSignals: [],
+      };
+    },
     ensureTrialGrant: async () => {
       calls.push("trial");
     },
@@ -756,6 +824,9 @@ function createFixture({
     },
     get metadata() {
       return metadata;
+    },
+    get rankingContextCalls() {
+      return rankingContextCalls;
     },
   };
 }

@@ -219,6 +219,13 @@ export async function getActiveQuestionById(
   return findQuestionById(questionId, true);
 }
 
+/** Preserve the stored launch authority exactly; the workflow validates its round. */
+export async function getActiveQuestionByIdForLaunch(
+  questionId: string
+): Promise<QuestionBankRecord | null> {
+  return findQuestionById(questionId, true, false);
+}
+
 /** Internal historical lookup. Never use this for public reads or new practice. */
 export async function getQuestionByIdForHistory(
   questionId: string
@@ -228,7 +235,8 @@ export async function getQuestionByIdForHistory(
 
 async function findQuestionById(
   questionId: string,
-  activeOnly: boolean
+  activeOnly: boolean,
+  canonicalize = true
 ): Promise<QuestionBankRecord | null> {
   const [question] = await db
     .select({
@@ -251,7 +259,8 @@ async function findQuestionById(
     )
     .limit(1);
 
-  return question ? canonicalizeQuestionRecord(question) : null;
+  if (!question) return null;
+  return canonicalize ? canonicalizeQuestionRecord(question) : question;
 }
 
 /**
