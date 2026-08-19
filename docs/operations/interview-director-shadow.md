@@ -8,6 +8,8 @@ provider/model to configure and no runtime work can execute from this change.
 
 - Flag: `MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED`
 - Accepted enabling token: exact lowercase `true`
+- Rejected tokens: whitespace-padded, mixed-case, blank, and every non-exact
+  value; observability remains in the `current` cohort for the same inputs
 - Default/absent behavior: disabled
 - Application adapter: deliberately `None`
 - Test adapter: `DeterministicFakeDirectorAdapter`, provider-free only
@@ -35,7 +37,9 @@ fnm exec --using=22.22.0 npm run verify:agent
 Expected evidence includes default-off/no-adapter resolution, bounded context
 and output, exact speculative/final reconciliation, replay and capacity
 rejection, reconnect cleanup, deadline/lifecycle fences, after-delivery
-comparison, settlement cancellation, and privacy-safe trace validation.
+comparison, result/comparison denominator separation, finalized-turn-to-ready
+queue/context latency, settlement cancellation, and privacy-safe trace
+validation.
 
 Do not run a provider, enable an environment, use customer transcripts, or
 interpret synthetic comparison agreement as a quality threshold.

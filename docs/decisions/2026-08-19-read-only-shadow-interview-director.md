@@ -24,8 +24,9 @@ fake in tests.
 Recommendations are typed, versioned, bounded, finalized-turn advice. Storage,
 expiry, replay handling, reconnect cleanup, comparison, and telemetry are all
 bounded. Speculative interim work must reconcile to an exact final revision or
-be discarded. Comparison occurs after canonical delivery and cannot change the
-recommendation or delivered move.
+be discarded. In-flight matching work rebinds to the exact final state and
+lifecycle authority before publication. Comparison occurs after canonical
+delivery and cannot change the recommendation or delivered move.
 
 When a live controller move is pending, shadow analysis may use the accepted
 global move vocabulary for counterfactual comparison even though live
@@ -45,7 +46,9 @@ zero live effect.
 - A checked-in flag does not make the Director runnable because the entrypoint
   supplies `adapter=None`.
 - SAV-469-compatible metadata can measure readiness/freshness/latency/cost
-  estimate and comparison categories without content capture.
+  estimate and comparison categories without content capture. Readiness begins
+  at finalized-turn availability and includes queue plus context-build time;
+  comparison events do not double-count recommendation results.
 - SAV-467 fixture agreement validates plumbing only; it cannot establish a
   real-model quality or cost threshold.
 - SAV-475 must create a separate, owner-gated influence contract if shadow

@@ -70,6 +70,12 @@ reconciled to the final turn ID/revision and materialized as
 or discarded and only the final revision may run. Raw interim text and hidden
 reasoning are absent from recommendation storage and telemetry.
 
+When matching speculative work is still in flight, finalization captures the
+exact current controller/lifecycle authority and the finalized-turn
+availability time. The eventual result is materialized against that final
+authority, not the earlier speculative state revision, and is rejected if that
+captured authority is no longer current at publication.
+
 ## Counterfactual move vocabulary
 
 When SAV-471 has already admitted the canonical move, its live `allowed_moves`
@@ -106,6 +112,10 @@ The in-memory store is owned by one session and active writer generation. It:
 
 Capacity is explicit and fail-closed. Slow, failed, timed-out, canceled, stale,
 malformed, or over-capacity work emits bounded metadata and has zero live effect.
+Director-ready latency starts when the persisted finalized candidate turn is
+available to the observer and ends at recommendation publication. It therefore
+includes pending concurrency/semaphore time and bounded context construction;
+speculative-ready work does not emit a finalized-turn readiness measurement.
 
 ## Telemetry and comparison
 
@@ -115,6 +125,10 @@ bounded readiness/age latency, deterministic estimated cost, and emission time.
 Its SAV-469 projection uses the existing `director` semantic event and carries
 no session ID, turn ID, transcript, prompt, quote, provider/model name, secret,
 tool payload, or reasoning.
+
+Result events and later comparison events are distinct observations. Aggregate
+result counts and readiness percentiles include only result events; an expired
+comparison marks that result stale without adding a second denominator entry.
 
 Exact attribution remains inside the bounded session-local comparison record:
 session, source turn/revision, recommendation, canonical delivered move, and

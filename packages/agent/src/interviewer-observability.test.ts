@@ -268,17 +268,20 @@ test("current/shadow/canary report emits explicit rollback signals", () => {
       latency_ms: 200,
     }),
     parseInterviewerObservabilityEvent({
+      ...director("run:canary-1", "canary", "adaptive-canary.v1", "fresh"),
+    }),
+    parseInterviewerObservabilityEvent({
       ...common("run:canary-1", "canary", "adaptive-canary.v1"),
       event_kind: "director",
       recommendation_contract_version: DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
       director_policy_version: DIRECTOR_POLICY_CONTRACT_VERSION,
       director_adapter_version: DIRECTOR_FAKE_ADAPTER_VERSION,
       recommendation_outcome: "stale",
-      recommendation_freshness: "stale",
+      recommendation_freshness: "missing",
       recommendation_comparison: "recommendation_expired",
-      ready_latency_ms: 200,
-      recommendation_age_ms: 1_000,
-      estimated_cost_microusd: 30,
+      ready_latency_ms: null,
+      recommendation_age_ms: null,
+      estimated_cost_microusd: null,
     }),
     parseInterviewerObservabilityEvent({
       ...common("run:canary-1", "canary", "adaptive-canary.v1"),
@@ -329,6 +332,30 @@ test("current/shadow/canary report emits explicit rollback signals", () => {
       "interruption_recovery_rate_low",
     ])
   );
+});
+
+test("Director comparisons do not double-count results or dilute stale rate", () => {
+  const ready = director(
+    "run:director-counting",
+    "shadow",
+    "director-shadow.v1",
+    "fresh"
+  );
+  const expired = parseInterviewerObservabilityEvent({
+    ...ready,
+    recommendation_outcome: "stale",
+    recommendation_freshness: "missing",
+    recommendation_comparison: "recommendation_expired",
+    ready_latency_ms: null,
+    recommendation_age_ms: null,
+    estimated_cost_microusd: null,
+  });
+
+  const aggregate = aggregateInterviewerObservabilityEvents([ready, expired]);
+  assert.equal(aggregate.director_result_count, 1);
+  assert.equal(aggregate.stale_recommendation_count, 1);
+  assert.equal(aggregate.stale_recommendation_rate, 1);
+  assert.equal(aggregate.director_ready_ms.count, 1);
 });
 
 test("phase-only and partial cohorts hold for insufficient metric evidence", () => {
