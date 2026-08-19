@@ -90,9 +90,21 @@ class GenerationCapabilityRecord:
     handle_id: str | None
 
 
+@dataclass(frozen=True, eq=False, repr=False)
+class SpeechCompletionAcceptance:
+    """Opaque identity authorizing one accepted speech instance to complete."""
+
+
 @dataclass(frozen=True)
 class CreatedSpeechHandleRecord:
     generation_epoch: int
+    completion_acceptance: SpeechCompletionAcceptance
+
+
+@dataclass(frozen=True)
+class AuthorizedSpeechHandleRecord:
+    move_id: str
+    completion_acceptance: SpeechCompletionAcceptance
 
 
 @dataclass(frozen=True)
@@ -181,7 +193,9 @@ class InterviewControllerAdapter:
         self._created_speech_handles: dict[
             str, CreatedSpeechHandleRecord
         ] = {}
-        self._speech_move_ids: dict[str, str] = {}
+        self._authorized_speech_handles: dict[
+            str, AuthorizedSpeechHandleRecord
+        ] = {}
         self._retired_speech_handles: dict[str, None] = {}
         self._transcript_move_ids: dict[str, str] = {}
         self._interruption_move_ids: dict[str, str] = {}
@@ -271,28 +285,30 @@ class InterviewControllerAdapter:
         handle_id: str,
         source: Literal["say", "generate_reply"] = "generate_reply",
         monotonic_ms: int | None = None,
-    ) -> None:
+    ) -> SpeechCompletionAcceptance | None:
         if not self.enabled:
-            return
+            return None
         try:
             _required_identifier(handle_id)
             if source not in ("say", "generate_reply"):
                 raise ControllerError("invalid_adapter_input")
             if handle_id in self._seen_speech_handles:
                 self._current_generation_handle.set(None)
-                return
+                return None
             if len(self._seen_speech_handles) >= MAX_SESSION_SPEECH_IDENTITIES:
                 self._current_generation_handle.set(None)
                 raise ControllerError("speech_handle_identity_capacity_exceeded")
             self._seen_speech_handles[handle_id] = None
             if source != "generate_reply":
                 self._current_generation_handle.set(None)
-                return
+                return None
+            completion_acceptance = SpeechCompletionAcceptance()
             evicted = put_bounded_correlation(
                 self._created_speech_handles,
                 handle_id,
                 CreatedSpeechHandleRecord(
                     generation_epoch=self._generation_epoch,
+                    completion_acceptance=completion_acceptance,
                 ),
                 limit=MAX_PENDING_CORRELATIONS,
             )
@@ -319,8 +335,10 @@ class InterviewControllerAdapter:
             # creates the handle's pipeline task. The task therefore inherits
             # this exact handle identity through Python's public task context.
             self._current_generation_handle.set(handle_id)
+            return completion_acceptance
         except Exception as error:
             self._disable(error)
+            return None
 
     def authorize_generation(
         self,
@@ -338,7 +356,7 @@ class InterviewControllerAdapter:
         created_handle = self._created_speech_handles.get(handle_id)
         if (
             not isinstance(handle_id, str)
-            or handle_id in self._speech_move_ids
+            or handle_id in self._authorized_speech_handles
             or created_handle is None
         ):
             return False
@@ -396,9 +414,14 @@ class InterviewControllerAdapter:
                 ),
             ).state
             evicted = put_bounded_correlation(
-                self._speech_move_ids,
+                self._authorized_speech_handles,
                 handle_id,
-                move_id,
+                AuthorizedSpeechHandleRecord(
+                    move_id=move_id,
+                    completion_acceptance=(
+                        created_handle.completion_acceptance
+                    ),
+                ),
                 limit=MAX_PENDING_CORRELATIONS,
             )
             for evicted_handle_id in evicted:
@@ -413,6 +436,7 @@ class InterviewControllerAdapter:
         self,
         *,
         handle_id: str,
+        completion_acceptance: SpeechCompletionAcceptance | None = None,
         scheduled: bool,
         interrupted: bool,
         has_confirmed_prefix: bool,
@@ -420,11 +444,32 @@ class InterviewControllerAdapter:
         monotonic_ms: int | None = None,
     ) -> None:
         state = self._state
-        self._created_speech_handles.pop(handle_id, None)
-        move_id = self._speech_move_ids.pop(handle_id, None)
-        self._retire_speech_handle(handle_id)
-        if not self.enabled or state is None or move_id is None:
+        created_handle = self._created_speech_handles.get(handle_id)
+        authorized_handle = self._authorized_speech_handles.get(handle_id)
+        if completion_acceptance is None:
             return
+        if created_handle is not None:
+            if (
+                authorized_handle is not None
+                or created_handle.completion_acceptance
+                is not completion_acceptance
+            ):
+                return
+        elif (
+            authorized_handle is None
+            or authorized_handle.completion_acceptance
+            is not completion_acceptance
+        ):
+            return
+        self._created_speech_handles.pop(handle_id, None)
+        authorized_handle = self._authorized_speech_handles.pop(
+            handle_id,
+            None,
+        )
+        self._retire_speech_handle(handle_id)
+        if not self.enabled or state is None or authorized_handle is None:
+            return
+        move_id = authorized_handle.move_id
         try:
             move = _find_move(state, move_id)
             if move.stage in ("aborted", "interrupted", "canonically_delivered"):
@@ -640,7 +685,7 @@ class InterviewControllerAdapter:
         )
 
     def _retire_speech_handle(self, handle_id: str) -> None:
-        if handle_id in self._speech_move_ids:
+        if handle_id in self._authorized_speech_handles:
             return
         put_bounded_correlation(
             self._retired_speech_handles,
@@ -690,7 +735,7 @@ class InterviewControllerAdapter:
         self._current_generation_handle.set(None)
         self._generation_epoch = 0
         self._created_speech_handles.clear()
-        self._speech_move_ids.clear()
+        self._authorized_speech_handles.clear()
         self._retired_speech_handles.clear()
         self._generation_capabilities.clear()
         self._seen_generation_capabilities.clear()

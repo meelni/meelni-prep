@@ -1450,7 +1450,7 @@ async def entrypoint(ctx: JobContext):
         """Persist a textless marker when interrupted output had no heard prefix."""
         handle = event.speech_handle
         runtime_settlement_evidence_gate.track_speech(handle.id)
-        controller_adapter.speech_created(
+        controller_completion_acceptance = controller_adapter.speech_created(
             handle_id=handle.id,
             source=event.source,
         )
@@ -1483,6 +1483,7 @@ async def entrypoint(ctx: JobContext):
             )
             controller_adapter.speech_finished(
                 handle_id=done_handle.id,
+                completion_acceptance=controller_completion_acceptance,
                 scheduled=done_handle.scheduled,
                 interrupted=done_handle.interrupted,
                 has_confirmed_prefix=has_confirmed_prefix,
