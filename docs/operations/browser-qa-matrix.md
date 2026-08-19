@@ -165,10 +165,10 @@ messages documented with the scenario that produces them.
 
 ## GitHub Actions Integration
 
-Browser QA is a step inside the existing required `Validate` job. It is not a
-GitHub Actions matrix or a separate job, so it reuses the existing checkout,
-`npm ci`, and PostgreSQL service, and it runs after the existing production
-build without building the application a second time in the workflow.
+Browser QA runs in the `production` lane that feeds the required aggregate
+`Validate` job. It is not a GitHub Actions matrix, and it uses the same
+checkout, `npm ci`, and production build as the public-route crawl without
+building the application a second time in that lane.
 
 It runs only for ready pull-request validation and explicit workflow dispatch.
 It intentionally skips the duplicate post-merge `main` validation. Branch
@@ -177,22 +177,23 @@ browser work is paid once per candidate PR head.
 
 The workflow:
 
-1. reads the exact Playwright version from `package-lock.json`;
-2. restores only the Chromium cache matching that exact version, OS, and
-   architecture;
-3. installs Chromium system dependencies and any missing pinned browser;
+1. starts the lane as UID 1001 in the digest-pinned official Playwright Noble
+   container whose version must match `package-lock.json`;
+2. installs the repository's Node.js dependencies without provisioning a
+   browser or host system packages;
+3. builds the production artifact and crawls the public routes;
 4. runs the two viewport projects in one process;
 5. uploads evidence on success or failure for seven days.
 
-There is deliberately no fallback browser-cache prefix. A Chromium revision
-from a different Playwright version must never be restored.
+The container includes the matching Chromium runtime and system dependencies.
+The workflow contract rejects tag drift, an unpinned image, a version that
+differs from the lockfile, or a host-side Playwright install/cache step.
 
 The expected steady-state cost is approximately one to two additional Actions
-minutes on a ready PR. A first cache miss can take approximately two to three
-minutes. The step adds no browser minutes to the post-merge `main` run. Review
-actual duration and cache effectiveness after the first three successful PR
-runs; remove the browser cache if restore/save time is consistently no better
-than a fresh pinned download.
+minutes on a ready PR. A cold container pull can take longer. The step adds no
+browser minutes to the post-merge `main` run. Review actual duration after the
+first three successful PR runs and update the pinned image deliberately when
+the lockfile's Playwright version changes.
 
 ## Evidence Triage
 
