@@ -1,13 +1,26 @@
 {
-  "contractVersion": "meelni.interviewer-benchmark-report.v1",
+  "contractVersion": "meelni.interviewer-benchmark-report.v2",
   "recordedAt": "2026-08-18T00:00:00.000Z",
   "execution": {
     "kind": "provider_free_replay",
+    "adapterContractVersion": "interviewer-quality-judge-adapter.v1",
+    "authorization": {
+      "contractVersion": "interviewer-benchmark-execution-authorization.v1",
+      "kind": "provider_free",
+      "allowProviderCredentials": false,
+      "allowProduction": false,
+      "maximumProviderCalls": 0,
+      "maximumInputTokensPerCall": 0,
+      "maximumOutputTokensPerCall": 0,
+      "maximumActualCostUsd": 0
+    },
     "fullySyntheticOnly": true,
     "customerDataUsed": false,
     "providerCredentialRead": false,
     "productionCalled": false,
     "providerCalls": 0,
+    "inputTokens": null,
+    "outputTokens": null,
     "actualCostUsd": 0,
     "judgeLatencyMs": {
       "count": 12,
@@ -22,10 +35,11 @@
     ]
   },
   "versions": {
-    "suite": "meelni.interviewer-benchmark-suite.v1",
-    "baseline": "meelni.current-interviewer-baseline.v1",
+    "suite": "meelni.interviewer-benchmark-suite.v2",
+    "baseline": "meelni.current-interviewer-baseline.v2",
     "sourceCommit": "1b86ff1d4207aed5ea216a246d6b236c74be66d4",
     "runtimeSourceSha256": "8077ca6d13fc9f36c566f3ca5ea3660b42bb65cd2d832aceef2546f1a1604f93",
+    "benchmarkSourceSha256": "fc0c3a5b523d2fb1009734f2e6fc00ff05e21a28a23dedbe1854b50f81d210cb",
     "promptContract": "full_interview_prompt_v1"
   },
   "corpus": {
@@ -336,7 +350,7 @@
   },
   "conclusion": "baseline_recorded_owner_adjudication_pending",
   "reproducibility": {
-    "inputSha256": "d555699a1ed5e196b11974f8bf56fac461af10f97e31dde37e5e229b33d301fe",
-    "reportSha256": "9412bf3a80d908da9520b2780cea711ba68561cade731732051497af4e764575"
+    "inputSha256": "24d1118ac659880aa8e9c15b82a8df393ad09fba1a15554d027942ac8a95c3f2",
+    "reportSha256": "e1cc2c344bed51c62fe95d7c80ac1aa40e87770fd696980917f6f68c0e60a857"
   }
 }
