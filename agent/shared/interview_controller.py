@@ -251,6 +251,33 @@ class CandidateTurnCompleted:
 
 
 @dataclass(frozen=True)
+class CandidateTurnPrepared:
+    """Finalize one candidate turn without admitting interviewer intent."""
+
+    expected_state_revision: int
+    turn_id: str
+    transcript_revision: str
+    text: str
+    duration_ms: int
+    monotonic_ms: int
+
+
+@dataclass(frozen=True)
+class InterviewerMoveAdmitted:
+    """Admit one controller-authorized proposal from the local tool boundary."""
+
+    expected_state_revision: int
+    move_id: str
+    move_type: MoveType
+    reason_code: str
+    question_id: str
+    topic: str
+    source_turn_id: str
+    probe_candidate_id: str | None
+    monotonic_ms: int
+
+
+@dataclass(frozen=True)
 class ClockObserved:
     expected_state_revision: int
     monotonic_ms: int
@@ -290,6 +317,14 @@ class WriterReconnected:
 
 
 @dataclass(frozen=True)
+class LifecycleSnapshotRefreshed:
+    expected_state_revision: int
+    lifecycle_state: str
+    lifecycle_version: int
+    monotonic_ms: int
+
+
+@dataclass(frozen=True)
 class TerminalSettled:
     expected_state_revision: int
     monotonic_ms: int
@@ -297,11 +332,14 @@ class TerminalSettled:
 
 ControllerEvent: TypeAlias = (
     CandidateTurnCompleted
+    | CandidateTurnPrepared
+    | InterviewerMoveAdmitted
     | ClockObserved
     | MoveStageAdvanced
     | SpeechInterrupted
     | PersistedTranscriptEvidence
     | WriterReconnected
+    | LifecycleSnapshotRefreshed
     | TerminalSettled
 )
 
@@ -421,6 +459,22 @@ def reduce_controller(state: ControllerState, event: ControllerEvent) -> Control
         return ControllerTransition(state)
     if isinstance(event, CandidateTurnCompleted):
         return _complete_candidate_turn(state, event)
+    if isinstance(event, CandidateTurnPrepared):
+        prepared, _ = _prepare_candidate_turn(
+            state,
+            turn_id=event.turn_id,
+            transcript_revision=event.transcript_revision,
+            text=event.text,
+            duration_ms=event.duration_ms,
+            monotonic_ms=event.monotonic_ms,
+        )
+        prepared = _revised(prepared)
+        prepared = replace(prepared, allowed_moves=derive_allowed_moves(prepared))
+        _validate_state(prepared)
+        prepared.to_runtime_state()
+        return ControllerTransition(prepared)
+    if isinstance(event, InterviewerMoveAdmitted):
+        return _admit_interviewer_move(state, event)
     if isinstance(event, ClockObserved):
         return ControllerTransition(_advance_clock(state, event.monotonic_ms))
     if isinstance(event, MoveStageAdvanced):
@@ -431,13 +485,20 @@ def reduce_controller(state: ControllerState, event: ControllerEvent) -> Control
         return ControllerTransition(_commit_delivery(state, event))
     if isinstance(event, WriterReconnected):
         return ControllerTransition(_reconnect_writer(state, event))
+    if isinstance(event, LifecycleSnapshotRefreshed):
+        return ControllerTransition(_refresh_lifecycle_snapshot(state, event))
     if isinstance(event, TerminalSettled):
         return ControllerTransition(_settle_terminal(state, event.monotonic_ms))
     raise ControllerError("unknown_event")
 
 
 def derive_allowed_moves(state: ControllerState) -> tuple[MoveType, ...]:
-    if state.terminal or state.speech_fenced or state.clock.band == "elapsed":
+    if (
+        state.lifecycle_state != "active"
+        or state.terminal
+        or state.speech_fenced
+        or state.clock.band == "elapsed"
+    ):
         return ()
     if state.pending_move_id is not None:
         return ()
@@ -466,28 +527,63 @@ def classify_candidate_turn(
     return "normal", digest
 
 
+def project_controller_state(
+    state: ControllerState, *, monotonic_ms: int
+) -> ControllerState:
+    """Project the authoritative clock without mutating or revising the input."""
+    return _advance_clock(state, monotonic_ms, increment_revision=False)
+
+
+def list_probe_candidates(state: ControllerState) -> tuple[dict[str, str], ...]:
+    """Return bounded question-local proposals without transcript or rationale text."""
+    _validate_state(state)
+    if (
+        state.terminal
+        or state.speech_fenced
+        or state.lifecycle_state != "active"
+        or state.pending_move_id is not None
+        or state.last_finalized_candidate_turn_id is None
+    ):
+        return ()
+    delivered_types = {
+        move.move_type
+        for move in _delivered_for_current_topic(state)
+        if move.move_type in ("probe", "clarify", "challenge")
+    }
+    candidates: list[dict[str, str]] = []
+    for move_type, reason_code in (
+        ("probe", "deepen_reasoning"),
+        ("clarify", "resolve_ambiguity"),
+        ("challenge", "test_tradeoff"),
+    ):
+        if move_type not in state.allowed_moves or move_type in delivered_types:
+            continue
+        candidates.append(
+            {
+                "probe_candidate_id": _probe_candidate_id(
+                    state.active_question_id,
+                    move_type,
+                    state.current_topic,
+                ),
+                "move_type": move_type,
+                "question_id": state.active_question_id,
+                "topic": state.current_topic,
+                "reason_code": reason_code,
+            }
+        )
+    return tuple(candidates)
+
+
 def _complete_candidate_turn(
     state: ControllerState, event: CandidateTurnCompleted
 ) -> ControllerTransition:
-    if event.turn_id == state.last_finalized_candidate_turn_id:
-        raise ControllerError("stale_candidate_turn")
-    if state.pending_move_id is not None:
-        raise ControllerError("pending_move")
-
-    projected = _advance_clock(state, event.monotonic_ms, increment_revision=False)
-    shape, digest = classify_candidate_turn(
-        projected, text=event.text, duration_ms=event.duration_ms
-    )
-    fingerprints = projected.candidate_fingerprints
-    if digest is not None:
-        fingerprints = (*fingerprints, CandidateFingerprint(event.turn_id, digest))[
-            -MAX_CANDIDATE_FINGERPRINTS:
-        ]
-    base = replace(
-        projected,
-        last_finalized_candidate_turn_id=event.turn_id,
-        last_finalized_candidate_transcript_revision=event.transcript_revision,
-        candidate_fingerprints=fingerprints,
+    base, shape = _prepare_candidate_turn(
+        state,
+        turn_id=event.turn_id,
+        transcript_revision=event.transcript_revision,
+        text=event.text,
+        duration_ms=event.duration_ms,
+        monotonic_ms=event.monotonic_ms,
     )
     if base.clock.band == "elapsed":
         return ControllerTransition(_revised(base, allowed_moves=()))
@@ -547,6 +643,155 @@ def _complete_candidate_turn(
     snapshot = _build_snapshot(admitted, move, answer_shape=shape)
     snapshot.to_json()
     return ControllerTransition(admitted, snapshot)
+
+
+def _prepare_candidate_turn(
+    state: ControllerState,
+    *,
+    turn_id: str,
+    transcript_revision: str,
+    text: str,
+    duration_ms: int,
+    monotonic_ms: int,
+) -> tuple[ControllerState, AnswerShape]:
+    if turn_id == state.last_finalized_candidate_turn_id:
+        raise ControllerError("stale_candidate_turn")
+    if state.pending_move_id is not None:
+        raise ControllerError("pending_move")
+    projected = _advance_clock(state, monotonic_ms, increment_revision=False)
+    shape, digest = classify_candidate_turn(
+        projected,
+        text=text,
+        duration_ms=duration_ms,
+    )
+    fingerprints = projected.candidate_fingerprints
+    if digest is not None:
+        fingerprints = (*fingerprints, CandidateFingerprint(turn_id, digest))[
+            -MAX_CANDIDATE_FINGERPRINTS:
+        ]
+    return (
+        replace(
+            projected,
+            last_finalized_candidate_turn_id=turn_id,
+            last_finalized_candidate_transcript_revision=transcript_revision,
+            candidate_fingerprints=fingerprints,
+        ),
+        shape,
+    )
+
+
+def _admit_interviewer_move(
+    state: ControllerState,
+    event: InterviewerMoveAdmitted,
+) -> ControllerTransition:
+    projected = _advance_clock(state, event.monotonic_ms, increment_revision=False)
+    if projected.lifecycle_state != "active":
+        raise ControllerError("lifecycle_not_active")
+    if projected.terminal or projected.speech_fenced:
+        raise ControllerError("speech_fenced")
+    if projected.pending_move_id is not None:
+        raise ControllerError("pending_move")
+    if event.move_type not in projected.allowed_moves:
+        raise ControllerError("move_not_allowed")
+    if event.question_id != projected.active_question_id:
+        raise ControllerError("question_mismatch")
+    if event.source_turn_id != projected.last_finalized_candidate_turn_id:
+        raise ControllerError("source_turn_mismatch")
+    expected_move_id = f"move:{projected.session_id}:{projected.move_ordinal + 1}"
+    if event.move_id != expected_move_id:
+        raise ControllerError("move_identity_mismatch")
+
+    expected_reason = {
+        "probe": "deepen_reasoning",
+        "clarify": "resolve_ambiguity",
+        "challenge": "test_tradeoff",
+        "transition": "advance_round",
+        "close": None,
+    }[event.move_type]
+    if (
+        expected_reason is not None
+        and event.reason_code not in (expected_reason, "controller_fallback")
+    ):
+        raise ControllerError("move_reason_mismatch")
+    if event.move_type == "close" and event.reason_code not in (
+        "deadline_close",
+        "candidate_requested_close",
+        "controller_fallback",
+    ):
+        raise ControllerError("move_reason_mismatch")
+
+    topic_index = projected.topic_index
+    objective_index = projected.objective_index
+    if event.move_type == "transition":
+        topic_index, objective_index = _next_topic_and_objective(projected)
+        if event.topic != projected.topic_catalog[topic_index]:
+            raise ControllerError("move_target_mismatch")
+        if event.probe_candidate_id is not None:
+            raise ControllerError("move_target_mismatch")
+    elif event.move_type in ("probe", "clarify", "challenge"):
+        expected_candidate_id = _probe_candidate_id(
+            projected.active_question_id,
+            event.move_type,
+            projected.current_topic,
+        )
+        if (
+            event.topic != projected.current_topic
+            or event.probe_candidate_id != expected_candidate_id
+            or not any(
+                candidate["probe_candidate_id"] == expected_candidate_id
+                for candidate in list_probe_candidates(projected)
+            )
+        ):
+            raise ControllerError("move_target_mismatch")
+    elif event.topic != projected.current_topic or event.probe_candidate_id is not None:
+        raise ControllerError("move_target_mismatch")
+
+    includes_warning = (
+        projected.clock.band == "warning"
+        and projected.warning_state != "delivered"
+    )
+    move = ControllerMove(
+        move_id=event.move_id,
+        move_type=event.move_type,
+        reason_code=event.reason_code,
+        question_id=event.question_id,
+        topic=event.topic,
+        source_turn_id=event.source_turn_id,
+        target_turn_ids=(event.source_turn_id,),
+        stage="admitted",
+        updated_at=projected.clock.observed_at,
+        delivery_evidence=None,
+        recovery_of_move_id=None,
+        clarifies_move_id=(
+            _last_delivered_move(projected).move_id
+            if event.move_type == "clarify"
+            and _last_delivered_move(projected) is not None
+            else None
+        ),
+        intentional_clarification=event.move_type == "clarify",
+        includes_warning=includes_warning,
+    )
+    result = _revised(
+        projected,
+        phase=(
+            "closing"
+            if event.move_type == "close"
+            else "transition"
+            if event.move_type == "transition"
+            else projected.phase
+        ),
+        objective_index=objective_index,
+        topic_index=topic_index,
+        warning_state="admitted" if includes_warning else projected.warning_state,
+        close_state="admitted" if event.move_type == "close" else projected.close_state,
+        move_ledger=_append_bounded_move(projected.move_ledger, move),
+        pending_move_id=event.move_id,
+        move_ordinal=projected.move_ordinal + 1,
+        allowed_moves=(),
+    )
+    _validate_state(result)
+    result.to_runtime_state()
+    return ControllerTransition(result)
 
 
 def _select_move(
@@ -771,6 +1016,62 @@ def _reconnect_writer(state: ControllerState, event: WriterReconnected) -> Contr
         pending_move_id=pending,
         interruption_state=interruption_state,
         close_state=close_state,
+    )
+    result = replace(result, allowed_moves=derive_allowed_moves(result))
+    _validate_state(result)
+    result.to_runtime_state()
+    return result
+
+
+def _refresh_lifecycle_snapshot(
+    state: ControllerState,
+    event: LifecycleSnapshotRefreshed,
+) -> ControllerState:
+    if type(event.lifecycle_version) is not int or event.lifecycle_version <= 0:
+        raise ControllerError("invalid_lifecycle")
+    if event.lifecycle_state not in (
+        "created",
+        "connecting",
+        "active",
+        "reconnecting",
+        "ending",
+        "completed",
+        "abandoned",
+        "failed",
+    ):
+        raise ControllerError("invalid_lifecycle")
+    if event.lifecycle_version < state.lifecycle_version:
+        raise ControllerError("stale_lifecycle")
+    if state.lifecycle_state != "active" and event.lifecycle_state == "active":
+        raise ControllerError("lifecycle_reactivation_denied")
+    if (state.terminal or state.speech_fenced) and event.lifecycle_state == "active":
+        raise ControllerError("lifecycle_reactivation_denied")
+    if event.lifecycle_version == state.lifecycle_version:
+        if event.lifecycle_state != state.lifecycle_state:
+            raise ControllerError("lifecycle_conflict")
+        return state
+    projected = _advance_clock(state, event.monotonic_ms, increment_revision=False)
+    if event.lifecycle_state != "active":
+        ledger = _abort_pending_for_fence(projected)
+        result = _revised(
+            projected,
+            lifecycle_state=event.lifecycle_state,
+            lifecycle_version=event.lifecycle_version,
+            phase="closed",
+            move_ledger=ledger,
+            pending_move_id=None,
+            close_state="speech_fenced",
+            speech_fenced=True,
+            terminal=True,
+        )
+        result = replace(result, allowed_moves=())
+        _validate_state(result)
+        result.to_runtime_state()
+        return result
+    result = _revised(
+        projected,
+        lifecycle_state=event.lifecycle_state,
+        lifecycle_version=event.lifecycle_version,
     )
     result = replace(result, allowed_moves=derive_allowed_moves(result))
     _validate_state(result)
@@ -1035,18 +1336,33 @@ def _require_revision(state: ControllerState, expected: int) -> None:
 
 
 def _validate_event_shape(event: ControllerEvent) -> None:
-    if isinstance(event, CandidateTurnCompleted):
+    if isinstance(event, (CandidateTurnCompleted, CandidateTurnPrepared)):
         _require_identifier(event.turn_id, "invalid_turn")
         _require_identifier(event.transcript_revision, "invalid_turn")
         if not isinstance(event.text, str) or len(event.text) > 12_000:
             raise ControllerError("invalid_turn")
         if type(event.duration_ms) is not int or event.duration_ms < 0:
             raise ControllerError("invalid_turn")
-        if (
+        if isinstance(event, CandidateTurnCompleted) and (
             type(event.requested_clarification) is not bool
             or type(event.requested_exit) is not bool
         ):
             raise ControllerError("invalid_turn")
+    elif isinstance(event, InterviewerMoveAdmitted):
+        for value in (
+            event.move_id,
+            event.question_id,
+            event.source_turn_id,
+        ):
+            _require_identifier(value, "invalid_event")
+        if event.move_type not in ("probe", "clarify", "challenge", "transition", "close"):
+            raise ControllerError("invalid_event")
+        if not isinstance(event.reason_code, str) or not event.reason_code:
+            raise ControllerError("invalid_event")
+        if not isinstance(event.topic, str) or not 1 <= len(event.topic) <= 240:
+            raise ControllerError("invalid_event")
+        if event.probe_candidate_id is not None:
+            _require_identifier(event.probe_candidate_id, "invalid_event")
     elif isinstance(event, (ClockObserved, TerminalSettled)):
         pass
     elif isinstance(event, MoveStageAdvanced):
@@ -1074,6 +1390,23 @@ def _validate_event_shape(event: ControllerEvent) -> None:
             raise ControllerError("invalid_writer")
         if type(event.lifecycle_version) is not int or event.lifecycle_version <= 0:
             raise ControllerError("invalid_lifecycle")
+    elif isinstance(event, LifecycleSnapshotRefreshed):
+        if (
+            event.lifecycle_state
+            not in (
+                "created",
+                "connecting",
+                "active",
+                "reconnecting",
+                "ending",
+                "completed",
+                "abandoned",
+                "failed",
+            )
+            or type(event.lifecycle_version) is not int
+            or event.lifecycle_version <= 0
+        ):
+            raise ControllerError("invalid_lifecycle")
     else:
         raise ControllerError("unknown_event")
     if type(event.monotonic_ms) is not int or event.monotonic_ms < 0:
@@ -1082,6 +1415,11 @@ def _validate_event_shape(event: ControllerEvent) -> None:
 
 def _candidate_digest(normalized: str) -> str:
     return f"sha256:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
+
+
+def _probe_candidate_id(question_id: str, move_type: str, topic: str) -> str:
+    material = f"{question_id}\n{move_type}\n{topic}".encode("utf-8")
+    return f"probe:{hashlib.sha256(material).hexdigest()[:24]}"
 
 
 def _parse_timestamp(value: str) -> datetime:

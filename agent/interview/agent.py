@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 from dotenv import load_dotenv
 from livekit import api
@@ -23,8 +24,11 @@ from livekit.agents import (
     ErrorEvent,
     JobContext,
     JobProcess,
+    ModelSettings,
+    RunContext,
     WorkerOptions,
     cli,
+    function_tool,
     room_io,
     SpeechCreatedEvent,
 )
@@ -48,10 +52,17 @@ from shared.interview_controller_adapter import (
     MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
     ReplySuppressionGate,
     allow_controller_generation,
+    controller_feature_enabled,
     create_interview_controller_adapter,
     measured_turn_duration_ms,
     put_bounded_correlation,
     resolve_controller_runtime_mode,
+)
+from shared.interviewer_tools import (
+    SessionScopedInterviewerTools,
+    TrustedLifecycleSnapshot,
+    TrustedLifecycleSnapshotStore,
+    create_session_scoped_interviewer_tools,
 )
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
@@ -91,6 +102,7 @@ from shared.transcript_ingest import (
     WriterSequenceAllocator,
     acknowledge_runtime_settlement_command,
     create_interruption_marker,
+    create_runtime_lifecycle_read,
     create_runtime_settlement,
     create_runtime_writer_registration,
     finish_tasks_before_shutdown,
@@ -99,6 +111,7 @@ from shared.transcript_ingest import (
     persist_runtime_failure_event,
     post_ingest_request,
     pull_runtime_settlement_command,
+    read_runtime_lifecycle_snapshot,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
@@ -122,6 +135,9 @@ TRANSCRIPT_PROJECTION_TIMEOUT_SECONDS = 0.75
 TRANSCRIPT_SETTLEMENT_FLUSH_TIMEOUT_SECONDS = 1.5
 TRANSCRIPT_SETTLEMENT_PERSIST_TIMEOUT_SECONDS = 0.75
 TRANSCRIPT_SPEECH_SETTLEMENT_TIMEOUT_SECONDS = 2.0
+INTERVIEWER_LIFECYCLE_REFRESH_INTERVAL_SECONDS = 1.0
+INTERVIEWER_LIFECYCLE_REFRESH_TIMEOUT_SECONDS = 1.0
+INTERVIEWER_LIFECYCLE_LEASE_MS = 4_000
 
 
 def configure_livekit_worker_env() -> None:
@@ -196,6 +212,9 @@ class ControlledInterviewAgent(InterviewAgent):
             text=text,
             duration_ms=measured_turn_duration_ms(new_message.metrics),
         )
+        self._apply_turn_directive(turn_ctx, message_id, directive)
+
+    def _apply_turn_directive(self, turn_ctx, message_id, directive) -> None:
         if directive is None:
             return
         if directive.suppress_reply:
@@ -230,12 +249,210 @@ class ControlledInterviewAgent(InterviewAgent):
         return super().llm_node(provider_chat_ctx, tools, model_settings)
 
 
+class ToolControlledInterviewAgent(ControlledInterviewAgent):
+    """Expose only the five controller-authorized session-local tools."""
+
+    def __init__(
+        self,
+        instructions: str,
+        controller_adapter: InterviewControllerAdapter,
+        interviewer_tools: SessionScopedInterviewerTools,
+    ) -> None:
+        self._interviewer_tools = interviewer_tools
+        super().__init__(instructions, controller_adapter)
+
+    async def on_user_turn_completed(self, turn_ctx, new_message: ChatMessage) -> None:
+        state = self._controller_adapter.state
+        message_id = new_message.id if isinstance(new_message.id, str) else ""
+        text = (
+            new_message.text_content
+            if isinstance(new_message.text_content, str)
+            else ""
+        )
+        transcript_revision = (
+            f"{state.writer_id}:{message_id}" if state is not None else ""
+        )
+        prepare = (
+            self._controller_adapter.prepare_user_turn_for_tools
+            if self._interviewer_tools.enabled
+            else self._controller_adapter.complete_user_turn
+        )
+        directive = prepare(
+            message_id=message_id,
+            transcript_revision=transcript_revision,
+            text=text,
+            duration_ms=measured_turn_duration_ms(new_message.metrics),
+        )
+        self._apply_turn_directive(turn_ctx, message_id, directive)
+
+    def llm_node(self, chat_ctx, tools, model_settings):
+        provider_chat_ctx = chat_ctx.copy()
+        if not allow_controller_generation(
+            self._controller_adapter,
+            self._reply_suppression_gate,
+            provider_chat_ctx.items,
+        ):
+            return None
+        fallback_instruction = (
+            self._controller_adapter.current_tool_fallback_instruction()
+        )
+        if fallback_instruction is not None:
+            provider_chat_ctx.add_message(
+                role="system",
+                content=fallback_instruction,
+            )
+        if (
+            not self._interviewer_tools.enabled
+            or self._controller_adapter.tools_fenced_for_current_handle()
+        ):
+            return InterviewAgent.llm_node(
+                self,
+                provider_chat_ctx,
+                [],
+                ModelSettings(tool_choice="none"),
+            )
+        return InterviewAgent.llm_node(
+            self,
+            provider_chat_ctx,
+            tools,
+            ModelSettings(tool_choice="required"),
+        )
+
+    @function_tool(
+        name="read_interview_state",
+        description=(
+            "Read the current bounded interview state only when this turn "
+            "needs state authority. Never request reasoning."
+        ),
+    )
+    async def read_interview_state(
+        self,
+        ctx: RunContext,
+        contract_version: Literal["interviewer-tools.v1"],
+    ) -> str:
+        outcome = await self._interviewer_tools.invoke_read(
+            tool_name="read_interview_state",
+            raw_call_id=ctx.function_call.call_id,
+            handle_id=ctx.speech_handle.id,
+            contract_version=contract_version,
+        )
+        return outcome.to_model_json()
+
+    @function_tool(
+        name="read_interview_clock",
+        description=(
+            "Read the controller-owned interview clock. Never estimate or "
+            "extend the deadline."
+        ),
+    )
+    async def read_interview_clock(
+        self,
+        ctx: RunContext,
+        contract_version: Literal["interviewer-tools.v1"],
+    ) -> str:
+        outcome = await self._interviewer_tools.invoke_read(
+            tool_name="read_interview_clock",
+            raw_call_id=ctx.function_call.call_id,
+            handle_id=ctx.speech_handle.id,
+            contract_version=contract_version,
+        )
+        return outcome.to_model_json()
+
+    @function_tool(
+        name="get_probe_candidates",
+        description=(
+            "List deterministic bounded probe candidates for the active "
+            "question and exact controller revisions."
+        ),
+    )
+    async def get_probe_candidates(
+        self,
+        ctx: RunContext,
+        contract_version: Literal["interviewer-tools.v1"],
+        expected_state_revision: int,
+        expected_lifecycle_version: int,
+        active_question_id: str,
+    ) -> str:
+        outcome = await self._interviewer_tools.invoke_probe_candidates(
+            raw_call_id=ctx.function_call.call_id,
+            handle_id=ctx.speech_handle.id,
+            contract_version=contract_version,
+            expected_state_revision=expected_state_revision,
+            expected_lifecycle_version=expected_lifecycle_version,
+            active_question_id=active_question_id,
+        )
+        return outcome.to_model_json()
+
+    @function_tool(
+        name="commit_interviewer_move",
+        description=(
+            "Propose one controller-authorized interviewer move. The model "
+            "does not stage delivery evidence or supply rationale."
+        ),
+    )
+    async def commit_interviewer_move(
+        self,
+        ctx: RunContext,
+        contract_version: Literal["interviewer-tools.v1"],
+        expected_state_revision: int,
+        expected_lifecycle_version: int,
+        move_type: Literal["probe", "clarify", "challenge", "transition"],
+        idempotency_key: str,
+        probe_candidate_id: str | None = None,
+    ) -> str:
+        outcome = await self._interviewer_tools.invoke_commit(
+            raw_call_id=ctx.function_call.call_id,
+            handle_id=ctx.speech_handle.id,
+            contract_version=contract_version,
+            expected_state_revision=expected_state_revision,
+            expected_lifecycle_version=expected_lifecycle_version,
+            move_type=move_type,
+            probe_candidate_id=probe_candidate_id,
+            idempotency_key=idempotency_key,
+        )
+        return outcome.to_model_json()
+
+    @function_tool(
+        name="request_graceful_close",
+        description=(
+            "Request a controller-authorized close before the watchdog. "
+            "This never mutates durable lifecycle state."
+        ),
+    )
+    async def request_graceful_close(
+        self,
+        ctx: RunContext,
+        contract_version: Literal["interviewer-tools.v1"],
+        expected_state_revision: int,
+        expected_lifecycle_version: int,
+        idempotency_key: str,
+        reason: Literal["deadline", "candidate_request", "controller_policy"],
+    ) -> str:
+        outcome = await self._interviewer_tools.invoke_close(
+            raw_call_id=ctx.function_call.call_id,
+            handle_id=ctx.speech_handle.id,
+            contract_version=contract_version,
+            expected_state_revision=expected_state_revision,
+            expected_lifecycle_version=expected_lifecycle_version,
+            idempotency_key=idempotency_key,
+            reason=reason,
+        )
+        return outcome.to_model_json()
+
+
 def create_interview_agent(
     *,
     instructions: str,
     controller_adapter: InterviewControllerAdapter,
+    interviewer_tools: SessionScopedInterviewerTools | None = None,
 ) -> InterviewAgent:
     if resolve_controller_runtime_mode(controller_adapter) == "controlled_interviewer":
+        if interviewer_tools is not None and interviewer_tools.enabled:
+            return ToolControlledInterviewAgent(
+                instructions,
+                controller_adapter,
+                interviewer_tools,
+            )
         return ControlledInterviewAgent(instructions, controller_adapter)
     return InterviewAgent(instructions)
 
@@ -387,7 +604,7 @@ async def entrypoint(ctx: JobContext):
     transcript_ingest_secret: str | None = None
     try:
         transcript_ingest_secret = resolve_transcript_ingest_secret(os.environ)
-        transcript_writer_generation = await asyncio.wait_for(
+        writer_registration_receipt = await asyncio.wait_for(
             register_runtime_writer(
                 ingest_url=transcript_ingest_url,
                 livekit_api_secret=transcript_ingest_secret,
@@ -395,6 +612,9 @@ async def entrypoint(ctx: JobContext):
                 transport=post_ingest_request,
             ),
             timeout=5.0,
+        )
+        transcript_writer_generation = (
+            writer_registration_receipt.writer_generation
         )
     except (asyncio.TimeoutError, TranscriptIngestError) as error:
         runtime_close_reason = "provider_failure"
@@ -478,6 +698,62 @@ async def entrypoint(ctx: JobContext):
     interruption_markers_by_id: dict[str, dict[str, object]] = {}
     transcript_message_ids_by_event_id: dict[str, str] = {}
 
+    lifecycle_read = create_runtime_lifecycle_read(
+        session_id=session_id,
+        room_name=room_name,
+        writer_id=transcript_writer_id,
+        writer_generation=transcript_writer_generation,
+    )
+    initial_lifecycle = None
+    if controller_feature_enabled(os.environ):
+        try:
+            initial_lifecycle = await asyncio.wait_for(
+                read_runtime_lifecycle_snapshot(
+                    ingest_url=transcript_ingest_url,
+                    livekit_api_secret=transcript_ingest_secret,
+                    request=lifecycle_read,
+                    transport=post_ingest_request,
+                ),
+                timeout=INTERVIEWER_LIFECYCLE_REFRESH_TIMEOUT_SECONDS,
+            )
+            registered_lifecycle = (
+                writer_registration_receipt.lifecycle_snapshot
+            )
+            if (
+                initial_lifecycle.version < registered_lifecycle.version
+                or (
+                    initial_lifecycle.version == registered_lifecycle.version
+                    and initial_lifecycle.state != registered_lifecycle.state
+                )
+            ):
+                raise TranscriptIngestError(
+                    "initial runtime lifecycle read regressed"
+                )
+        except (asyncio.TimeoutError, TranscriptIngestError) as error:
+            logger.warning(
+                "Initial interviewer lifecycle authority is unavailable",
+                extra={"error_type": type(error).__name__},
+            )
+    lifecycle_observed_ms = time.monotonic_ns() // 1_000_000
+    lifecycle_store = (
+        TrustedLifecycleSnapshotStore(
+            TrustedLifecycleSnapshot(
+                contract_version=initial_lifecycle.contract_version,
+                session_id=initial_lifecycle.session_id,
+                writer_id=initial_lifecycle.writer_id,
+                writer_generation=initial_lifecycle.writer_generation,
+                state=initial_lifecycle.state,
+                version=initial_lifecycle.version,
+                observed_monotonic_ms=lifecycle_observed_ms,
+                valid_until_monotonic_ms=(
+                    lifecycle_observed_ms + INTERVIEWER_LIFECYCLE_LEASE_MS
+                ),
+            ),
+            monotonic_ms=lifecycle_observed_ms,
+        )
+        if initial_lifecycle is not None
+        else None
+    )
     controller_adapter = create_interview_controller_adapter(
         env=os.environ,
         session_id=session_id,
@@ -485,14 +761,87 @@ async def entrypoint(ctx: JobContext):
         writer_id=transcript_writer_id,
         writer_generation=transcript_writer_generation,
         interview_brief=interview_brief,
+        lifecycle_state=(initial_lifecycle.state if initial_lifecycle else None),
+        lifecycle_version=(
+            initial_lifecycle.version if initial_lifecycle else None
+        ),
+        observed_at=datetime.now(timezone.utc),
+        monotonic_ms=lifecycle_observed_ms,
+    )
+    interviewer_tools = create_session_scoped_interviewer_tools(
+        env=os.environ,
+        controller=controller_adapter,
+        lifecycle_store=lifecycle_store,
+        observability=semantic_observability,
     )
     logger.info(
         "Deterministic interview controller resolved",
         extra={
             "controller_enabled": controller_adapter.enabled,
             "controller_status": controller_adapter.status.failure_reason or "enabled",
+            "interviewer_tools_enabled": interviewer_tools.enabled,
+            "interviewer_tools_status": (
+                interviewer_tools.status.failure_reason or "enabled"
+            ),
         },
     )
+
+    lifecycle_refresh_task: asyncio.Task[None] | None = None
+    if controller_adapter.enabled:
+        async def refresh_interviewer_lifecycle() -> None:
+            while controller_adapter.enabled:
+                await asyncio.sleep(
+                    INTERVIEWER_LIFECYCLE_REFRESH_INTERVAL_SECONDS
+                )
+                try:
+                    refreshed = await asyncio.wait_for(
+                        read_runtime_lifecycle_snapshot(
+                            ingest_url=transcript_ingest_url,
+                            livekit_api_secret=transcript_ingest_secret,
+                            request=lifecycle_read,
+                            transport=post_ingest_request,
+                        ),
+                        timeout=INTERVIEWER_LIFECYCLE_REFRESH_TIMEOUT_SECONDS,
+                    )
+                    observed_ms = time.monotonic_ns() // 1_000_000
+                    interviewer_tools.accept_lifecycle_refresh(
+                        TrustedLifecycleSnapshot(
+                            contract_version=refreshed.contract_version,
+                            session_id=refreshed.session_id,
+                            writer_id=refreshed.writer_id,
+                            writer_generation=refreshed.writer_generation,
+                            state=refreshed.state,
+                            version=refreshed.version,
+                            observed_monotonic_ms=observed_ms,
+                            valid_until_monotonic_ms=(
+                                observed_ms + INTERVIEWER_LIFECYCLE_LEASE_MS
+                            ),
+                        ),
+                        monotonic_ms=observed_ms,
+                    )
+                    if refreshed.state != "active":
+                        return
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    interviewer_tools.mark_lifecycle_refresh_unavailable()
+                    logger.warning(
+                        "Interviewer lifecycle authority became unavailable",
+                        extra={"error_type": type(error).__name__},
+                    )
+                    return
+
+        lifecycle_refresh_task = asyncio.create_task(
+            refresh_interviewer_lifecycle()
+        )
+
+        async def stop_interviewer_lifecycle_refresh() -> None:
+            if lifecycle_refresh_task is None:
+                return
+            lifecycle_refresh_task.cancel()
+            await asyncio.gather(lifecycle_refresh_task, return_exceptions=True)
+
+        ctx.add_shutdown_callback(stop_interviewer_lifecycle_refresh)
 
     async def publish_persisted_transcript(transcript_data: dict[str, object]):
         event_id = transcript_data.get("event_id")
@@ -650,6 +999,7 @@ async def entrypoint(ctx: JobContext):
     # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
     try:
         session = AgentSession(
+            max_tool_steps=3,
             turn_detection=EnglishModel(),  # Context-aware turn detection
             stt=stt_model,
             llm=llm_model,
@@ -1545,6 +1895,7 @@ async def entrypoint(ctx: JobContext):
             agent=create_interview_agent(
                 instructions=instructions,
                 controller_adapter=controller_adapter,
+                interviewer_tools=interviewer_tools,
             ),
             room=ctx.room,
             room_options=room_io.RoomOptions(close_on_disconnect=False),

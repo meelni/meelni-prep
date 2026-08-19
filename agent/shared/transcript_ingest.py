@@ -33,6 +33,11 @@ RUNTIME_SETTLEMENT_CONTRACT_VERSION = 1
 RUNTIME_SETTLEMENT_EVENT_TYPE = "runtime_settlement"
 RUNTIME_WRITER_REGISTRATION_CONTRACT_VERSION = 1
 RUNTIME_WRITER_REGISTRATION_EVENT_TYPE = "runtime_writer_registration"
+RUNTIME_LIFECYCLE_READ_CONTRACT_VERSION = 1
+RUNTIME_LIFECYCLE_READ_EVENT_TYPE = "runtime_lifecycle_read"
+TRUSTED_LIFECYCLE_SNAPSHOT_CONTRACT_VERSION = (
+    "trusted-interview-lifecycle-snapshot.v1"
+)
 RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION = 1
 RUNTIME_SETTLEMENT_REQUEST_EVENT_TYPE = "runtime_settlement_request"
 RUNTIME_SETTLEMENT_REQUEST_TOPIC = "meelni.transcript.settlement.request"
@@ -70,6 +75,23 @@ class IngestResponse:
             raise ValueError("ingest response status is outside the HTTP range")
         if self.body is not None and not isinstance(self.body, bytes):
             raise ValueError("ingest response body must be bytes when present")
+
+
+@dataclass(frozen=True)
+class RuntimeLifecycleSnapshotReceipt:
+    contract_version: str
+    session_id: str
+    room_name: str
+    writer_id: str
+    writer_generation: int
+    state: str
+    version: int
+
+
+@dataclass(frozen=True)
+class RuntimeWriterRegistrationReceipt:
+    writer_generation: int
+    lifecycle_snapshot: RuntimeLifecycleSnapshotReceipt
 
 
 @dataclass(frozen=True)
@@ -590,6 +612,53 @@ def create_runtime_writer_registration(
     return registration
 
 
+def create_runtime_lifecycle_read(
+    *,
+    session_id: str,
+    room_name: str,
+    writer_id: str,
+    writer_generation: int,
+) -> Dict[str, object]:
+    request: Dict[str, object] = {
+        "contract_version": RUNTIME_LIFECYCLE_READ_CONTRACT_VERSION,
+        "event_type": RUNTIME_LIFECYCLE_READ_EVENT_TYPE,
+        "session_id": session_id,
+        "room_name": room_name,
+        "writer_id": writer_id,
+        "writer_generation": writer_generation,
+    }
+    if not is_runtime_lifecycle_read(request):
+        raise TranscriptIngestError("invalid runtime lifecycle read")
+    return request
+
+
+def is_runtime_lifecycle_read(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value)
+        == {
+            "contract_version",
+            "event_type",
+            "session_id",
+            "room_name",
+            "writer_id",
+            "writer_generation",
+        }
+        and value.get("contract_version")
+        == RUNTIME_LIFECYCLE_READ_CONTRACT_VERSION
+        and value.get("event_type") == RUNTIME_LIFECYCLE_READ_EVENT_TYPE
+        and isinstance(value.get("session_id"), str)
+        and bool(value["session_id"].strip())
+        and isinstance(value.get("room_name"), str)
+        and bool(value["room_name"].strip())
+        and isinstance(value.get("writer_id"), str)
+        and bool(value["writer_id"].strip())
+        and isinstance(value.get("writer_generation"), int)
+        and not isinstance(value["writer_generation"], bool)
+        and 0 < value["writer_generation"] <= MAX_SAFE_INTEGER
+    )
+
+
 def parse_runtime_settlement_request(
     *,
     data: bytes,
@@ -892,8 +961,8 @@ async def register_runtime_writer(
     retry_delay_seconds: float = 0.25,
     sleep: Sleep = asyncio.sleep,
     now: Now = time.time,
-) -> int:
-    """Register a stable writer identity before output and return its generation."""
+) -> RuntimeWriterRegistrationReceipt:
+    """Register a stable writer and return its signed lifecycle authority."""
     if not is_runtime_writer_registration(registration):
         raise TranscriptIngestError("invalid runtime writer registration")
     if (
@@ -951,27 +1020,178 @@ async def register_runtime_writer(
             raise TranscriptIngestError(
                 "runtime writer registration response was invalid"
             ) from error
-        generation = (
-            response_value.get("writer_generation")
-            if isinstance(response_value, dict)
-            else None
-        )
         if (
             not isinstance(response_value, dict)
+            or set(response_value)
+            != {
+                "success",
+                "kind",
+                "disposition",
+                "writer_generation",
+                "lifecycle_snapshot",
+            }
             or response_value.get("success") is not True
             or response_value.get("kind") != "writer_registration"
             or response_value.get("disposition") not in {"created", "existing"}
-            or isinstance(generation, bool)
-            or not isinstance(generation, int)
-            or generation <= 0
-            or generation > MAX_SAFE_INTEGER
         ):
             raise TranscriptIngestError(
                 "runtime writer registration response was invalid"
             )
-        return generation
+        snapshot = _parse_runtime_lifecycle_snapshot(
+            response_value.get("lifecycle_snapshot"),
+            expected_session_id=session_id,
+            expected_room_name=str(registration["room_name"]),
+            expected_writer_id=str(registration["writer_id"]),
+            expected_writer_generation=response_value.get("writer_generation"),
+        )
+        return RuntimeWriterRegistrationReceipt(
+            writer_generation=snapshot.writer_generation,
+            lifecycle_snapshot=snapshot,
+        )
 
     raise TranscriptIngestError("runtime writer registration unavailable")
+
+
+async def read_runtime_lifecycle_snapshot(
+    *,
+    ingest_url: str,
+    livekit_api_secret: str | bytes,
+    request: Dict[str, object],
+    transport: Transport,
+    attempts: int = 1,
+    retry_delay_seconds: float = 0.0,
+    sleep: Sleep = asyncio.sleep,
+    now: Now = time.time,
+) -> RuntimeLifecycleSnapshotReceipt:
+    """Read current lifecycle truth through the signed writer-bound boundary."""
+    if not is_runtime_lifecycle_read(request):
+        raise TranscriptIngestError("invalid runtime lifecycle read")
+    if (
+        isinstance(attempts, bool)
+        or not isinstance(attempts, int)
+        or attempts <= 0
+        or isinstance(retry_delay_seconds, bool)
+        or not isinstance(retry_delay_seconds, (int, float))
+        or retry_delay_seconds < 0
+        or not callable(transport)
+        or not callable(sleep)
+        or not callable(now)
+    ):
+        raise TranscriptIngestError("invalid runtime lifecycle reader")
+
+    validated_url = validate_internal_ingest_url(ingest_url)
+    signing_key = derive_ingest_signing_key(livekit_api_secret)
+    body = canonical_json_bytes(
+        {
+            "sessionId": request["session_id"],
+            "runtimeLifecycleRead": request,
+        }
+    )
+    for attempt in range(attempts):
+        timestamp = int(now())
+        if timestamp <= 0:
+            raise TranscriptIngestError("request clock returned an invalid timestamp")
+        headers = {
+            "content-type": "application/json",
+            TIMESTAMP_HEADER: str(timestamp),
+            SIGNATURE_HEADER: sign_ingest_body(signing_key, timestamp, body),
+        }
+        try:
+            response = await transport(validated_url, body, headers)
+        except Exception as error:
+            if attempt + 1 >= attempts:
+                raise TranscriptIngestError(
+                    "runtime lifecycle read unavailable"
+                ) from error
+            await sleep(float(retry_delay_seconds))
+            continue
+        if not isinstance(response, IngestResponse):
+            raise TranscriptIngestError("transport returned an invalid response")
+        if is_retryable_status(response.status) and attempt + 1 < attempts:
+            await sleep(float(retry_delay_seconds))
+            continue
+        if not 200 <= response.status <= 299 or response.body is None:
+            raise TranscriptIngestError("runtime lifecycle read rejected")
+        try:
+            response_value = json.loads(response.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise TranscriptIngestError(
+                "runtime lifecycle read response was invalid"
+            ) from error
+        if (
+            not isinstance(response_value, dict)
+            or set(response_value)
+            != {"success", "kind", "lifecycle_snapshot"}
+            or response_value.get("success") is not True
+            or response_value.get("kind") != "runtime_lifecycle_snapshot"
+        ):
+            raise TranscriptIngestError(
+                "runtime lifecycle read response was invalid"
+            )
+        return _parse_runtime_lifecycle_snapshot(
+            response_value.get("lifecycle_snapshot"),
+            expected_session_id=str(request["session_id"]),
+            expected_room_name=str(request["room_name"]),
+            expected_writer_id=str(request["writer_id"]),
+            expected_writer_generation=request["writer_generation"],
+        )
+    raise TranscriptIngestError("runtime lifecycle read unavailable")
+
+
+def _parse_runtime_lifecycle_snapshot(
+    value: object,
+    *,
+    expected_session_id: str,
+    expected_room_name: str,
+    expected_writer_id: str,
+    expected_writer_generation: object,
+) -> RuntimeLifecycleSnapshotReceipt:
+    expected_fields = {
+        "contract_version",
+        "session_id",
+        "room_name",
+        "writer_id",
+        "writer_generation",
+        "state",
+        "version",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected_fields
+        or value.get("contract_version")
+        != TRUSTED_LIFECYCLE_SNAPSHOT_CONTRACT_VERSION
+        or value.get("session_id") != expected_session_id
+        or value.get("room_name") != expected_room_name
+        or value.get("writer_id") != expected_writer_id
+        or value.get("writer_generation") != expected_writer_generation
+        or isinstance(value.get("writer_generation"), bool)
+        or not isinstance(value.get("writer_generation"), int)
+        or not 0 < value["writer_generation"] <= MAX_SAFE_INTEGER
+        or value.get("state")
+        not in {
+            "created",
+            "connecting",
+            "active",
+            "reconnecting",
+            "ending",
+            "completed",
+            "abandoned",
+            "failed",
+        }
+        or isinstance(value.get("version"), bool)
+        or not isinstance(value.get("version"), int)
+        or not 0 < value["version"] <= MAX_SAFE_INTEGER
+    ):
+        raise TranscriptIngestError("runtime lifecycle snapshot was invalid")
+    return RuntimeLifecycleSnapshotReceipt(
+        contract_version=value["contract_version"],
+        session_id=value["session_id"],
+        room_name=value["room_name"],
+        writer_id=value["writer_id"],
+        writer_generation=value["writer_generation"],
+        state=value["state"],
+        version=value["version"],
+    )
 
 
 async def persist_runtime_failure_event(

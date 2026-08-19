@@ -33,8 +33,12 @@ Loopback HTTP is accepted only for local development.
 
 - Every runtime persists `runtime_writer_registration` before audible output
   and uses the returned `writer_generation` on all turns, markers, and its
-  writer-scoped settlement. A replacement generation fences older writers but
-  does not remove their settlement obligations.
+  writer-scoped settlement. The same locked receipt includes lifecycle
+  state/version. The SAV-472 controller then requires a separate signed,
+  reader-only lifecycle read bound to that room/current writer before enabling
+  local tools, and refreshes only a process-local lease. Tools never call this
+  endpoint. A replacement generation fences older writers but does not remove
+  their settlement obligations.
 - Writer-registration timeout, rejection, or missing signing configuration is
   a pre-output fatal boundary. The runtime disables input, closes any local
   session, deletes the room, and shuts down before attempting a bounded direct

@@ -9,6 +9,8 @@ export type PersistTranscriptRuntimeWriterResult<TWriter> =
       disposition: "created" | "existing";
       writer: TWriter;
       writerGeneration: number;
+      lifecycleState: string;
+      lifecycleVersion: number;
     }
   | {
       ok: false;
