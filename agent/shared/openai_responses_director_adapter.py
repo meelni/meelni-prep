@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from shared.interview_controller import probe_candidate_id
 from shared.interview_director import (
@@ -29,6 +30,7 @@ OPENAI_RESPONSES_DIRECTOR_ADAPTER_VERSION = (
     "interview-director-adapter.openai-responses.v1"
 )
 OPENAI_RESPONSES_DIRECTOR_PROVIDER = "openai-api"
+OPENAI_RESPONSES_DIRECTOR_BASE_URL = "https://api.openai.com/v1/"
 OPENAI_RESPONSES_DIRECTOR_MODEL = "gpt-5.4-mini-2026-03-17"
 OPENAI_RESPONSES_DIRECTOR_REQUEST_CONTRACT_VERSION = (
     "interview-director-openai-responses-request.v1"
@@ -165,6 +167,7 @@ class OfficialOpenAIResponsesTransport:
     """Official SDK boundary around an explicitly injected retry-free client."""
 
     def __init__(self, client: object, *, owns_client: bool = True) -> None:
+        _require_direct_openai_base_url(client)
         if (
             type(getattr(client, "max_retries", None)) is not int
             or getattr(client, "max_retries") != 0
@@ -188,6 +191,7 @@ class OfficialOpenAIResponsesTransport:
     ) -> Mapping[str, object]:
         if self._closed or not _positive_timeout(timeout_seconds):
             raise DirectorError("invalid_config")
+        _require_direct_openai_base_url(self._client)
         response = await self._client.responses.create(  # type: ignore[attr-defined]
             **deepcopy(dict(request)),
             timeout=timeout_seconds,
@@ -595,6 +599,28 @@ def _require_affinity(value: object) -> None:
 
 def _require_limits(limits: object) -> None:
     if not isinstance(limits, DirectorLimits) or limits.max_retries != 0:
+        raise DirectorError("invalid_config")
+
+
+def _require_direct_openai_base_url(client: object) -> None:
+    try:
+        raw_base_url = str(getattr(client, "base_url", ""))
+        parsed = urlsplit(raw_base_url)
+        port = parsed.port
+    except Exception:
+        raise DirectorError("invalid_config") from None
+    if (
+        raw_base_url != OPENAI_RESPONSES_DIRECTOR_BASE_URL
+        or parsed.scheme != "https"
+        or parsed.netloc != "api.openai.com"
+        or parsed.hostname != "api.openai.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        or parsed.path != "/v1/"
+        or parsed.query
+        or parsed.fragment
+    ):
         raise DirectorError("invalid_config")
 
 

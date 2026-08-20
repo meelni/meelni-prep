@@ -8,8 +8,9 @@
       cross-contract rejection.
 - [x] Add the strict stateless OpenAI Responses adapter and injected transports.
 - [x] Pin the direct official Python SDK and preserve application `adapter=None`.
-- [x] Cover request capture, response/usage/cost failures, cancellation,
-      recovery, close, and provider-free no-network behavior.
+- [x] Cover direct-endpoint binding, request capture, response/usage/cost
+      failures, cancellation, recovery, close, and provider-free no-network
+      behavior.
 - [x] Run focused and complete Node 22/Python/integration/benchmark/feedback/
       verifier/build/security validation.
 - [x] Freeze immutable local head for independent exact-head review before any

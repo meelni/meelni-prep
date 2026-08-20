@@ -38,6 +38,7 @@ from shared.interviewer_contracts import (  # noqa: E402
 from shared.openai_responses_director_adapter import (  # noqa: E402
     OPENAI_RESPONSES_DIRECTOR_ADAPTER_ID,
     OPENAI_RESPONSES_DIRECTOR_ADAPTER_VERSION,
+    OPENAI_RESPONSES_DIRECTOR_BASE_URL,
     OPENAI_RESPONSES_DIRECTOR_MODEL,
     OPENAI_RESPONSES_DIRECTOR_PRICING_CONTRACT_VERSION,
     OPENAI_RESPONSES_DIRECTOR_PROVIDER,
@@ -155,6 +156,7 @@ class RequestContractTests(unittest.TestCase):
                 OPENAI_RESPONSES_DIRECTOR_ADAPTER_ID,
                 OPENAI_RESPONSES_DIRECTOR_ADAPTER_VERSION,
                 OPENAI_RESPONSES_DIRECTOR_PROVIDER,
+                OPENAI_RESPONSES_DIRECTOR_BASE_URL,
                 OPENAI_RESPONSES_DIRECTOR_MODEL,
                 OPENAI_RESPONSES_DIRECTOR_REQUEST_CONTRACT_VERSION,
                 OPENAI_RESPONSES_DIRECTOR_PRICING_CONTRACT_VERSION,
@@ -164,6 +166,7 @@ class RequestContractTests(unittest.TestCase):
                 "meelni_director_openai_responses",
                 "interview-director-adapter.openai-responses.v1",
                 "openai-api",
+                "https://api.openai.com/v1/",
                 "gpt-5.4-mini-2026-03-17",
                 "interview-director-openai-responses-request.v1",
                 "openai-gpt-5.4-mini-standard-2026-08-19",
@@ -534,8 +537,15 @@ class FakeResponsesResource:
 
 
 class FakeSDKClient:
-    def __init__(self, value, *, max_retries=0):
+    def __init__(
+        self,
+        value,
+        *,
+        max_retries=0,
+        base_url=OPENAI_RESPONSES_DIRECTOR_BASE_URL,
+    ):
         self.max_retries = max_retries
+        self.base_url = base_url
         self.responses = FakeResponsesResource(value)
         self.close_calls = 0
 
@@ -557,6 +567,7 @@ class OfficialSDKBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured.pop("timeout"), 0.75)
         self.assertEqual(captured, request)
         self.assertEqual(client.max_retries, 0)
+        self.assertEqual(client.base_url, OPENAI_RESPONSES_DIRECTOR_BASE_URL)
         await transport.close()
         await transport.close()
         self.assertEqual(client.close_calls, 1)
@@ -566,6 +577,46 @@ class OfficialSDKBoundaryTests(unittest.IsolatedAsyncioTestCase):
             OfficialOpenAIResponsesTransport(
                 FakeSDKClient(response(), max_retries=2)
             )
+
+    async def test_sdk_boundary_rejects_non_direct_or_mutated_base_urls(self):
+        class MalformedBaseURL:
+            def __str__(self):
+                raise RuntimeError("untrusted base-url detail")
+
+        rejected = (
+            "http://api.openai.com/v1/",
+            "https://example.invalid/v1/",
+            "https://proxy.example.invalid/v1/",
+            "https://eastus.api.openai.com/v1/",
+            "https://api.openai.com.evil.invalid/v1/",
+            "https://user@api.openai.com/v1/",
+            "https://api.openai.com:443/v1/",
+            "https://api.openai.com/v1",
+            "https://api.openai.com/v1//",
+            "https://api.openai.com/v1/proxy/",
+            "https://api.openai.com/v1/?proxy=1",
+            "https://api.openai.com/v1/#fragment",
+        )
+        for base_url in rejected:
+            with self.subTest(base_url=base_url):
+                with self.assertRaisesRegex(DirectorError, "invalid_config"):
+                    OfficialOpenAIResponsesTransport(
+                        FakeSDKClient(response(), base_url=base_url)
+                    )
+
+        with self.assertRaises(DirectorError) as raised:
+            OfficialOpenAIResponsesTransport(
+                FakeSDKClient(response(), base_url=MalformedBaseURL())
+            )
+        self.assertEqual(raised.exception.code, "invalid_config")
+        self.assertNotIn("untrusted base-url detail", str(raised.exception))
+
+        client = FakeSDKClient(response())
+        transport = OfficialOpenAIResponsesTransport(client)
+        client.base_url = "https://example.invalid/v1/"
+        with self.assertRaisesRegex(DirectorError, "invalid_config"):
+            await transport.create({}, timeout_seconds=0.75)
+        self.assertEqual(client.responses.kwargs, [])
 
 
 @unittest.skipIf(openai is None or httpx is None, "pinned agent SDK unavailable")
@@ -587,6 +638,7 @@ class OfficialSDKSerializationTests(unittest.IsolatedAsyncioTestCase):
             http_client=http_client,
         )
         transport = OfficialOpenAIResponsesTransport(client)
+        self.assertEqual(str(client.base_url), OPENAI_RESPONSES_DIRECTOR_BASE_URL)
         adapter = OpenAIResponsesDirectorAdapter(transport)
         limits = openai_responses_director_limits()
         expected_request = build_openai_responses_director_request(context(), limits)
@@ -598,6 +650,64 @@ class OfficialSDKSerializationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("previous_response_id", captured_bodies[0])
         self.assertEqual(result.move_type, "probe")
         await adapter.close(affinity_key="affinity:" + "a" * 64)
+
+    async def test_pinned_sdk_custom_base_urls_fail_before_any_request(self):
+        attempted_urls = []
+
+        def handler(request):
+            attempted_urls.append(str(request.url))
+            return httpx.Response(500, request=request)
+
+        for base_url in (
+            "https://example.invalid/v1",
+            "https://proxy.example.invalid/v1",
+            "https://eastus.api.openai.com/v1",
+            "https://api.openai.com.evil.invalid/v1",
+            "https://user@api.openai.com/v1",
+            "https://api.openai.com:8443/v1",
+            "https://api.openai.com/v1/proxy",
+            "https://api.openai.com/v1?proxy=1",
+            "https://api.openai.com/v1#fragment",
+        ):
+            with self.subTest(base_url=base_url):
+                http_client = httpx.AsyncClient(
+                    transport=httpx.MockTransport(handler)
+                )
+                client = openai.AsyncOpenAI(
+                    api_key="test",
+                    base_url=base_url,
+                    max_retries=0,
+                    http_client=http_client,
+                )
+                try:
+                    with self.assertRaisesRegex(DirectorError, "invalid_config"):
+                        OfficialOpenAIResponsesTransport(client)
+                finally:
+                    await client.close()
+        self.assertEqual(attempted_urls, [])
+
+    async def test_pinned_sdk_accepts_only_normalized_direct_equivalents(self):
+        for base_url in (
+            "https://api.openai.com/v1",
+            "https://api.openai.com:443/v1",
+        ):
+            with self.subTest(base_url=base_url):
+                http_client = httpx.AsyncClient(
+                    transport=httpx.MockTransport(
+                        lambda request: httpx.Response(500, request=request)
+                    )
+                )
+                client = openai.AsyncOpenAI(
+                    api_key="test",
+                    base_url=base_url,
+                    max_retries=0,
+                    http_client=http_client,
+                )
+                self.assertEqual(
+                    str(client.base_url), OPENAI_RESPONSES_DIRECTOR_BASE_URL
+                )
+                transport = OfficialOpenAIResponsesTransport(client)
+                await transport.close()
 
 
 if __name__ == "__main__":
