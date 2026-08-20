@@ -703,6 +703,14 @@ async function allocateSessionLease(
       .returning();
     if (!updated[0]) stale();
     await assertRelationalState(tx, updated[0]);
+    const completionDatabaseNow = await readDatabaseNow(tx);
+    if (
+      expiresAt.getTime() <= completionDatabaseNow.getTime() ||
+      updated[0].authorizationExpiresAt.getTime() <=
+        completionDatabaseNow.getTime()
+    ) {
+      denied();
+    }
     return {
       outcome: "allocated" as const,
       run: normalizeRun(updated[0]),
@@ -2237,7 +2245,7 @@ function digest(version: string, payload: unknown): string {
 }
 
 function parseWholeSecond(value: unknown): Date {
-  if (typeof value !== "string") invalid();
+  if (typeof value !== "string" || value.length !== 24) invalid();
   const parsed = new Date(value);
   if (!wholeSecondDate(parsed) || parsed.toISOString() !== value) invalid();
   return parsed;

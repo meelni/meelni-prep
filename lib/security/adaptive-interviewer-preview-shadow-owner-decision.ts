@@ -25,6 +25,9 @@ export const PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES = 64 * 1024;
 export const PREVIEW_SHADOW_OWNER_DECISION_MAX_DEPTH = 32;
 const PREVIEW_SHADOW_OWNER_DECISION_MAX_JSON_VALUES = 128;
 const PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES = 64;
+const PREVIEW_SHADOW_AUTHORIZATION_MAX_JSON_VALUES = 512;
+const PREVIEW_SHADOW_DIRECT_VALUE_MAX_STRING_LENGTH = 512;
+const PREVIEW_SHADOW_DIRECT_VALUE_MAX_KEY_LENGTH = 128;
 const CANONICAL_TIMESTAMP_LENGTH = 24;
 const ED25519_SIGNATURE_BASE64_LENGTH = 88;
 
@@ -196,7 +199,7 @@ export function authenticatePreviewShadowOwnerDecision(input: {
   const context = parseActivationContext(request.context);
   let authorization: AdaptiveInterviewerPreviewShadowAuthorization;
   try {
-    const authorizationSnapshot = snapshotDataRecord(
+    const authorizationSnapshot = snapshotBoundedAuthorizationRecord(
       request.authorization,
       invalidAuthorization
     );
@@ -216,12 +219,6 @@ export function authenticatePreviewShadowOwnerDecision(input: {
       },
       ownerDecidedAt
     );
-    if (
-      Buffer.byteLength(JSON.stringify(authorization), "utf8") >
-      PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
-    ) {
-      invalidAuthorization();
-    }
   } catch {
     invalidAuthorization();
   }
@@ -696,6 +693,121 @@ function snapshotDataRecord(
       snapshot[key] = descriptor.value;
     }
     return snapshot;
+  } catch {
+    invalid();
+  }
+}
+
+function snapshotBoundedAuthorizationRecord(
+  value: unknown,
+  invalid: () => never
+): Record<string, unknown> {
+  let values = 0;
+  const snapshot = (candidate: unknown, depth: number): unknown => {
+    values += 1;
+    if (
+      values > PREVIEW_SHADOW_AUTHORIZATION_MAX_JSON_VALUES ||
+      depth > PREVIEW_SHADOW_OWNER_DECISION_MAX_DEPTH
+    ) {
+      invalid();
+    }
+    if (
+      candidate === null ||
+      typeof candidate === "boolean" ||
+      typeof candidate === "string" ||
+      typeof candidate === "number"
+    ) {
+      if (
+        (typeof candidate === "string" &&
+          candidate.length > PREVIEW_SHADOW_DIRECT_VALUE_MAX_STRING_LENGTH) ||
+        (typeof candidate === "number" && !Number.isSafeInteger(candidate))
+      ) {
+        invalid();
+      }
+      return candidate;
+    }
+    if (candidate === null || typeof candidate !== "object") invalid();
+    if (Array.isArray(candidate)) {
+      if (Object.getPrototypeOf(candidate) !== Array.prototype) invalid();
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(
+        candidate,
+        "length"
+      );
+      if (
+        !lengthDescriptor ||
+        lengthDescriptor.enumerable !== false ||
+        !("value" in lengthDescriptor) ||
+        !Number.isSafeInteger(lengthDescriptor.value) ||
+        lengthDescriptor.value < 0 ||
+        lengthDescriptor.value >
+          PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
+      ) {
+        invalid();
+      }
+      const length = lengthDescriptor.value as number;
+      const keys = Reflect.ownKeys(candidate);
+      if (
+        keys.length !== length + 1 ||
+        keys.some((key) => typeof key !== "string")
+      ) {
+        invalid();
+      }
+      const result: unknown[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          candidate,
+          String(index)
+        );
+        if (
+          !descriptor ||
+          descriptor.enumerable !== true ||
+          !("value" in descriptor)
+        ) {
+          invalid();
+        }
+        result.push(snapshot(descriptor.value, depth + 1));
+      }
+      return result;
+    }
+    if (Object.getPrototypeOf(candidate) !== Object.prototype) invalid();
+    const keys = Reflect.ownKeys(candidate);
+    if (
+      keys.length > PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES ||
+      keys.some(
+        (key) =>
+          typeof key !== "string" ||
+          key.length > PREVIEW_SHADOW_DIRECT_VALUE_MAX_KEY_LENGTH
+      )
+    ) {
+      invalid();
+    }
+    const result: Record<string, unknown> = {};
+    for (const key of keys as string[]) {
+      const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+      if (
+        !descriptor ||
+        descriptor.enumerable !== true ||
+        !("value" in descriptor)
+      ) {
+        invalid();
+      }
+      result[key] = snapshot(descriptor.value, depth + 1);
+    }
+    return result;
+  };
+
+  try {
+    const result = snapshot(value, 0);
+    if (
+      result === null ||
+      typeof result !== "object" ||
+      Array.isArray(result) ||
+      Buffer.byteLength(JSON.stringify(result), "utf8") >
+        PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
+    ) {
+      invalid();
+    }
+    return deepFreeze(result) as Record<string, unknown>;
   } catch {
     invalid();
   }

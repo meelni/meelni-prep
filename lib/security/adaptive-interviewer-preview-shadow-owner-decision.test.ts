@@ -408,6 +408,136 @@ test("direct artifacts are bounded before registry parsing, dates, base64, or cr
   );
 });
 
+test("nested authorization configuration is bounded before dates or later trust inputs", () => {
+  let artifactReads = 0;
+  let registryReads = 0;
+  const hostileArtifact = new Proxy(artifact(), {
+    ownKeys() {
+      artifactReads += 1;
+      throw new Error("raw-owner-artifact-secret");
+    },
+  });
+  const hostileRegistry = new Proxy(registry(), {
+    ownKeys() {
+      registryReads += 1;
+      throw new Error("raw-owner-registry-secret");
+    },
+  });
+  const invalidNestedAuthorizations: unknown[] = [
+    {
+      ...authorization(),
+      preview_shadow_configuration: {
+        ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
+        director: {
+          ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.director,
+          adapter_id: "a".repeat(1_000_000),
+        },
+      },
+    },
+  ];
+  const wide = (prefix: string) =>
+    Object.fromEntries(
+      Array.from({ length: 64 }, (_, index) => [
+        `${prefix}${index}`,
+        "x".repeat(512),
+      ])
+    );
+  invalidNestedAuthorizations.push({
+    ...authorization(),
+    preview_shadow_configuration: {
+      ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
+      oversized_a: wide("a"),
+      oversized_b: wide("b"),
+    },
+  });
+  let tooDeep: Record<string, unknown> = { value: true };
+  for (let index = 0; index < 33; index += 1) {
+    tooDeep = { nested: tooDeep };
+  }
+  invalidNestedAuthorizations.push({
+    ...authorization(),
+    preview_shadow_configuration: {
+      ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
+      too_deep: tooDeep,
+    },
+  });
+
+  let getterReads = 0;
+  const hostileDirector = {
+    ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.director,
+  };
+  Object.defineProperty(hostileDirector, "adapter_id", {
+    enumerable: true,
+    get() {
+      getterReads += 1;
+      return "meelni_director_openai_responses";
+    },
+  });
+  invalidNestedAuthorizations.push({
+    ...authorization(),
+    preview_shadow_configuration: {
+      ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
+      director: hostileDirector,
+    },
+  });
+
+  const sparseRounds: unknown[] = [];
+  sparseRounds.length = 0xffff_ffff;
+  let sparseOwnKeyReads = 0;
+  const hostileSparseRounds = new Proxy(sparseRounds, {
+    ownKeys() {
+      sparseOwnKeyReads += 1;
+      throw new Error("raw-sparse-array-secret");
+    },
+  });
+  invalidNestedAuthorizations.push({
+    ...authorization(),
+    preview_shadow_configuration: {
+      ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
+      rehearsal_matrix: {
+        ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.rehearsal_matrix,
+        rounds: hostileSparseRounds,
+      },
+    },
+  });
+
+  let nestedProxyReads = 0;
+  invalidNestedAuthorizations.push({
+    ...authorization(),
+    preview_shadow_configuration: new Proxy(
+      { ...ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG },
+      {
+        ownKeys() {
+          nestedProxyReads += 1;
+          throw new Error("raw-nested-config-secret");
+        },
+      }
+    ),
+  });
+
+  for (const candidate of invalidNestedAuthorizations) {
+    assert.throws(
+      () =>
+        verify({
+          artifact: hostileArtifact,
+          authorization: candidate,
+          keyRegistry: hostileRegistry,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, "preview_shadow_authorization_invalid");
+        assert.doesNotMatch(error.message, /secret/);
+        return true;
+      }
+    );
+  }
+  assert.equal(getterReads, 0);
+  assert.equal(sparseOwnKeyReads, 0);
+  assert.equal(nestedProxyReads, 1);
+  assert.equal(artifactReads, 0);
+  assert.equal(registryReads, 0);
+});
+
 test("snapshots caller inputs once and never re-reads a mutable authorization", () => {
   const candidate = authorization();
   let reads = 0;

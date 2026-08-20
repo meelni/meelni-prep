@@ -39,6 +39,8 @@ or cap-exceeding requests SHALL fail closed.
   remaining cap boundary
 - **THEN** exact same-binding retry converges to one lease
 - **AND** no more than the allowed unique allocation commits
+- **AND** database time is re-read after allocation writes, with a full rollback
+  if authorization or lease expiry was crossed before completion
 
 #### Scenario: A lease is no longer executable
 
