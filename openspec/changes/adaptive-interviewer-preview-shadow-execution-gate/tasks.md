@@ -7,6 +7,8 @@
 - [x] Implement injected runtime construction, attempt ledger, lifecycle, and
       sanitized evidence.
 - [x] Add cross-contract rejection and provider-free behavior regressions.
+- [x] Harden exact data-descriptor snapshots, coalesced bounded cleanup, typed
+      adapter failures, and stop-incomplete incident retention.
 - [x] Run focused and complete validation and report the pre-commit checkpoint.
 - [ ] Freeze a clean exact-head commit and run exact-base security review.
 - [ ] Obtain independent exact-head review before any push or PR.

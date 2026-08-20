@@ -32,10 +32,11 @@ The 28-cell live rehearsal matrix remains `unperformed`.
 
 ## Provider-free contract results
 
-- Preview TypeScript focused: 10 passed, 0 failed.
-- Full `test:agent`: 102 passed, 0 failed.
-- Preview Python focused: 8 passed, 0 failed.
-- Pinned full Python agent: 309 passed, 0 failed.
+- Preview TypeScript focused remediation: 13 passed, 0 failed.
+- Full exact-Node-22 `test:agent`: 105 passed, 0 failed.
+- Preview Python runtime plus adapter focused remediation: 30 passed, 0 failed
+  in the pinned Python environment.
+- Pinned full Python agent: 314 passed, 0 failed, 0 skipped.
 - Production/default-on authorization: 12 passed, 0 failed.
 - Core: 489 passed, 0 failed.
 - Integrations: 111 passed, 0 failed.
@@ -63,9 +64,9 @@ An independent exact-base/current metafile comparison proved:
   `packages/agent/src/interviewer-preview-shadow-control-plane.ts`;
 - removals: none;
 - external imports: the exact existing 17-entry list, all Node builtins;
-- bundle bytes: 1,488,348;
+- bundle bytes: 1,489,324;
 - bundle SHA-256:
-  `d96158145f6a3cf89018247871ad2efff51bd2a27d3a6b2c8d596a6b9f9701e1`.
+  `757bacee9bdd838bec91ca35dd9f219da9f62d5af5bafde05b5ca7fac94980d6`.
 
 `calibration:verify-runtime` rebuilt the bundle byte-for-byte and matched the
 checked manifest. The bundle diff contains only six inert declarations for the
@@ -90,7 +91,10 @@ provider, or execution path.
 - Every attempt retains at least its conservative reservation. Ambiguous spend
   is never reclaimed, and upward reconciliation closes admission before any
   next request.
-- Shadow settle is bounded and idempotent, closes admission before cancellation,
-  retains in-flight ambiguous reservation, emits one immutable content-free
-  terminal receipt, and never touches speech, transcript, feedback, or customer
-  output.
+- Shadow settle coalesces concurrent callers on one bounded operation, closes
+  admission before cancellation, awaits cancellation, always attempts
+  shutdown/adapter close in a finally path, and never touches speech,
+  transcript, feedback, or customer output. Confirmed cleanup emits one
+  immutable content-free terminal receipt. Unconfirmed cleanup emits one
+  separate stop-incomplete incident, retains the full session reservation, and
+  stops central allocation; it never claims successful settlement.

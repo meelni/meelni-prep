@@ -46,6 +46,12 @@ PREVIEW_SHADOW_SESSION_RECEIPT_VERSION = (
 PREVIEW_SHADOW_SESSION_RECEIPT_DIGEST_VERSION = (
     "adaptive-interviewer-preview-shadow-session-receipt-digest.v1"
 )
+PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION = (
+    "adaptive-interviewer-preview-shadow-stop-incomplete-incident.v1"
+)
+PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_DIGEST_VERSION = (
+    "adaptive-interviewer-preview-shadow-stop-incomplete-incident-digest.v1"
+)
 PREVIEW_SHADOW_DURABLE_ADMISSION_VERIFIER_VERSION = (
     "adaptive-interviewer-preview-shadow-durable-admission-verifier.v1"
 )
@@ -61,6 +67,8 @@ _SESSION_BUDGET_NANO_USD = 1_000_000_000
 _MAXIMUM_ATTEMPTS = 10
 _ATTEMPT_RESERVATION_NANO_USD = 100_000_000
 _MAXIMUM_SETTLE_SHUTDOWN_SECONDS = 0.250
+_SHUTDOWN_RESERVE_SECONDS = 0.100
+_CANCELLATION_GRACE_SECONDS = 0.025
 _MAXIMUM_LEASE_TTL_SECONDS = 60 * 60
 _MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
@@ -358,6 +366,57 @@ class PreviewShadowSessionReceipt:
         }
 
 
+@dataclass(frozen=True)
+class PreviewShadowStopIncompleteIncident:
+    contract_version: str
+    run_id: str
+    lease_id: str
+    session_ordinal: int
+    allocation_ledger_revision: int
+    preview_shadow_configuration_sha256: str
+    reason: Literal["cleanup_unconfirmed"]
+    attempt_count: int
+    reconciled_spend_nano_usd: int
+    retained_session_reservation_nano_usd: Literal[1000000000]
+    attempt_receipts_sha256: str
+    observed_at: str
+    requires_allocation_stop: Literal[True]
+    termination_acknowledgement_required: Literal[True]
+    incident_id: str
+    integrity_sha256: str
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "contract_version": self.contract_version,
+            "run_id": self.run_id,
+            "lease_id": self.lease_id,
+            "session_ordinal": self.session_ordinal,
+            "allocation_ledger_revision": self.allocation_ledger_revision,
+            "preview_shadow_configuration_sha256": (
+                self.preview_shadow_configuration_sha256
+            ),
+            "reason": self.reason,
+            "attempt_count": self.attempt_count,
+            "reconciled_spend_nano_usd": self.reconciled_spend_nano_usd,
+            "retained_session_reservation_nano_usd": (
+                self.retained_session_reservation_nano_usd
+            ),
+            "attempt_receipts_sha256": self.attempt_receipts_sha256,
+            "observed_at": self.observed_at,
+            "requires_allocation_stop": self.requires_allocation_stop,
+            "termination_acknowledgement_required": (
+                self.termination_acknowledgement_required
+            ),
+        }
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            **self.payload(),
+            "incident_id": self.incident_id,
+            "integrity_sha256": self.integrity_sha256,
+        }
+
+
 class PreviewShadowLocalSpendLedger:
     """One admitted session lease only; this is never a global cohort ledger."""
 
@@ -377,6 +436,7 @@ class PreviewShadowLocalSpendLedger:
         self._admission_open = True
         self._closed = False
         self._settle_completed: bool | None = None
+        self._cleanup_completed: bool | None = None
 
     @property
     def reconciled_nano_usd(self) -> int:
@@ -405,6 +465,10 @@ class PreviewShadowLocalSpendLedger:
     @property
     def settle_completed(self) -> bool | None:
         return self._settle_completed
+
+    @property
+    def cleanup_completed(self) -> bool | None:
+        return self._cleanup_completed
 
     def reserve_attempt(self) -> int:
         if self._closed:
@@ -509,15 +573,21 @@ class PreviewShadowLocalSpendLedger:
         for ordinal in tuple(self._open):
             self.reconcile_attempt(ordinal, "ambiguous")
 
-    def close(self, *, settle_completed: bool) -> None:
-        if self._closed or type(settle_completed) is not bool:
+    def close(self, *, settle_completed: bool, cleanup_completed: bool) -> None:
+        if (
+            self._settle_completed is not None
+            or type(settle_completed) is not bool
+            or type(cleanup_completed) is not bool
+            or settle_completed and not cleanup_completed
+        ):
             raise PreviewShadowRuntimeError("closed")
         self._admission_open = False
         self.settle_open_attempts_as_ambiguous()
-        self._closed = True
         self._settle_completed = settle_completed
+        self._cleanup_completed = cleanup_completed
+        self._closed = cleanup_completed
         self._evidence.record(
-            "settled" if settle_completed else "stopped",
+            "settled" if settle_completed and cleanup_completed else "stopped",
             "settle_completed" if settle_completed else "settle_timeout",
             attempt_ordinal=None,
             reserved_nano_usd=0,
@@ -553,11 +623,12 @@ class LeaseBoundOpenAIResponsesDirectorAdapter:
         except asyncio.CancelledError:
             self._ledger.reconcile_attempt(ordinal, "cancelled")
             raise
-        except asyncio.TimeoutError:
-            self._ledger.reconcile_attempt(ordinal, "timeout")
-            raise
-        except DirectorError:
-            self._ledger.reconcile_attempt(ordinal, "invalid_response")
+        except DirectorError as error:
+            outcome = {
+                "deadline_exceeded": "timeout",
+                "transport_unavailable": "failed",
+            }.get(error.code, "invalid_response")
+            self._ledger.reconcile_attempt(ordinal, outcome)
             raise
         except Exception:
             self._ledger.reconcile_attempt(ordinal, "failed")
@@ -598,65 +669,99 @@ class PreviewShadowRuntime:
         repr=False,
         compare=False,
     )
+    _settle_task: asyncio.Task[bool] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _stop_incomplete_incident: PreviewShadowStopIncompleteIncident | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     async def settle_shadow(self, shadow: PreviewShadowSettledSession) -> bool:
-        if self.ledger.closed:
-            return self.ledger.settle_completed is True
+        task = self._settle_task
+        if task is None:
+            if self.ledger.settle_completed is not None:
+                return self.ledger.settle_completed is True
+            task = asyncio.create_task(self._settle_shadow_once(shadow))
+            object.__setattr__(self, "_settle_task", task)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Caller cancellation does not cancel the one shared cleanup. The
+            # cleanup is already bounded by the same absolute deadline.
+            await asyncio.shield(task)
+            raise
+
+    async def _settle_shadow_once(
+        self, shadow: PreviewShadowSettledSession
+    ) -> bool:
         self.ledger.stop("settle_started")
         loop = asyncio.get_running_loop()
         deadline = loop.time() + _MAXIMUM_SETTLE_SHUTDOWN_SECONDS
+        wait_deadline = deadline - _SHUTDOWN_RESERVE_SECONDS
         settled = False
+        cleanup_completed = False
         try:
             shadow.settle()
             completed, idle = await _await_until_deadline(
-                shadow.wait_idle(timeout_seconds=max(0.0, deadline - loop.time())),
-                deadline=deadline,
+                shadow.wait_idle(
+                    timeout_seconds=max(0.001, wait_deadline - loop.time())
+                ),
+                operation_deadline=wait_deadline,
+                cancellation_deadline=deadline,
             )
-            if not completed or idle is not True:
-                raise asyncio.TimeoutError
-            completed, _ = await _await_until_deadline(
-                shadow.shutdown(),
-                deadline=deadline,
-            )
-            if not completed:
-                raise asyncio.TimeoutError
-            settled = True
+            settled = completed and idle is True
         except asyncio.CancelledError:
-            raise
+            settled = False
         except Exception:
             settled = False
         finally:
-            self.ledger.close(settle_completed=settled)
+            try:
+                completed, _ = await _await_until_deadline(
+                    shadow.shutdown(),
+                    operation_deadline=deadline - _CANCELLATION_GRACE_SECONDS,
+                    cancellation_deadline=deadline,
+                )
+                cleanup_completed = completed
+            except asyncio.CancelledError:
+                cleanup_completed = False
+            except Exception:
+                cleanup_completed = False
+            settled = settled and cleanup_completed
+            self.ledger.close(
+                settle_completed=settled,
+                cleanup_completed=cleanup_completed,
+            )
+            if cleanup_completed:
+                object.__setattr__(
+                    self,
+                    "_terminal_receipt",
+                    self._build_terminal_receipt(
+                        outcome="settled" if settled else "stopped",
+                        settled_at=datetime.now(timezone.utc),
+                    ),
+                )
+            else:
+                object.__setattr__(
+                    self,
+                    "_stop_incomplete_incident",
+                    self._build_stop_incomplete_incident(
+                        observed_at=datetime.now(timezone.utc),
+                    ),
+                )
         return settled
 
-    def create_session_receipt(
+    def _build_terminal_receipt(
         self,
         *,
-        outcome: Literal["settled", "stopped", "ambiguous"],
+        outcome: Literal["settled", "stopped"],
         settled_at: datetime,
     ) -> PreviewShadowSessionReceipt:
-        if (
-            settled_at.tzinfo is None
-            or settled_at.utcoffset() is None
-            or settled_at.microsecond != 0
-        ):
-            raise PreviewShadowRuntimeError("attempt_invalid")
-        if self._terminal_receipt is not None:
-            if (
-                self._terminal_receipt.outcome != outcome
-                or self._terminal_receipt.settled_at != _whole_second_iso(settled_at)
-            ):
-                raise PreviewShadowRuntimeError("attempt_invalid")
-            return self._terminal_receipt
-        if (
-            not self.ledger.closed
-            or self.ledger.outstanding_reserved_nano_usd != 0
-            or outcome == "settled"
-            and self.ledger.settle_completed is not True
-            or outcome != "settled"
-            and self.ledger.settle_completed is not False
-        ):
-            raise PreviewShadowRuntimeError("attempt_invalid")
         attempts = [receipt.to_wire() for receipt in self.ledger.receipts]
         attempt_digest = _digest(
             PREVIEW_SHADOW_ATTEMPT_RECEIPTS_DIGEST_VERSION,
@@ -677,13 +782,65 @@ class PreviewShadowRuntime:
             "settled_at": _whole_second_iso(settled_at),
         }
         receipt_id = _digest(PREVIEW_SHADOW_SESSION_RECEIPT_DIGEST_VERSION, payload)
-        receipt = PreviewShadowSessionReceipt(
+        return PreviewShadowSessionReceipt(
             **payload,  # type: ignore[arg-type]
             receipt_id=receipt_id,
             integrity_sha256=receipt_id,
         )
-        object.__setattr__(self, "_terminal_receipt", receipt)
+
+    def create_session_receipt(self) -> PreviewShadowSessionReceipt:
+        receipt = self._terminal_receipt
+        if (
+            receipt is None
+            or not self.ledger.closed
+            or self.ledger.cleanup_completed is not True
+            or self.ledger.outstanding_reserved_nano_usd != 0
+        ):
+            raise PreviewShadowRuntimeError("attempt_invalid")
         return receipt
+
+    def _build_stop_incomplete_incident(
+        self, *, observed_at: datetime
+    ) -> PreviewShadowStopIncompleteIncident:
+        attempts = [receipt.to_wire() for receipt in self.ledger.receipts]
+        payload = {
+            "contract_version": PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION,
+            "run_id": self.lease.run_id,
+            "lease_id": self.lease.lease_id,
+            "session_ordinal": self.lease.session_ordinal,
+            "allocation_ledger_revision": self.lease.allocation_ledger_revision,
+            "preview_shadow_configuration_sha256": (
+                PREVIEW_SHADOW_CONFIGURATION_SHA256
+            ),
+            "reason": "cleanup_unconfirmed",
+            "attempt_count": len(attempts),
+            "reconciled_spend_nano_usd": self.ledger.reconciled_nano_usd,
+            "retained_session_reservation_nano_usd": _SESSION_BUDGET_NANO_USD,
+            "attempt_receipts_sha256": _digest(
+                PREVIEW_SHADOW_ATTEMPT_RECEIPTS_DIGEST_VERSION,
+                attempts,
+            ),
+            "observed_at": _whole_second_iso(observed_at),
+            "requires_allocation_stop": True,
+            "termination_acknowledgement_required": True,
+        }
+        incident_id = _digest(
+            PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_DIGEST_VERSION,
+            payload,
+        )
+        return PreviewShadowStopIncompleteIncident(
+            **payload,  # type: ignore[arg-type]
+            incident_id=incident_id,
+            integrity_sha256=incident_id,
+        )
+
+    def create_stop_incomplete_incident(
+        self,
+    ) -> PreviewShadowStopIncompleteIncident:
+        incident = self._stop_incomplete_incident
+        if incident is None or self.ledger.cleanup_completed is not False:
+            raise PreviewShadowRuntimeError("attempt_invalid")
+        return incident
 
 
 @dataclass(frozen=True)
@@ -922,13 +1079,14 @@ def _digest(version: str, payload: object) -> str:
 async def _await_until_deadline(
     awaitable: object,
     *,
-    deadline: float,
+    operation_deadline: float,
+    cancellation_deadline: float,
 ) -> tuple[bool, object | None]:
     if not hasattr(awaitable, "__await__"):
         raise PreviewShadowRuntimeError("invalid_config")
     task = asyncio.ensure_future(awaitable)  # type: ignore[arg-type]
     try:
-        remaining = deadline - asyncio.get_running_loop().time()
+        remaining = operation_deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             return False, None
         done, _ = await asyncio.wait({task}, timeout=remaining)
@@ -938,6 +1096,14 @@ async def _await_until_deadline(
     finally:
         if not task.done():
             task.cancel()
+            remaining = cancellation_deadline - asyncio.get_running_loop().time()
+            if remaining > 0:
+                await asyncio.wait({task}, timeout=remaining)
+        if task.done() and not task.cancelled():
+            try:
+                task.result()
+            except Exception:
+                pass
 
 
 def _whole_second_iso(value: datetime) -> str:

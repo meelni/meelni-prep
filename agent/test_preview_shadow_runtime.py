@@ -206,15 +206,23 @@ class SettledShadow:
         idle: bool = True,
         wait_forever: bool = False,
         shutdown_forever: bool = False,
+        shutdown_error: bool = False,
+        wait_gate: asyncio.Event | None = None,
     ) -> None:
         self.idle = idle
         self.wait_forever = wait_forever
         self.shutdown_forever = shutdown_forever
+        self.shutdown_error = shutdown_error
+        self.wait_gate = wait_gate
         self.settle_calls = 0
         self.wait_calls = 0
         self.shutdown_calls = 0
         self.forbidden_calls = 0
         self.wait_started = asyncio.Event()
+        self.wait_cancelled = asyncio.Event()
+        self.shutdown_started = asyncio.Event()
+        self.shutdown_cancelled = asyncio.Event()
+        self.adapter_close_observed = False
 
     def settle(self) -> None:
         self.settle_calls += 1
@@ -222,15 +230,29 @@ class SettledShadow:
     async def wait_idle(self, timeout_seconds: float) -> bool:
         self.wait_calls += 1
         self.wait_started.set()
-        if self.wait_forever:
-            await asyncio.Event().wait()
-        await asyncio.sleep(0)
-        return self.idle
+        try:
+            if self.wait_forever:
+                await asyncio.Event().wait()
+            if self.wait_gate is not None:
+                await self.wait_gate.wait()
+            await asyncio.sleep(0)
+            return self.idle
+        except asyncio.CancelledError:
+            self.wait_cancelled.set()
+            raise
 
     async def shutdown(self) -> None:
         self.shutdown_calls += 1
-        if self.shutdown_forever:
-            await asyncio.Event().wait()
+        self.shutdown_started.set()
+        try:
+            if self.shutdown_forever:
+                await asyncio.Event().wait()
+            if self.shutdown_error:
+                raise RuntimeError("content-must-not-escape")
+            self.adapter_close_observed = True
+        except asyncio.CancelledError:
+            self.shutdown_cancelled.set()
+            raise
 
     def say(self, _text: str) -> None:
         self.forbidden_calls += 1
@@ -502,6 +524,30 @@ class PreviewShadowAdapterTests(unittest.IsolatedAsyncioTestCase):
             await cancel_runtime.adapter.recommend(director_context(), limits=limits)
         self.assertEqual(cancel_runtime.ledger.receipts[-1].outcome, "cancelled")
 
+    async def test_adapter_preserves_closed_timeout_and_transport_outcomes(self):
+        limits = openai_responses_director_limits()
+        for transport_error, expected_code, expected_outcome in (
+            (asyncio.TimeoutError(), "deadline_exceeded", "timeout"),
+            (RuntimeError("provider detail must not escape"), "transport_unavailable", "failed"),
+        ):
+            with self.subTest(expected_code=expected_code):
+                created = runtime(
+                    transport=ProviderFreeFakeOpenAIResponsesTransport(
+                        [transport_error]
+                    )
+                )
+                assert created is not None
+                with self.assertRaises(DirectorError) as caught:
+                    await created.adapter.recommend(
+                        director_context(), limits=limits
+                    )
+                self.assertEqual(caught.exception.code, expected_code)
+                self.assertNotIn("provider detail", str(caught.exception))
+                self.assertEqual(
+                    created.ledger.receipts[-1].outcome,
+                    expected_outcome,
+                )
+
 
 class PreviewShadowLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_settle_is_bounded_idempotent_and_never_touches_customer_outputs(self):
@@ -532,24 +578,13 @@ class PreviewShadowLifecycleTests(unittest.IsolatedAsyncioTestCase):
             terminal_before,
         )
 
-        receipt = created.create_session_receipt(
-            outcome="settled",
-            settled_at=NOW + timedelta(minutes=1),
-        )
+        receipt = created.create_session_receipt()
         self.assertIs(
             receipt,
-            created.create_session_receipt(
-                outcome="settled",
-                settled_at=NOW + timedelta(minutes=1),
-            ),
+            created.create_session_receipt(),
         )
         with self.assertRaises(FrozenInstanceError):
             receipt.outcome = "stopped"  # type: ignore[misc]
-        with self.assertRaisesRegex(PreviewShadowRuntimeError, "attempt_invalid"):
-            created.create_session_receipt(
-                outcome="stopped",
-                settled_at=NOW + timedelta(minutes=1),
-            )
         wire = receipt.to_wire()
         self.assertEqual(set(wire) & {"text", "transcript", "feedback", "audio"}, set())
 
@@ -557,19 +592,20 @@ class PreviewShadowLifecycleTests(unittest.IsolatedAsyncioTestCase):
         timed = runtime()
         assert timed is not None
         timed.ledger.reserve_attempt()
+        timed_shadow = SettledShadow(wait_forever=True)
         started = asyncio.get_running_loop().time()
-        self.assertFalse(
-            await timed.settle_shadow(SettledShadow(wait_forever=True))
-        )
+        self.assertFalse(await timed.settle_shadow(timed_shadow))
         self.assertLess(asyncio.get_running_loop().time() - started, 0.6)
+        self.assertTrue(timed_shadow.wait_cancelled.is_set())
+        self.assertEqual(timed_shadow.shutdown_calls, 1)
+        self.assertTrue(timed_shadow.adapter_close_observed)
         self.assertFalse(timed.ledger.admission_open)
         self.assertEqual(timed.ledger.reconciled_nano_usd, 100_000_000)
         self.assertEqual(timed.ledger.receipts[-1].outcome, "ambiguous")
-        timeout_receipt = timed.create_session_receipt(
-            outcome="stopped",
-            settled_at=NOW + timedelta(minutes=1),
-        )
+        self.assertTrue(timed.ledger.cleanup_completed)
+        timeout_receipt = timed.create_session_receipt()
         self.assertEqual(timeout_receipt.outcome, "stopped")
+        self.assertTrue(timed._settle_task is not None and timed._settle_task.done())
 
         cancelled = runtime()
         assert cancelled is not None
@@ -580,11 +616,95 @@ class PreviewShadowLifecycleTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
+        self.assertTrue(shadow.wait_cancelled.is_set())
+        self.assertTrue(shadow.adapter_close_observed)
         self.assertFalse(cancelled.ledger.admission_open)
         self.assertTrue(cancelled.ledger.closed)
         self.assertEqual(cancelled.ledger.receipts[-1].outcome, "ambiguous")
         self.assertFalse(await cancelled.settle_shadow(shadow))
         self.assertEqual(shadow.settle_calls, 1)
+
+    async def test_concurrent_settle_callers_share_cleanup_result_and_receipt(self):
+        created = runtime()
+        assert created is not None
+        gate = asyncio.Event()
+        shadow = SettledShadow(wait_gate=gate)
+        first = asyncio.create_task(created.settle_shadow(shadow))
+        await shadow.wait_started.wait()
+        second = asyncio.create_task(created.settle_shadow(shadow))
+        await asyncio.sleep(0)
+        self.assertEqual(shadow.settle_calls, 1)
+        gate.set()
+        self.assertEqual(await asyncio.gather(first, second), [True, True])
+        self.assertEqual(shadow.shutdown_calls, 1)
+        self.assertTrue(shadow.adapter_close_observed)
+        first_receipt = created.create_session_receipt()
+        self.assertIs(first_receipt, created.create_session_receipt())
+        self.assertEqual(first_receipt.outcome, "settled")
+
+    async def test_wait_failure_still_closes_adapter_and_derives_stopped_receipt(self):
+        created = runtime()
+        assert created is not None
+        shadow = SettledShadow(idle=False)
+        self.assertFalse(await created.settle_shadow(shadow))
+        self.assertEqual((shadow.wait_calls, shadow.shutdown_calls), (1, 1))
+        self.assertTrue(shadow.adapter_close_observed)
+        self.assertTrue(created.ledger.closed)
+        self.assertEqual(created.create_session_receipt().outcome, "stopped")
+
+    async def test_unconfirmed_shutdown_never_freezes_a_terminal_receipt(self):
+        for shadow in (
+            SettledShadow(shutdown_error=True),
+            SettledShadow(shutdown_forever=True),
+        ):
+            with self.subTest(shutdown_error=shadow.shutdown_error):
+                created = runtime()
+                assert created is not None
+                started = asyncio.get_running_loop().time()
+                self.assertFalse(await created.settle_shadow(shadow))
+                self.assertLess(asyncio.get_running_loop().time() - started, 0.6)
+                self.assertFalse(created.ledger.admission_open)
+                self.assertFalse(created.ledger.closed)
+                self.assertFalse(created.ledger.cleanup_completed)
+                if shadow.shutdown_forever:
+                    self.assertTrue(shadow.shutdown_cancelled.is_set())
+                with self.assertRaisesRegex(
+                    PreviewShadowRuntimeError, "attempt_invalid"
+                ):
+                    created.create_session_receipt()
+                incident = created.create_stop_incomplete_incident()
+                self.assertIs(
+                    incident,
+                    created.create_stop_incomplete_incident(),
+                )
+                self.assertEqual(incident.reason, "cleanup_unconfirmed")
+                self.assertEqual(
+                    incident.retained_session_reservation_nano_usd,
+                    1_000_000_000,
+                )
+                self.assertTrue(incident.requires_allocation_stop)
+                self.assertTrue(incident.termination_acknowledgement_required)
+                self.assertEqual(
+                    set(incident.to_wire())
+                    & {"text", "transcript", "feedback", "audio", "identity"},
+                    set(),
+                )
+                self.assertFalse(await created.settle_shadow(shadow))
+
+    async def test_concurrent_incomplete_settle_callers_share_one_incident(self):
+        created = runtime()
+        assert created is not None
+        shadow = SettledShadow(shutdown_forever=True)
+        first = asyncio.create_task(created.settle_shadow(shadow))
+        await shadow.shutdown_started.wait()
+        second = asyncio.create_task(created.settle_shadow(shadow))
+        self.assertEqual(await asyncio.gather(first, second), [False, False])
+        self.assertEqual(shadow.shutdown_calls, 1)
+        first_incident = created.create_stop_incomplete_incident()
+        self.assertIs(
+            first_incident,
+            created.create_stop_incomplete_incident(),
+        )
 
 
 if __name__ == "__main__":

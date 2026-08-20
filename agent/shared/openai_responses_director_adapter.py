@@ -311,11 +311,13 @@ class OpenAIResponsesDirectorAdapter:
                 request,
                 timeout_seconds=limits.deadline_ms / 1_000,
             )
-            return _normalize_response(response, context=context, limits=limits)
         except asyncio.CancelledError:
             raise
+        except asyncio.TimeoutError:
+            raise DirectorError("deadline_exceeded") from None
         except Exception:
-            raise DirectorError("invalid_adapter_result") from None
+            raise DirectorError("transport_unavailable") from None
+        return _normalize_response(response, context=context, limits=limits)
 
     async def recover(
         self,

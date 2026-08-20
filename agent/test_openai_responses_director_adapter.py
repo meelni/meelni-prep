@@ -385,9 +385,19 @@ class AdapterBehaviorTests(unittest.IsolatedAsyncioTestCase):
             await failing.recommend(
                 context(), limits=openai_responses_director_limits()
             )
-        self.assertEqual(caught.exception.code, "invalid_adapter_result")
+        self.assertEqual(caught.exception.code, "transport_unavailable")
         self.assertNotIn(secret, str(caught.exception))
         self.assertIsNone(caught.exception.__cause__)
+
+        timed_out = OpenAIResponsesDirectorAdapter(
+            ProviderFreeFakeOpenAIResponsesTransport([asyncio.TimeoutError()])
+        )
+        with self.assertRaises(DirectorError) as timeout:
+            await timed_out.recommend(
+                context(), limits=openai_responses_director_limits()
+            )
+        self.assertEqual(timeout.exception.code, "deadline_exceeded")
+        self.assertIsNone(timeout.exception.__cause__)
 
     async def test_closed_json_and_usage_fail_closed(self):
         cases = []

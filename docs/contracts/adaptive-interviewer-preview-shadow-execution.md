@@ -16,6 +16,9 @@ Status: repository contract; no live authorization is checked in
   `adaptive-interviewer-preview-shadow-session-lease-digest.v1`
 - Session receipt/digest: `adaptive-interviewer-preview-shadow-session-receipt.v1` /
   `adaptive-interviewer-preview-shadow-session-receipt-digest.v1`
+- Stop-incomplete incident/digest:
+  `adaptive-interviewer-preview-shadow-stop-incomplete-incident.v1` /
+  `adaptive-interviewer-preview-shadow-stop-incomplete-incident-digest.v1`
 - Local spend ledger: `adaptive-interviewer-preview-shadow-local-spend-ledger.v1`
 - Evidence: `adaptive-interviewer-preview-shadow-evidence.v1`
 
@@ -149,15 +152,30 @@ terminal receipt, records larger spend without clipping, and stops the run on a
 cap or invariant breach. There is no database/network round trip for each
 spoken turn beyond the provider request itself.
 
+A terminal session receipt is valid only after local shutdown and adapter close
+are confirmed. If bounded cleanup cannot be confirmed, the runtime emits one
+separate immutable `stop-incomplete` incident rather than a terminal receipt.
+The incident binds run, lease, session ordinal, allocation revision, config,
+attempt digest/count, conservative spend, and the full retained session
+reservation. Central handling MUST keep the lease open, retain its full
+reservation, and stop new allocation until an authenticated durable worker or
+process termination acknowledgement is recorded. This repository ships no
+termination-ack transition, so its pure reference model cannot release that
+reservation or reopen allocation.
+
 ## Lifecycle and evidence
 
 The closed state sequence is `planned -> admitted -> attempt -> reserved ->
 reconciled -> stopped|settled`. Stop fences new sessions/attempts first.
-In-flight shadow tasks then settle/cancel and the adapter closes inside the
-250 ms bound. Timeout or close ambiguity retains reservations and emits a hard
-stop. Settle is idempotent, admission closes before cancellation, and exactly
-one immutable content-free terminal session receipt may be emitted. The shadow
-never requests a speech drain or voice-session close.
+In-flight shadow tasks then settle/cancel and the adapter closes inside one
+shared absolute 250 ms deadline. Simultaneous settle callers coalesce on one
+memoized operation. It closes admission first, reserves shutdown time, awaits
+cancellation within the same bound, and attempts shutdown/adapter close in a
+finally path after idle false, timeout, failure, or caller cancellation. A
+confirmed cleanup emits exactly one immutable content-free terminal session
+receipt. Unconfirmed cleanup emits exactly one content-free stop-incomplete
+incident and no terminal receipt. The shadow never requests a speech drain or
+voice-session close.
 
 Provider-free rehearsal MUST cover startup, success, failure, timeout,
 cancellation, stale authorization/config/version, replay, kill-switch all-off

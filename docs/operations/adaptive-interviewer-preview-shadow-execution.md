@@ -68,8 +68,19 @@ reads `os.environ`, `.env`, or a credential variable.
 ## Stop and rollback
 
 At any hard stop, reject new session and attempt admissions first. For an
-in-flight shadow, call its local settle/cancel/close boundary and require a
-terminal evidence state within 250 ms. Keep any ambiguous attempt reservation.
+in-flight shadow, call its coalesced local settle/cancel/close boundary under
+one absolute 250 ms deadline. Idle failure or timeout must not bypass the
+finally-path shutdown/adapter close, and cancellation must be awaited within
+the same bound. Keep any ambiguous attempt reservation.
+
+Emit a terminal session receipt only when shutdown and adapter close are
+confirmed. Otherwise emit the distinct content-free stop-incomplete incident,
+keep the entire session lease reservation open, and require the durable control
+plane to stop new allocation. Do not convert that incident into settlement or
+release budget until an authenticated worker/process termination
+acknowledgement exists. This repository deliberately ships neither that
+acknowledgement transition nor a durable control-plane adapter, so the pure
+reference model remains stopped permanently after such an incident.
 The canonical LiveKit runtime independently owns `AgentSession.aclose()`,
 transcript settlement, feedback handoff, and room lifecycle; shadow rollback
 does not call or wait on speech and does not use a non-production redeploy as a
@@ -86,6 +97,7 @@ Retain only the versioned content-free sequence:
 ```text
 planned -> admitted -> attempt -> reserved -> reconciled -> settled
                                                        \-> stopped
+                                                            \-> stop-incomplete incident
 ```
 
 Each record may contain the exact candidate/config/adapter versions, stage and
@@ -94,6 +106,8 @@ integer reservation/reconciliation totals, and closed outcome/reason. It must
 not contain identities, room/session names, transcript/prompt text, provider
 payloads/IDs, or raw exceptions. Local attempt receipts reconcile centrally
 outside the speech path; the runtime performs no per-turn ledger network I/O.
+A stop-incomplete incident is evidence that settlement was not confirmed and
+is never a terminal session receipt.
 
 The all-round/adverse-voice matrix is four rounds crossed with seven fixed
 voice conditions (28 cells). Provider-free simulation may prove harness

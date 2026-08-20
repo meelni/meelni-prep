@@ -103,6 +103,8 @@ class DirectorError(ValueError):
             "capacity",
             "closed",
             "deadline_elapsed",
+            "deadline_exceeded",
+            "transport_unavailable",
         }
     )
 

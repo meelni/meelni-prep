@@ -66,8 +66,16 @@ non-blocking and `AgentSession.aclose()` as awaitable. Non-production deployment
 redeploys immediately disconnect active sessions and does not drain. Therefore
 the Preview shadow never controls voice-session shutdown or drains speech. Its
 own settle path fences new work, cancels in-flight Director tasks, and closes
-the adapter within 250 ms; the canonical runtime independently owns any
+the adapter under one coalesced absolute 250 ms deadline; the canonical runtime independently owns any
 awaited `AgentSession.aclose()` and transcript settlement.
+
+Cleanup confirmation is a budget-release boundary. A successful terminal
+session receipt is forbidden unless shutdown and adapter close completed.
+Bounded cleanup ambiguity instead creates one domain-separated,
+content-free stop-incomplete incident; the authoritative ledger must retain the
+full session lease and stop new allocations until authenticated worker/process
+termination acknowledgement. This slice intentionally defines no
+acknowledgement transition, so the reference model cannot reopen itself.
 
 ## Consequences
 

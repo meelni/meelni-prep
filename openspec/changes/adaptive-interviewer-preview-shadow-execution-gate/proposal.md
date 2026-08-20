@@ -13,6 +13,8 @@ injected construction boundary, or provider-free lifecycle rehearsal.
 - Add the exact selected Preview-stage configuration and deterministic digest.
 - Add an injected, typed default-off/unavailable runtime construction seam plus
   conservative attempt reservation/reconciliation and sanitized evidence.
+- Coalesce bounded cleanup and separate confirmed terminal settlement from a
+  cleanup-unconfirmed incident that retains budget and stops allocation.
 - Rehearse startup, outcome, kill-switch, and bounded settle paths without a
   provider, room, deployment, environment, or customer data.
 

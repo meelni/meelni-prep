@@ -31510,6 +31510,46 @@ var ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_MAX_TTL_MS = 24 * 60 * 60 * 1e3;
 
 // packages/agent/src/interviewer-preview-shadow-control-plane.ts
 var MAX_SESSION_LEASE_TTL_MS = 60 * 60 * 1e3;
+var SESSION_RECEIPT_PAYLOAD_KEYS = [
+  "contract_version",
+  "run_id",
+  "lease_id",
+  "session_ordinal",
+  "allocation_ledger_revision",
+  "preview_shadow_configuration_sha256",
+  "outcome",
+  "attempt_count",
+  "reconciled_spend_nano_usd",
+  "outstanding_attempt_reservations_nano_usd",
+  "attempt_receipts_sha256",
+  "settled_at"
+];
+var SESSION_RECEIPT_KEYS = [
+  ...SESSION_RECEIPT_PAYLOAD_KEYS,
+  "receipt_id",
+  "integrity_sha256"
+];
+var STOP_INCOMPLETE_INCIDENT_PAYLOAD_KEYS = [
+  "contract_version",
+  "run_id",
+  "lease_id",
+  "session_ordinal",
+  "allocation_ledger_revision",
+  "preview_shadow_configuration_sha256",
+  "reason",
+  "attempt_count",
+  "reconciled_spend_nano_usd",
+  "retained_session_reservation_nano_usd",
+  "attempt_receipts_sha256",
+  "observed_at",
+  "requires_allocation_stop",
+  "termination_acknowledgement_required"
+];
+var STOP_INCOMPLETE_INCIDENT_KEYS = [
+  ...STOP_INCOMPLETE_INCIDENT_PAYLOAD_KEYS,
+  "incident_id",
+  "integrity_sha256"
+];
 
 // lib/analytics/types.ts
 var LEGACY_INTERVIEW_LAUNCH_EVENTS = {

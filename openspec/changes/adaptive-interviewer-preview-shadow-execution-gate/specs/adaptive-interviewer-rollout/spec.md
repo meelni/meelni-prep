@@ -60,3 +60,13 @@ transcript/feedback isolation. Its live 28-cell matrix SHALL remain unperformed.
 - **THEN** the shadow task settles/cancels and adapter closes within 250 ms
 - **AND** no speech drain, transcript mutation, feedback call, or customer output
   occurs
+
+#### Scenario: Bounded cleanup cannot be confirmed
+
+- **WHEN** idle wait, cancellation, shutdown, or adapter close cannot be
+  confirmed inside the shared absolute deadline
+- **THEN** simultaneous settle callers share one stopped result and one
+  content-free stop-incomplete incident
+- **AND** no terminal session receipt is emitted, the full session reservation
+  remains open, and central allocation remains stopped until an authenticated
+  worker/process termination acknowledgement

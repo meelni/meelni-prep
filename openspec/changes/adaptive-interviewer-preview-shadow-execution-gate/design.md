@@ -35,7 +35,13 @@ slice defines pure protocols but no live durable adapter.
 ## Lifecycle
 
 Provider-free rehearsal drives the actual Director shadow boundary with fake
-transports. Stop fences admission, settles/cancels tasks, and closes the adapter
-within 250 ms. It never calls speech, `AgentSession`, transcript, feedback,
-room, or customer-output APIs. The fixed 28-cell live matrix remains
-`unperformed`.
+transports. One memoized settlement operation fences admission, reserves
+shutdown time, awaits cancellation, and attempts adapter close in a finally
+path within one absolute 250 ms deadline. Confirmed cleanup creates one terminal
+session receipt. Unconfirmed cleanup creates one separate content-free
+stop-incomplete incident, retains the full central session reservation, and
+requires the durable control plane to stop allocation until authenticated
+worker/process termination acknowledgement. No acknowledgement transition or
+durable adapter ships in this slice. It never calls speech, `AgentSession`,
+transcript, feedback, room, or customer-output APIs. The fixed 28-cell live
+matrix remains `unperformed`.

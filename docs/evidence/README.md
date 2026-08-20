@@ -14,6 +14,12 @@ and session-lease digest bytes.
 provider-free focused/broad results and calibration graph attestation. Neither
 artifact supplies live authority.
 
+A Preview terminal session receipt proves confirmed local cleanup. A separate
+content-free stop-incomplete incident proves cleanup was not confirmed and
+requires the future durable control plane to retain the full session lease and
+stop allocation pending authenticated worker/process termination. It must not
+be interpreted as terminal settlement or budget-release evidence.
+
 This directory contains reproducible, machine-readable evidence generated from
 non-secret repository inputs. Reports must not contain customer data, provider
 credentials, recordings, or real transcripts.

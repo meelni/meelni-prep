@@ -244,7 +244,8 @@ const AUTHORIZATION_KEYS = /* @__PURE__ */ REQUEST_KEYS.filter(
 export function createAdaptiveInterviewerPreviewShadowOwnerRequest(input: {
   candidateGitSha: string;
 }): AdaptiveInterviewerPreviewShadowOwnerRequest {
-  if (!isGitSha(input.candidateGitSha)) invalidBinding();
+  const request = exactRecord(input, ["candidateGitSha"], invalidBinding);
+  if (!isGitSha(request.candidateGitSha)) invalidBinding();
   return deepFreeze({
     contract_version: ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_OWNER_REQUEST_VERSION,
     authorization_contract_version:
@@ -255,7 +256,7 @@ export function createAdaptiveInterviewerPreviewShadowOwnerRequest(input: {
     target_environment: "preview_staging",
     target_cohort: "shadow",
     exposure: "none",
-    candidate_git_sha: input.candidateGitSha,
+    candidate_git_sha: request.candidateGitSha,
     preview_shadow_configuration:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
     preview_shadow_configuration_sha256:
@@ -313,14 +314,23 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorization(
   expected: PreviewShadowAuthorizationBindings,
   now: Date
 ): AdaptiveInterviewerPreviewShadowAuthorization {
+  const currentTime = snapshotWholeSecondDate(now, invalidAuthorization);
+  const bindings = exactRecord(
+    expected,
+    [
+      "candidateGitSha",
+      "previewShadowConfigurationSha256",
+      "selectedCandidateConfigurationSha256",
+    ],
+    invalidBinding
+  );
   if (
-    !isGitSha(expected.candidateGitSha) ||
-    !isSha256(expected.previewShadowConfigurationSha256) ||
-    !isSha256(expected.selectedCandidateConfigurationSha256)
+    !isGitSha(bindings.candidateGitSha) ||
+    !isSha256(bindings.previewShadowConfigurationSha256) ||
+    !isSha256(bindings.selectedCandidateConfigurationSha256)
   ) {
     invalidBinding();
   }
-  if (!Number.isFinite(now.getTime())) invalidAuthorization();
   const record = exactRecord(value, AUTHORIZATION_KEYS, invalidAuthorization);
   if (
     record.contract_version !==
@@ -346,13 +356,13 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorization(
     invalidAuthorization();
   }
   if (
-    record.candidate_git_sha !== expected.candidateGitSha ||
+    record.candidate_git_sha !== bindings.candidateGitSha ||
     record.preview_shadow_configuration_sha256 !==
-      expected.previewShadowConfigurationSha256 ||
+      bindings.previewShadowConfigurationSha256 ||
     record.preview_shadow_configuration_sha256 !==
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256 ||
     record.selected_candidate_configuration_sha256 !==
-      expected.selectedCandidateConfigurationSha256 ||
+      bindings.selectedCandidateConfigurationSha256 ||
     record.selected_candidate_configuration_sha256 !==
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SELECTED_CANDIDATE_SHA256
   ) {
@@ -364,8 +374,8 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorization(
   const decidedAt = wholeSecondTimestamp(record.owner_decided_at);
   const expiresAt = wholeSecondTimestamp(record.authorization_expires_at);
   if (
-    decidedAt.getTime() > now.getTime() ||
-    expiresAt.getTime() <= now.getTime() ||
+    decidedAt.getTime() > currentTime.getTime() ||
+    expiresAt.getTime() <= currentTime.getTime() ||
     expiresAt.getTime() <= decidedAt.getTime() ||
     expiresAt.getTime() - decidedAt.getTime() >
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_MAX_TTL_MS ||
@@ -383,7 +393,7 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorization(
     target_environment: "preview_staging",
     target_cohort: "shadow",
     exposure: "none",
-    candidate_git_sha: expected.candidateGitSha,
+    candidate_git_sha: bindings.candidateGitSha,
     preview_shadow_configuration: config,
     preview_shadow_configuration_sha256:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
@@ -410,9 +420,18 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorization(
 export function adaptiveInterviewerPreviewShadowAuthorizationId(
   value: AdaptiveInterviewerPreviewShadowAuthorization
 ): string {
+  const record = exactRecord(value, AUTHORIZATION_KEYS, invalidAuthorization);
+  const canonical = Object.fromEntries(
+    AUTHORIZATION_KEYS.map((key) => [
+      key,
+      key === "preview_shadow_configuration"
+        ? parseAdaptiveInterviewerPreviewShadowRuntimeConfig(record[key])
+        : record[key],
+    ])
+  );
   return createHash("sha256")
     .update(
-      `${ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_AUTHORIZATION_DIGEST_VERSION}\0${JSON.stringify(value)}`
+      `${ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_AUTHORIZATION_DIGEST_VERSION}\0${JSON.stringify(canonical)}`
     )
     .digest("hex");
 }
@@ -432,10 +451,9 @@ function assertExactValue(
     return;
   }
   if (Array.isArray(expected)) {
-    if (!Array.isArray(value) || value.length !== expected.length) invalid();
-    if (Reflect.ownKeys(value).length !== expected.length + 1) invalid();
+    const snapshot = exactArray(value, expected.length, invalid);
     expected.forEach((item, index) =>
-      assertExactValue(value[index], item, invalid)
+      assertExactValue(snapshot[index], item, invalid)
     );
     return;
   }
@@ -475,7 +493,66 @@ function exactRecord(
   ) {
     invalid();
   }
-  return record;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of actual) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      !("value" in descriptor)
+    ) {
+      invalid();
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function exactArray(
+  value: unknown,
+  expectedLength: number,
+  invalid: () => never
+): unknown[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype
+  ) {
+    invalid();
+  }
+  const keys = Reflect.ownKeys(value);
+  const expectedKeys = [
+    ...Array.from({ length: expectedLength }, (_, index) => String(index)),
+    "length",
+  ];
+  if (
+    keys.some((key) => typeof key !== "string") ||
+    keys.length !== expectedKeys.length ||
+    !(keys as string[]).every((key) => expectedKeys.includes(key))
+  ) {
+    invalid();
+  }
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < expectedLength; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      !("value" in descriptor)
+    ) {
+      invalid();
+    }
+    snapshot.push(descriptor.value);
+  }
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    lengthDescriptor === undefined ||
+    lengthDescriptor.enumerable !== false ||
+    !("value" in lengthDescriptor) ||
+    lengthDescriptor.value !== expectedLength
+  ) {
+    invalid();
+  }
+  return snapshot;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -486,6 +563,28 @@ function deepFreeze<T>(value: T): T {
     Object.freeze(value);
   }
   return value;
+}
+
+function snapshotWholeSecondDate(
+  value: unknown,
+  invalid: () => never
+): Date {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Object.getPrototypeOf(value) !== Date.prototype ||
+    Reflect.ownKeys(value).length !== 0
+  ) {
+    invalid();
+  }
+  let timestamp: number;
+  try {
+    timestamp = Date.prototype.getTime.call(value);
+  } catch {
+    invalid();
+  }
+  if (!Number.isFinite(timestamp) || timestamp % 1_000 !== 0) invalid();
+  return new Date(timestamp);
 }
 
 function wholeSecondTimestamp(value: unknown): Date {

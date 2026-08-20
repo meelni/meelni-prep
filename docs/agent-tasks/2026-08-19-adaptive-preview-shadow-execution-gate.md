@@ -52,7 +52,7 @@ connector reauthentication; no live authorization
   protocols. A follow-up authenticated durable adapter owns one-time activation.
 - Python agent: own typed default-off/unavailable provider-neutral construction,
   attempt reservation/reconciliation, lifecycle settle/shutdown, and sanitized
-  evidence.
+  terminal/stop-incomplete evidence.
 - Application entrypoint: remain literal `adapter=None`, with every environment
   flag default off. The new factory is injectable only and performs no ambient
   credential lookup.
@@ -71,8 +71,8 @@ Completed provider-free evidence is recorded in
 `docs/evidence/adaptive-interviewer-preview-shadow-provider-free-validation.md`.
 The independent calibration graph delta is exactly 424 -> 426 inputs with only
 the two intended Preview-shadow TypeScript modules added, no removals, builtin-
-only externals, 1,488,348 bundle bytes, and SHA-256
-`d96158145f6a3cf89018247871ad2efff51bd2a27d3a6b2c8d596a6b9f9701e1`.
+only externals, 1,489,324 bundle bytes, and SHA-256
+`757bacee9bdd838bec91ca35dd9f219da9f62d5af5bafde05b5ca7fac94980d6`.
 
 ## Rollout
 
@@ -81,7 +81,9 @@ only externals, 1,488,348 bundle bytes, and SHA-256
 - Rollback: keep all flags off for new sessions, atomically deny admission,
   retain conservative reservations for ambiguous attempts, settle/cancel
   in-flight shadow within the configured bound, and leave speech/transcript/
-  feedback authority untouched.
+  feedback authority untouched. Cleanup-unconfirmed emits no terminal receipt;
+  its separate incident retains the full session lease and stops allocation
+  until a future authenticated termination acknowledgement.
 - Follow-up: create the Linear child after reauthentication, merge through
   exact-head review and terminal CI, then ask for one fresh exact-merged-SHA
   Preview-shadow authorization before any live operation.

@@ -56,6 +56,12 @@ adapter work has zero live effect and is normalized by the existing SAV-474
 runner. The adapter exposes no speech, controller, transcript, feedback,
 settlement, billing, account, or tool authority.
 
+Across the adapter seam, request deadline, transport/service failure, and
+returned-response normalization failure remain distinct content-free codes:
+`deadline_exceeded`, `transport_unavailable`, and `invalid_adapter_result`.
+Cancellation propagates unchanged. Never attach a raw provider exception,
+request ID, response body, transcript, or endpoint detail to those codes.
+
 Do not interpret a normalized successful-response cost as a provider spend
 ledger. Provider execution remains prohibited until an authorized attempt-level
 ledger accounts for failures, timeouts, interruptions, and rejected responses.
