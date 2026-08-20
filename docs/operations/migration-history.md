@@ -5,7 +5,7 @@
 <!-- migration-journal:start -->
 
 | Index | Journal tag                                       |
-| ----: | ------------------------------------------------- |
+| ----: | --------------------------------------------------- |
 |     0 | `0000_many_nocturne`                              |
 |     1 | `0001_panoramic_otto_octavius`                    |
 |     2 | `0002_relaunch_reconciliation`                    |
@@ -49,10 +49,11 @@
 |    40 | `0040_sav_448_managed_service_role_grants`        |
 |    41 | `0041_sav_453_total_required_scorecards`          |
 |    42 | `0042_sav_470_question_ranking_indexes`           |
+|    43 | `0043_sav_480_durable_preview_shadow_control_plane` |
 
 <!-- migration-journal:end -->
 
-This forty-three-entry inventory is generated from the same ordered contract as
+This forty-four-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -510,3 +511,15 @@ and stable session ID. These indexes serve the bounded pre-room ranking reads;
 the migration changes no rows, selection behavior, RLS policy, provider state,
 or runtime permission. Generating it does not authorize applying it to Preview
 or Production.
+
+## Durable Preview-shadow control plane
+
+Migration `0043_sav_480_durable_preview_shadow_control_plane` adds six
+server-owned FORCE-RLS tables for signed owner-decision activation, atomic
+cohort revision ownership, pre-room execution leases, conservative global
+nanoUSD accounting, content-free receipts and hard stops, and authenticated
+termination recovery. The migration revokes all managed defaults before
+granting the service role only the read/write surface needed by the durable
+store. It creates no RLS policy, security-definer function, provider adapter,
+room/session workflow, or application/runtime registration. Generating it does
+not authorize applying it to Preview or Production.
