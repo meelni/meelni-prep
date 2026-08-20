@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Prepare A Fail-Closed Preview-Shadow Execution Gate](2026-08-19-prepare-preview-shadow-execution-gate.md): Require a fresh exact-merged-SHA/config one-time authorization, conservative attempt reservations, injected default-none construction, and bounded content-free lifecycle evidence before any Preview-shadow provider work.
 - [Prepare The OpenAI Responses Director Adapter Candidate](2026-08-19-prepare-openai-responses-director-adapter-candidate.md): Implement the exact owner-selected stateless OpenAI Responses adapter behind the existing Director seam, with strict no-tools/no-storage normalization and conservative cost accounting, while leaving application wiring absent and all live authority pending.
 - [Stage Adaptive Interviewer Rollout Under Owner Gates](2026-08-19-stage-adaptive-interviewer-rollout-under-owner-gates.md): Keep the system held at synthetic, separate the pending template from a closed value-bearing candidate-preparation authorization, require exact-SHA/config owner gates, distinguish active-session influence revocation from new-session rollback, and authorize bounded Preview shadow separately.
 - [Gate Director Recommendations Through The Controller](2026-08-19-gate-director-recommendations-through-controller.md): Inspect only already-ready session-local advice at the serialized tool boundary, re-read the kill switch per admission, and preserve deterministic controller, delivery, and feedback authority.

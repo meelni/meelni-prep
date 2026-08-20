@@ -83,8 +83,12 @@ Before producing `DirectorAdapterResult`, the adapter requires:
 
 Unknown, missing, duplicate, malformed, unsafe, mismatched, incomplete, or
 over-limit values fail closed with `DirectorError("invalid_adapter_result")`.
-Provider errors do not expose response bodies or error strings through the
-Director result or telemetry. `asyncio.CancelledError` propagates unchanged.
+An adapter request deadline raises the content-free
+`DirectorError("deadline_exceeded")`; a transport/service exception raises
+`DirectorError("transport_unavailable")`; only a returned response that fails
+normalization raises `invalid_adapter_result`. Provider errors do not expose
+response bodies or error strings through the Director result or telemetry.
+`asyncio.CancelledError` propagates unchanged.
 The SDK `Response` object has no `store` echo; no-storage is therefore proved by
 the exact captured request rather than inferred from a response field.
 

@@ -47,6 +47,15 @@ provider-neutral result.
 - **AND** no provider payload enters controller, transcript, feedback, customer
   output, or telemetry
 
+#### Scenario: Request deadline and transport service failure differ
+
+- **WHEN** the injected transport reaches its request deadline
+- **THEN** the adapter raises content-free `deadline_exceeded`
+- **WHEN** the transport fails before returning a response
+- **THEN** the adapter raises content-free `transport_unavailable`
+- **AND** only a returned malformed response uses `invalid_adapter_result`,
+  while cancellation propagates unchanged
+
 ### Requirement: Candidate presence grants no live authority
 
 The application SHALL continue to inject `adapter=None` and keep every adaptive

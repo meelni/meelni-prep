@@ -7,6 +7,7 @@ import hashlib
 import json
 import sys
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 
 try:
@@ -385,9 +386,19 @@ class AdapterBehaviorTests(unittest.IsolatedAsyncioTestCase):
             await failing.recommend(
                 context(), limits=openai_responses_director_limits()
             )
-        self.assertEqual(caught.exception.code, "invalid_adapter_result")
+        self.assertEqual(caught.exception.code, "transport_unavailable")
         self.assertNotIn(secret, str(caught.exception))
         self.assertIsNone(caught.exception.__cause__)
+
+        timed_out = OpenAIResponsesDirectorAdapter(
+            ProviderFreeFakeOpenAIResponsesTransport([asyncio.TimeoutError()])
+        )
+        with self.assertRaises(DirectorError) as timeout:
+            await timed_out.recommend(
+                context(), limits=openai_responses_director_limits()
+            )
+        self.assertEqual(timeout.exception.code, "deadline_exceeded")
+        self.assertIsNone(timeout.exception.__cause__)
 
     async def test_closed_json_and_usage_fail_closed(self):
         cases = []
@@ -618,6 +629,69 @@ class OfficialSDKBoundaryTests(unittest.IsolatedAsyncioTestCase):
             await transport.create({}, timeout_seconds=0.75)
         self.assertEqual(client.responses.kwargs, [])
 
+    async def test_official_invalid_response_stays_content_safe_and_typed(self):
+        adapter = OpenAIResponsesDirectorAdapter(
+            OfficialOpenAIResponsesTransport(FakeSDKClient(object()))
+        )
+        with self.assertRaises(DirectorError) as caught:
+            await adapter.recommend(
+                context(), limits=openai_responses_director_limits()
+            )
+        self.assertEqual(caught.exception.code, "invalid_adapter_result")
+
+    async def test_hostile_mapping_normalization_cannot_leak_raw_errors(self):
+        class HostileMapping(Mapping):
+            def __iter__(self):
+                return iter(
+                    {
+                        "object",
+                        "status",
+                        "error",
+                        "incomplete_details",
+                        "model",
+                        "service_tier",
+                        "background",
+                        "previous_response_id",
+                        "parallel_tool_calls",
+                        "tool_choice",
+                        "tools",
+                        "output",
+                        "usage",
+                    }
+                )
+
+            def __len__(self):
+                return 14
+
+            def __getitem__(self, key):
+                return None
+
+            def get(self, key, default=None):
+                del key, default
+                raise RuntimeError("provider-secret-body")
+
+        class HostileTransport:
+            async def prewarm(self):
+                return None
+
+            async def create(self, request, *, timeout_seconds):
+                del request, timeout_seconds
+                return HostileMapping()
+
+            async def recover(self):
+                return None
+
+            async def close(self):
+                return None
+
+        adapter = OpenAIResponsesDirectorAdapter(HostileTransport())
+        with self.assertRaises(DirectorError) as caught:
+            await adapter.recommend(
+                context(), limits=openai_responses_director_limits()
+            )
+        self.assertEqual(caught.exception.code, "invalid_adapter_result")
+        self.assertNotIn("provider-secret", str(caught.exception))
+
 
 @unittest.skipIf(openai is None or httpx is None, "pinned agent SDK unavailable")
 class OfficialSDKSerializationTests(unittest.IsolatedAsyncioTestCase):
@@ -685,6 +759,65 @@ class OfficialSDKSerializationTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     await client.close()
         self.assertEqual(attempted_urls, [])
+
+    async def test_pinned_sdk_timeout_maps_to_deadline_exceeded(self):
+        def handler(request):
+            raise httpx.ReadTimeout("provider-secret-timeout", request=request)
+
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = openai.AsyncOpenAI(
+            api_key="test",
+            max_retries=0,
+            http_client=http_client,
+        )
+        adapter = OpenAIResponsesDirectorAdapter(
+            OfficialOpenAIResponsesTransport(client)
+        )
+        try:
+            with self.assertRaises(DirectorError) as caught:
+                await adapter.recommend(
+                    context(), limits=openai_responses_director_limits()
+                )
+            self.assertEqual(caught.exception.code, "deadline_exceeded")
+            self.assertNotIn("provider-secret", str(caught.exception))
+        finally:
+            await adapter.close(affinity_key="affinity:" + "a" * 64)
+
+    async def test_pinned_sdk_connection_and_status_failures_stay_transport_unavailable(self):
+        def connection_failure(request):
+            raise httpx.ConnectError("provider-secret-connection", request=request)
+
+        def status_failure(request):
+            return httpx.Response(
+                503,
+                request=request,
+                json={"error": {"message": "provider-secret-status"}},
+            )
+
+        for handler in (connection_failure, status_failure):
+            with self.subTest(handler=handler.__name__):
+                http_client = httpx.AsyncClient(
+                    transport=httpx.MockTransport(handler)
+                )
+                client = openai.AsyncOpenAI(
+                    api_key="test",
+                    max_retries=0,
+                    http_client=http_client,
+                )
+                adapter = OpenAIResponsesDirectorAdapter(
+                    OfficialOpenAIResponsesTransport(client)
+                )
+                try:
+                    with self.assertRaises(DirectorError) as caught:
+                        await adapter.recommend(
+                            context(), limits=openai_responses_director_limits()
+                        )
+                    self.assertEqual(
+                        caught.exception.code, "transport_unavailable"
+                    )
+                    self.assertNotIn("provider-secret", str(caught.exception))
+                finally:
+                    await adapter.close(affinity_key="affinity:" + "a" * 64)
 
     async def test_pinned_sdk_accepts_only_normalized_direct_equivalents(self):
         for base_url in (
