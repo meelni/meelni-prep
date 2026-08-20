@@ -14,8 +14,13 @@ provider-free validation.
 `OpenAIResponsesDirectorAdapter` implements the existing `DirectorAdapter` and
 depends only on an injected `OpenAIResponsesTransport`. The official transport
 accepts a preconstructed official SDK client, requires `max_retries=0`, and
-does not read environment values. The fake transport captures requests and
-returns scripted mappings without network access.
+requires the SDK-normalized `base_url` to equal the selected direct endpoint
+`https://api.openai.com/v1/` at construction and before each create. The SDK may
+canonicalize equivalent direct spellings first; any normalized proxy, regional,
+userinfo, non-default port, query, fragment, lookalike, or path-extended value
+is rejected. The transport does not read environment values. The fake
+transport captures requests and returns scripted mappings without network
+access.
 
 The SAV-474 runner remains the hard remaining-session deadline, lifecycle,
 affinity, freshness, recommendation, and telemetry owner. The per-request SDK

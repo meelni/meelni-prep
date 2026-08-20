@@ -39,11 +39,13 @@ npm run build
 ```
 
 The request-capture tests must prove exact model/SDK/request pins,
+the exact SDK-normalized direct base URL `https://api.openai.com/v1/`, rejection
+of custom/proxy/regional/lookalike endpoint variants before network activity,
 zero generic-runner and SDK retries, strict schema, no tools, no storage, no
 continuation, no identity fields, a request timeout no greater than the
-configured deadline, earlier outer-runner cancellation when required,
-untrusted transcript serialization, and no network activity. Because the SDK
-response does not echo `store`, response tests cover
+configured deadline, earlier outer-runner cancellation when required, and
+untrusted transcript serialization. Because the SDK response does not echo
+`store`, response tests cover
 status/model/service/background/continuation/tool, schema, usage, reasoning,
 output, and cost drift plus cancellation/recovery/close.
 

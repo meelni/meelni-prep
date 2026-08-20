@@ -27,9 +27,12 @@ and selected-candidate digest
 
 Implement one stateless OpenAI Responses adapter behind the existing Python
 `DirectorAdapter`. Use the directly pinned official Python SDK only through an
-injected transport whose client has `max_retries=0`; do not add a credential or
-environment factory. The application continues to construct the Director with
-`adapter=None`.
+injected transport whose client has `max_retries=0` and whose SDK-normalized
+`base_url` is exactly `https://api.openai.com/v1/`; do not add a credential or
+environment factory. Reject any SDK-normalized value that retains proxy,
+regional, userinfo, non-default port, query, fragment, lookalike, or
+path-extended routing at construction and again before create. The application
+continues to construct the Director with `adapter=None`.
 
 Every request uses the exact model snapshot, `store:false`, `background:false`,
 non-streaming mode, default service tier, `reasoning.effort:none`, strict JSON

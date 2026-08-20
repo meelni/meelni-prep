@@ -7,7 +7,15 @@
 The system SHALL implement the exact owner-selected OpenAI Responses candidate
 behind the existing `DirectorAdapter`. It SHALL use an injected official SDK
 transport with both outer-runner and provider retries disabled and SHALL NOT
-read credentials or environment configuration.
+read credentials or environment configuration. The transport SHALL accept only
+the SDK-normalized direct base URL `https://api.openai.com/v1/`.
+
+#### Scenario: A custom or ambiguous provider endpoint is injected
+
+- **WHEN** an SDK client's normalized base URL retains a proxy, regional,
+  userinfo, non-default port, query, fragment, lookalike, or path extension
+- **THEN** the transport rejects configuration before a request
+- **AND** provider, pricing, and data-control attribution cannot silently drift
 
 #### Scenario: A candidate request is built
 
