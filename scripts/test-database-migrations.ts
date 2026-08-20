@@ -53,6 +53,7 @@ import {
   MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
   TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
   QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT,
+  DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -338,7 +339,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -542,9 +546,10 @@ async function run() {
         MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
         TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
         QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT,
+        DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 42; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 43; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -564,7 +569,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 43; found 22/
+            /Strict launch preflight requires the exact latest migration count 44; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -890,7 +895,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 43);
+      assert.equal(await migrationCount(sql), 44);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -954,7 +959,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
+      DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1199,7 +1204,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 43; found 25/
+      /exact latest migration count 44; found 25/
     );
 
     const genericRows = await sql<
@@ -1298,18 +1303,21 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 43);
+    assert.equal(await migrationCount(sql), 44);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "question_ranking_indexes");
+    assert.equal(
+      finalPreflight.startingContract,
+      "durable_preview_shadow_control_plane"
+    );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 42);
-    assert.equal(finalPreflight.rls_tables, 42);
+    assert.equal(finalPreflight.tables, 48);
+    assert.equal(finalPreflight.rls_tables, 48);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
+      DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6945,7 +6953,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "question_ranking_indexes"
+      "durable_preview_shadow_control_plane"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -9247,7 +9255,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 43);
+  assert.equal(await migrationCount(sql), 44);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -9255,10 +9263,20 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 42);
+  assert.equal(tables.length, 48);
   assert.ok(
     tables.some(({ table_name }) => table_name === "shadow_feedback_artifact")
   );
+  for (const tableName of [
+    "adaptive_interviewer_preview_shadow_run",
+    "adaptive_interviewer_preview_shadow_session_lease",
+    "adaptive_interviewer_preview_shadow_session_receipt",
+    "adaptive_interviewer_preview_shadow_stop_incomplete_incident",
+    "adaptive_interviewer_preview_shadow_cohort_stop_event",
+    "adaptive_interviewer_preview_shadow_termination_acknowledgement",
+  ]) {
+    assert.ok(tables.some(({ table_name }) => table_name === tableName));
+  }
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -9843,8 +9861,28 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 42);
+  assert.equal(rls.length, 48);
   assert.ok(rls.every((table) => table.enabled));
+
+  const previewShadowRls = await sql<
+    { relname: string; enabled: boolean; forced: boolean }[]
+  >`
+    SELECT relname, relrowsecurity AS enabled, relforcerowsecurity AS forced
+    FROM pg_class
+    JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+    WHERE pg_namespace.nspname = 'public'
+      AND relname IN (
+        'adaptive_interviewer_preview_shadow_run',
+        'adaptive_interviewer_preview_shadow_session_lease',
+        'adaptive_interviewer_preview_shadow_session_receipt',
+        'adaptive_interviewer_preview_shadow_stop_incomplete_incident',
+        'adaptive_interviewer_preview_shadow_cohort_stop_event',
+        'adaptive_interviewer_preview_shadow_termination_acknowledgement'
+      )
+    ORDER BY relname
+  `;
+  assert.equal(previewShadowRls.length, 6);
+  assert.ok(previewShadowRls.every(({ enabled, forced }) => enabled && forced));
 
   const contactRls = await sql<
     { relname: string; enabled: boolean; forced: boolean }[]
