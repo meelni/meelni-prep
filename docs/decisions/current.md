@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Wire Preview Shadow Through Explicit Durable Admission](2026-08-20-wire-preview-shadow-rehearsal-through-explicit-admission.md): Allocate before room construction, carry the lease only in private agent-job metadata, and require injected durable admission and transport dependencies while ordinary Production remains unwired.
 - [Make Preview-Shadow Authority Durable Before Any Room Construction](2026-08-20-durable-preview-shadow-control-plane.md): Authenticate the exact owner decision, consume activation once in PostgreSQL, allocate leases before LiveKit construction, and reconcile capability-authenticated evidence durably while application/runtime wiring remains absent.
 - [Prepare A Fail-Closed Preview-Shadow Execution Gate](2026-08-19-prepare-preview-shadow-execution-gate.md): Require a fresh exact-merged-SHA/config one-time authorization, conservative attempt reservations, injected default-none construction, and bounded content-free lifecycle evidence before any Preview-shadow provider work.
 - [Prepare The OpenAI Responses Director Adapter Candidate](2026-08-19-prepare-openai-responses-director-adapter-candidate.md): Implement the exact owner-selected stateless OpenAI Responses adapter behind the existing Director seam, with strict no-tools/no-storage normalization and conservative cost accounting, while leaving application wiring absent and all live authority pending.
