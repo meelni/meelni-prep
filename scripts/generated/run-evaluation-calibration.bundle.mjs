@@ -31505,6 +31505,12 @@ var ADAPTIVE_INTERVIEWER_PREPARATION_DENIED_AUTHORITY = Object.freeze([
 ]);
 var ADAPTIVE_INTERVIEWER_PREPARATION_AUTHORIZATION_MAX_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
 
+// packages/agent/src/interviewer-preview-shadow.ts
+var ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_MAX_TTL_MS = 24 * 60 * 60 * 1e3;
+
+// packages/agent/src/interviewer-preview-shadow-control-plane.ts
+var MAX_SESSION_LEASE_TTL_MS = 60 * 60 * 1e3;
+
 // lib/analytics/types.ts
 var LEGACY_INTERVIEW_LAUNCH_EVENTS = {
   new_interview_launcher_viewed: "new_rep_launcher_viewed",

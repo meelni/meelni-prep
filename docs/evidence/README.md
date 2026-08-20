@@ -1,5 +1,19 @@
 # Engineering Evidence
 
+`adaptive-interviewer-preview-shadow-authorization-request.pending.json` is a
+non-executable worksheet for the next human gate. It pins the complete
+Preview-stage configuration digest and prior owner direction, but deliberately
+contains no candidate merge SHA, decision reference/time/expiry, nonce, or
+execution authority. Generate a fresh exact packet only after merge; do not
+edit this pending file into an authorization.
+
+`adaptive-interviewer-preview-shadow-cross-runtime-digests.json` is the
+content-free TypeScript/Python golden fixture for exact config, authorization,
+and session-lease digest bytes.
+`adaptive-interviewer-preview-shadow-provider-free-validation.md` records the
+provider-free focused/broad results and calibration graph attestation. Neither
+artifact supplies live authority.
+
 This directory contains reproducible, machine-readable evidence generated from
 non-secret repository inputs. Reports must not contain customer data, provider
 credentials, recordings, or real transcripts.

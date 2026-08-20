@@ -3,6 +3,8 @@ export * from "./interview-brief-compiler";
 export * from "./interviewer-observability";
 export * from "./interviewer-benchmark";
 export * from "./interviewer-preparation-authorization";
+export * from "./interviewer-preview-shadow";
+export * from "./interviewer-preview-shadow-control-plane";
 export * from "./interviewer-rollout";
 export * from "./room-metadata";
 export * from "./runtime-events";

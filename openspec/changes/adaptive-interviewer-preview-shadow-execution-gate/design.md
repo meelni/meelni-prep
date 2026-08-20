@@ -1,0 +1,41 @@
+# Design
+
+## Authorization and configuration
+
+`@meelni/agent` owns strict JSON parsing, exact object schemas, canonical
+configuration and authorization digests, pending request generation, and pure
+reference protocols for one durable control-plane activation plus atomic
+cohort-ledger session leases. They do not provide live cross-process replay or
+cap enforcement; a follow-up authenticated durable adapter must do that.
+Self-digests provide integrity, not authenticity. Preview authorization is
+domain-separated from preparation and Production actions and cannot authorize
+influence or a later stage. Workers do not consume stage authorization.
+
+## Runtime seam
+
+Python owns a provider-neutral construction seam. It receives only an exact
+config binding, a valid unexpired session lease, an injected trusted durable
+admission verifier, and an injected transport factory. Default-off and missing
+durable admission return typed `disabled|unavailable` results with no adapter.
+It never reads credentials or environment state. The app remains unwired with
+literal `adapter=None`; provider-specific behavior stays behind the existing
+Director adapter seam.
+
+## Spend and evidence
+
+The control plane allocates a derived 1,000,000,000 nano-USD session lease.
+Within it, at most ten attempts each reserve 100,000,000 nano-USD before I/O.
+Normalized successful usage retains the conservative attempt reservation;
+failure/timeout/cancel/ambiguity also retains it; larger observed billing
+reconciles upward and stops. Global
+overall/stop caps include outstanding session leases only in the authoritative
+cohort ledger. Sanitized receipts reconcile centrally outside speech. This
+slice defines pure protocols but no live durable adapter.
+
+## Lifecycle
+
+Provider-free rehearsal drives the actual Director shadow boundary with fake
+transports. Stop fences admission, settles/cancels tasks, and closes the adapter
+within 250 ms. It never calls speech, `AgentSession`, transcript, feedback,
+room, or customer-output APIs. The fixed 28-cell live matrix remains
+`unperformed`.
