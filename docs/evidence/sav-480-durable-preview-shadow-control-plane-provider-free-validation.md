@@ -57,7 +57,9 @@ in rows.
   Artifact, authorization, and key-registry inputs are snapshotted and bounded
   before date parsing or Ed25519 work; oversized signatures, timestamps, tokens,
   arrays, objects, nested runtime configuration, and JSON fail closed before
-  cryptographic verification.
+  cryptographic verification. Each later-authority field is rejected unless it
+  is the literal `false` before either the verifier or public signing helper can
+  canonicalize it; hostile `toJSON` values and cycles are never invoked.
 
 ## Broad provider-free matrix
 

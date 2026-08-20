@@ -34,7 +34,10 @@ on bounded descriptor snapshots before date, base64, or cryptographic work. It
 rejects duplicate JSON keys, inputs above 64 KiB UTF-8, nesting over 32,
 container-count or per-field bounds, unexpected keys/descriptors/prototypes,
 invalid base64/signature/key-at-decision windows, future decisions, or any
-independent binding mismatch. Signature verification covers the ASCII
+independent binding mismatch. All five later-authority fields must be the
+literal `false` before canonical serialization, including through the exported
+signing-message helper; caller objects, cycles, or `toJSON` hooks cannot enter
+the signed bytes. Signature verification covers the ASCII
 artifact contract, one NUL byte, then canonical payload JSON. No private key,
 authorization file, registry file, environment value, or credential is read by
 the authenticator. Its module-branded result proves authenticity and bindings;

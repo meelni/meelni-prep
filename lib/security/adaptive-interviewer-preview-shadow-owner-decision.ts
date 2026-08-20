@@ -172,9 +172,7 @@ export function parsePreviewShadowOwnerDecisionArtifactJson(
 export function previewShadowOwnerDecisionSignatureMessage(
   payload: PreviewShadowOwnerDecisionPayload
 ): Buffer {
-  const canonical = canonicalPayload(
-    exactRecord(payload, PAYLOAD_KEYS, invalidArtifact)
-  );
+  const canonical = parseOwnerDecisionPayload(payload);
   return Buffer.from(
     `${PREVIEW_SHADOW_OWNER_DECISION_CONTRACT}\0${canonicalPayloadJson(canonical)}`,
     "utf8"
@@ -388,16 +386,16 @@ function parseActivationContext(
 
 function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
   const record = exactRecord(value, ARTIFACT_KEYS, invalidArtifact);
-  const payload = exactRecord(record.payload, PAYLOAD_KEYS, invalidArtifact);
+  const payload = parseOwnerDecisionPayload(record.payload);
   const signature = exactRecord(
     record.signature,
     SIGNATURE_KEYS,
     invalidArtifact
   );
-  assertArtifactPrimitiveBounds(record, payload, signature);
+  assertArtifactPrimitiveBounds(record, signature);
   const boundedArtifact: PreviewShadowOwnerDecisionArtifact = {
     contract: PREVIEW_SHADOW_OWNER_DECISION_CONTRACT,
-    payload: canonicalPayload(payload),
+    payload,
     signature: {
       algorithm: "ed25519",
       keyId: signature.keyId as string,
@@ -412,32 +410,6 @@ function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
   }
   if (
     record.contract !== PREVIEW_SHADOW_OWNER_DECISION_CONTRACT ||
-    typeof payload.authorization_id !== "string" ||
-    !SHA256.test(payload.authorization_id) ||
-    typeof payload.authorization_nonce !== "string" ||
-    !SHA256.test(payload.authorization_nonce) ||
-    typeof payload.candidate_git_sha !== "string" ||
-    !GIT_SHA.test(payload.candidate_git_sha) ||
-    typeof payload.preview_shadow_configuration_sha256 !== "string" ||
-    !SHA256.test(payload.preview_shadow_configuration_sha256) ||
-    typeof payload.selected_candidate_configuration_sha256 !== "string" ||
-    !SHA256.test(payload.selected_candidate_configuration_sha256) ||
-    payload.owner_id !== PREVIEW_SHADOW_OWNER_ID ||
-    payload.owner_role !== PREVIEW_SHADOW_OWNER_ROLE ||
-    payload.owner_decision !== PREVIEW_SHADOW_OWNER_APPROVAL ||
-    typeof payload.owner_decision_reference !== "string" ||
-    !DECISION_REFERENCE.test(payload.owner_decision_reference) ||
-    typeof payload.owner_direction_reference !== "string" ||
-    !DECISION_REFERENCE.test(payload.owner_direction_reference) ||
-    payload.target_stage !== "preview_shadow" ||
-    payload.target_environment !== "preview_staging" ||
-    payload.target_cohort !== "shadow" ||
-    payload.exposure !== "none" ||
-    payload.preview_influence_authorized !== false ||
-    payload.later_stage_authorized !== false ||
-    payload.production_authorized !== false ||
-    payload.default_on_authorized !== false ||
-    payload.launch_go_no_go_authorized !== false ||
     typeof payload.signing_key_id !== "string" ||
     !KEY_ID.test(payload.signing_key_id) ||
     signature.algorithm !== "ed25519" ||
@@ -447,14 +419,8 @@ function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
   ) {
     invalidArtifact();
   }
-  const decidedAt = parseWholeSecond(payload.owner_decided_at, invalidArtifact);
-  const expiresAt = parseWholeSecond(
-    payload.authorization_expires_at,
-    invalidArtifact
-  );
   const signatureBytes = Buffer.from(signature.value, "base64");
   if (
-    expiresAt.getTime() <= decidedAt.getTime() ||
     signatureBytes.length !== 64 ||
     signatureBytes.toString("base64") !== signature.value
   ) {
@@ -473,11 +439,60 @@ function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
 
 function assertArtifactPrimitiveBounds(
   record: Record<string, unknown>,
-  payload: Record<string, unknown>,
   signature: Record<string, unknown>
 ): void {
   if (
     record.contract !== PREVIEW_SHADOW_OWNER_DECISION_CONTRACT ||
+    typeof signature.algorithm !== "string" ||
+    signature.algorithm.length > 16 ||
+    signature.algorithm !== "ed25519" ||
+    typeof signature.keyId !== "string" ||
+    signature.keyId.length < 1 ||
+    signature.keyId.length > 80 ||
+    typeof signature.value !== "string" ||
+    signature.value.length !== ED25519_SIGNATURE_BASE64_LENGTH
+  ) {
+    invalidArtifact();
+  }
+}
+
+function parseOwnerDecisionPayload(
+  value: unknown
+): PreviewShadowOwnerDecisionPayload {
+  const payload = exactRecord(value, PAYLOAD_KEYS, invalidArtifact);
+  assertOwnerDecisionPayloadPrimitiveBounds(payload);
+  if (
+    !SHA256.test(payload.authorization_id as string) ||
+    !SHA256.test(payload.authorization_nonce as string) ||
+    !GIT_SHA.test(payload.candidate_git_sha as string) ||
+    !SHA256.test(payload.preview_shadow_configuration_sha256 as string) ||
+    !SHA256.test(payload.selected_candidate_configuration_sha256 as string) ||
+    payload.owner_id !== PREVIEW_SHADOW_OWNER_ID ||
+    payload.owner_role !== PREVIEW_SHADOW_OWNER_ROLE ||
+    payload.owner_decision !== PREVIEW_SHADOW_OWNER_APPROVAL ||
+    !DECISION_REFERENCE.test(payload.owner_decision_reference as string) ||
+    !DECISION_REFERENCE.test(payload.owner_direction_reference as string) ||
+    payload.target_stage !== "preview_shadow" ||
+    payload.target_environment !== "preview_staging" ||
+    payload.target_cohort !== "shadow" ||
+    payload.exposure !== "none" ||
+    !KEY_ID.test(payload.signing_key_id as string)
+  ) {
+    invalidArtifact();
+  }
+  const decidedAt = parseWholeSecond(payload.owner_decided_at, invalidArtifact);
+  const expiresAt = parseWholeSecond(
+    payload.authorization_expires_at,
+    invalidArtifact
+  );
+  if (expiresAt.getTime() <= decidedAt.getTime()) invalidArtifact();
+  return canonicalPayload(payload);
+}
+
+function assertOwnerDecisionPayloadPrimitiveBounds(
+  payload: Record<string, unknown>
+): void {
+  if (
     typeof payload.authorization_expires_at !== "string" ||
     payload.authorization_expires_at.length !== CANONICAL_TIMESTAMP_LENGTH ||
     typeof payload.authorization_id !== "string" ||
@@ -515,14 +530,11 @@ function assertArtifactPrimitiveBounds(
     payload.target_cohort.length > 32 ||
     typeof payload.exposure !== "string" ||
     payload.exposure.length > 16 ||
-    typeof signature.algorithm !== "string" ||
-    signature.algorithm.length > 16 ||
-    signature.algorithm !== "ed25519" ||
-    typeof signature.keyId !== "string" ||
-    signature.keyId.length < 1 ||
-    signature.keyId.length > 80 ||
-    typeof signature.value !== "string" ||
-    signature.value.length !== ED25519_SIGNATURE_BASE64_LENGTH
+    payload.default_on_authorized !== false ||
+    payload.later_stage_authorized !== false ||
+    payload.launch_go_no_go_authorized !== false ||
+    payload.preview_influence_authorized !== false ||
+    payload.production_authorized !== false
   ) {
     invalidArtifact();
   }
