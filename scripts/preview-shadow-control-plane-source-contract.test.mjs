@@ -103,17 +103,20 @@ test("durable schema persists digests and closed evidence, never raw trust mater
 });
 
 function grep(pattern, roots, globs = []) {
-  const args = ["-l", "--fixed-strings", pattern];
-  for (const glob of globs) args.push("--glob", glob);
-  args.push(...roots);
-  try {
-    return execFileSync("rg", args, { encoding: "utf8" })
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .sort();
-  } catch (error) {
-    if (error && typeof error === "object" && error.status === 1) return [];
-    throw error;
-  }
+  return execFileSync("git", ["ls-files", "--", ...roots], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .filter(
+      (path) =>
+        globs.length === 0 ||
+        globs.some((glob) => {
+          const suffix = glob.startsWith("**/") ? glob.slice(3) : glob;
+          return path === suffix || path.endsWith(`/${suffix}`);
+        })
+    )
+    .filter((path) => readFileSync(path, "utf8").includes(pattern))
+    .sort();
 }
