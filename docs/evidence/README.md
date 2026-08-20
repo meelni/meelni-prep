@@ -9,10 +9,17 @@ edit this pending file into an authorization.
 
 `adaptive-interviewer-preview-shadow-cross-runtime-digests.json` is the
 content-free TypeScript/Python golden fixture for exact config, authorization,
-and session-lease digest bytes.
+session-lease digest bytes, and the private SAV-481 LiveKit job-metadata
+envelope.
 `adaptive-interviewer-preview-shadow-provider-free-validation.md` records the
 provider-free focused/broad results and calibration graph attestation. Neither
 artifact supplies live authority.
+
+`sav-481-preview-shadow-rehearsal-wiring-provider-free-validation.md` records
+the provider-free proof for allocation-before-room wiring, private job metadata,
+the injected Python bootstrap, and terminal evidence projection. It records no
+provider, deploy, room, flag, Preview influence, Production, or launch action
+and does not make the rehearsal executable from the ordinary product runtime.
 
 A Preview terminal session receipt proves confirmed local cleanup. A separate
 content-free stop-incomplete incident proves cleanup was not confirmed and
