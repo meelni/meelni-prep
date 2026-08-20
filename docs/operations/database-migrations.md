@@ -3,9 +3,9 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains forty-three entries, from
+The current committed journal contains forty-four entries, from
 `0000_many_nocturne` through
-`0042_sav_470_question_ranking_indexes`. The migration-history inventory
+`0043_sav_480_durable_preview_shadow_control_plane`. The migration-history inventory
 is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -92,8 +92,8 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with forty-three
-ledger entries, 42 RLS-enabled tables, three unique contracts, zero unsafe
+six ledger entries. Expected post-migration status is `reconciled` with forty-four
+ledger entries, 48 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
 transcript-privacy, runtime-settlement, stable-start, provider-credit-recovery,
@@ -106,8 +106,14 @@ feedback-outcome, dimension-coverage, scoreless-focused-practice,
 feedback-quality, public-demo-preview-allowance,
 durable-runtime-settlement-command, feedback-stage-attempt, and
 verified-prefix-partial-scorecards, shadow-feedback-artifact, managed
-service-role grant, total-required-scorecard, and question-ranking-index schema
-contract fingerprints.
+service-role grant, total-required-scorecard, question-ranking-index, and
+durable Preview-shadow control-plane schema contract fingerprints.
+The durable Preview-shadow contract adds six server-owned, FORCE-RLS tables
+for one-time activation, pre-room session leases, terminal receipts,
+stop-incomplete evidence, cohort stops, and termination acknowledgement. It
+stores only canonical digests, hashed 32-byte capabilities, closed reasons, and
+integer nanoUSD accounting; no owner signature, raw authorization artifact,
+capability token, identity, transcript, or interview content is persisted.
 The question-ranking-index contract adds only two partial indexes: the active,
 published question type/difficulty/recency bucket index and the
 user/activation history index. It changes no rows, selection receipts, or
@@ -219,9 +225,9 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 43`, and the exact question-ranking-index schema
+   `migrationCount: 44`, and the exact durable Preview-shadow control-plane schema
    fingerprint
-   `c8cc178009d344b489eafef781a099c2411f9a173646784be7f02187b68d6dfa`
+   `6527d4c95a623e4759c92197f380e9bded41ca557165d4300e4e497fedc6cd48`
    exported by `scripts/database-schema-contract.ts`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
