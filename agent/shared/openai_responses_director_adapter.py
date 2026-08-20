@@ -11,6 +11,13 @@ from copy import deepcopy
 from typing import Protocol
 from urllib.parse import urlsplit
 
+try:
+    from openai import APITimeoutError as _OpenAIAPITimeoutError
+except ModuleNotFoundError:  # Provider-free contracts do not require the SDK.
+    _OPENAI_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = ()
+else:
+    _OPENAI_TIMEOUT_ERRORS = (_OpenAIAPITimeoutError,)
+
 from shared.interview_controller import probe_candidate_id
 from shared.interview_director import (
     DIRECTOR_CONTEXT_CONTRACT_VERSION,
@@ -192,16 +199,28 @@ class OfficialOpenAIResponsesTransport:
         if self._closed or not _positive_timeout(timeout_seconds):
             raise DirectorError("invalid_config")
         _require_direct_openai_base_url(self._client)
-        response = await self._client.responses.create(  # type: ignore[attr-defined]
-            **deepcopy(dict(request)),
-            timeout=timeout_seconds,
-        )
-        model_dump = getattr(response, "model_dump", None)
-        if not callable(model_dump):
-            raise DirectorError("invalid_adapter_result")
-        normalized = model_dump(mode="json")
-        if not isinstance(normalized, Mapping):
-            raise DirectorError("invalid_adapter_result")
+        try:
+            response = await self._client.responses.create(  # type: ignore[attr-defined]
+                **deepcopy(dict(request)),
+                timeout=timeout_seconds,
+            )
+        except asyncio.CancelledError:
+            raise
+        except _OPENAI_TIMEOUT_ERRORS:
+            raise asyncio.TimeoutError from None
+        try:
+            model_dump = getattr(response, "model_dump", None)
+            if not callable(model_dump):
+                raise DirectorError("invalid_adapter_result")
+            normalized = model_dump(mode="json")
+            if not isinstance(normalized, Mapping):
+                raise DirectorError("invalid_adapter_result")
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            raise
+        except DirectorError:
+            raise
+        except Exception:
+            raise DirectorError("invalid_adapter_result") from None
         return normalized
 
     async def recover(self) -> None:
@@ -313,11 +332,20 @@ class OpenAIResponsesDirectorAdapter:
             )
         except asyncio.CancelledError:
             raise
+        except DirectorError:
+            raise
         except asyncio.TimeoutError:
             raise DirectorError("deadline_exceeded") from None
         except Exception:
             raise DirectorError("transport_unavailable") from None
-        return _normalize_response(response, context=context, limits=limits)
+        try:
+            return _normalize_response(response, context=context, limits=limits)
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            raise
+        except DirectorError:
+            raise
+        except Exception:
+            raise DirectorError("invalid_adapter_result") from None
 
     async def recover(
         self,

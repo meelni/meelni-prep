@@ -1141,10 +1141,11 @@ class InterviewDirectorShadowSession:
             self._store.close()
         self._emit_outcome("settled", freshness="missing")
 
-    async def shutdown(self) -> None:
+    async def shutdown(self) -> bool:
         adapter = self._adapter
         self.settle()
         pending = tuple(self._tasks)
+        tasks_confirmed = True
         if pending:
             try:
                 await asyncio.wait_for(
@@ -1152,16 +1153,26 @@ class InterviewDirectorShadowSession:
                     timeout=0.05,
                 )
             except asyncio.TimeoutError:
-                pass
-        self._tasks.clear()
+                tasks_confirmed = False
+            tasks_confirmed = tasks_confirmed and all(
+                task.done() for task in pending
+            )
+        self._tasks = {task for task in self._tasks if not task.done()}
+        adapter_close_confirmed = adapter is None
         if adapter is not None:
             try:
                 await asyncio.wait_for(
                     adapter.close(affinity_key=self._affinity_key),
                     timeout=0.05,
                 )
+                adapter_close_confirmed = True
             except Exception:
-                pass
+                adapter_close_confirmed = False
+        return (
+            tasks_confirmed
+            and not self._tasks
+            and adapter_close_confirmed
+        )
 
     def _observe_candidate(
         self,

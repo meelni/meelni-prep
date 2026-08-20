@@ -48,18 +48,23 @@ reads `os.environ`, `.env`, or a credential variable.
    generated record remains pending and non-executable.
 4. Present its complete values and digest to the owner. The owner must record a
    new external decision reference, decision/expiry, and one-time nonce.
-5. Verify the authorization with an injected trusted clock. A durable control
-   plane must consume it once to activate a run, atomically allocate a bounded
-   session lease before room/worker construction, and reconcile idempotent
-   sanitized receipts centrally. Never let a worker consume stage authority or
-   use a process-local store for live execution.
+5. At the activation CAS, independently supply the exact deployed/reviewed SHA,
+   config/selection digests, target, and trusted current time. Require a trusted
+   owner-decision verifier to authenticate the authorization digest, external
+   reference, decision/expiry, and nonce and return the fresh opaque result for
+   that exact claim. A durable control plane must then consume it once,
+   atomically allocate a bounded session lease before room/worker construction,
+   and reconcile sanitized receipts centrally. Never let a worker consume stage
+   authority or use a process-local store for live execution.
 6. This repository slice has no durable control-plane adapter, so runtime
    construction returns typed `unavailable` with no adapter. The checked pure
    transition functions are reference models, not live cap/replay enforcement;
    distinct in-memory instances cannot provide a global CAS. Implement/review
    the authenticated durable follow-up before any provider, deploy, or room
-   action. A lease self-digest is integrity only and never substitutes for the
-   injected trusted admission verifier.
+   action. Lease, terminal-receipt, and stop-incomplete self-digests provide
+   integrity/idempotency only. They never substitute for authenticated owner
+   decision, trusted lease admission, or authenticated worker provenance and
+   reconciliation channel.
 7. Only a separate operations slice may supply provider credentials/deploy/
    room authority. Before an attempt, require isolated target identity, all
    shadow flags, influence false, exact adapter pins, open budget reservation,
@@ -80,11 +85,16 @@ plane to stop new allocation. Do not convert that incident into settlement or
 release budget until an authenticated worker/process termination
 acknowledgement exists. This repository deliberately ships neither that
 acknowledgement transition nor a durable control-plane adapter, so the pure
-reference model remains stopped permanently after such an incident.
+reference model remains stopped permanently after such an incident. If the
+incident records spend above the retained lease, retain both the full lease and
+only the derived excess; a future acknowledgement must atomically replace or
+reconcile those values without counting the excess twice.
 The canonical LiveKit runtime independently owns `AgentSession.aclose()`,
 transcript settlement, feedback handoff, and room lifecycle; shadow rollback
-does not call or wait on speech and does not use a non-production redeploy as a
-session drain.
+does not call or wait on speech. LiveKit Cloud rolling deployments route new
+sessions to new instances while allowing old instances time to finish, and
+production servers can gracefully drain; a redeploy is not a per-session
+shadow rollback or session drain primitive.
 
 New sessions return to `synthetic` with all five adaptive flags false and no
 adapter. Re-entry requires a new exact authorization; neither the previous
@@ -107,7 +117,9 @@ not contain identities, room/session names, transcript/prompt text, provider
 payloads/IDs, or raw exceptions. Local attempt receipts reconcile centrally
 outside the speech path; the runtime performs no per-turn ledger network I/O.
 A stop-incomplete incident is evidence that settlement was not confirmed and
-is never a terminal session receipt.
+is never a terminal session receipt. A future durable reconciler must
+authenticate worker provenance/channel before accepting either record; their
+unkeyed IDs do not authenticate the sender.
 
 The all-round/adverse-voice matrix is four rounds crossed with seven fixed
 voice conditions (28 cells). Provider-free simulation may prove harness

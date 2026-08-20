@@ -222,7 +222,7 @@ class PreviewShadowSettledSession(Protocol):
 
     async def wait_idle(self, timeout_seconds: float) -> bool: ...
 
-    async def shutdown(self) -> None: ...
+    async def shutdown(self) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -276,11 +276,33 @@ class PreviewShadowEvidenceRecorder:
         reconciled_nano_usd: int,
         occurred_at: datetime | None = None,
     ) -> None:
+        event = self._prepare(
+            state,
+            reason,
+            attempt_ordinal=attempt_ordinal,
+            reserved_nano_usd=reserved_nano_usd,
+            reconciled_nano_usd=reconciled_nano_usd,
+            occurred_at=occurred_at,
+        )
+        self._append_prepared((event,))
+
+    def _prepare(
+        self,
+        state: str,
+        reason: str,
+        *,
+        attempt_ordinal: int | None,
+        reserved_nano_usd: int,
+        reconciled_nano_usd: int,
+        occurred_at: datetime | None = None,
+    ) -> PreviewShadowEvidenceEvent:
         if (
-            state not in _EVIDENCE_STATES
+            type(state) is not str
+            or state not in _EVIDENCE_STATES
+            or type(reason) is not str
             or reason not in _EVIDENCE_REASONS
             or attempt_ordinal is not None
-            and (type(attempt_ordinal) is not int or attempt_ordinal <= 0)
+            and not _positive_integer(attempt_ordinal)
             or not _safe_nonnegative_integer(reserved_nano_usd)
             or not _safe_nonnegative_integer(reconciled_nano_usd)
         ):
@@ -288,21 +310,24 @@ class PreviewShadowEvidenceRecorder:
         timestamp = occurred_at or datetime.now(timezone.utc)
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise PreviewShadowRuntimeError("invalid_config")
-        self._events.append(
-            PreviewShadowEvidenceEvent(
-                contract_version=PREVIEW_SHADOW_EVIDENCE_VERSION,
-                state=state,
-                stage="preview_shadow",
-                configuration_sha256=PREVIEW_SHADOW_CONFIGURATION_SHA256,
-                adapter_version=OPENAI_RESPONSES_DIRECTOR_ADAPTER_VERSION,
-                session_ordinal=self._session_ordinal,
-                attempt_ordinal=attempt_ordinal,
-                reserved_nano_usd=reserved_nano_usd,
-                reconciled_nano_usd=reconciled_nano_usd,
-                reason=reason,
-                occurred_at=_whole_second_iso(timestamp),
-            )
+        return PreviewShadowEvidenceEvent(
+            contract_version=PREVIEW_SHADOW_EVIDENCE_VERSION,
+            state=state,
+            stage="preview_shadow",
+            configuration_sha256=PREVIEW_SHADOW_CONFIGURATION_SHA256,
+            adapter_version=OPENAI_RESPONSES_DIRECTOR_ADAPTER_VERSION,
+            session_ordinal=self._session_ordinal,
+            attempt_ordinal=attempt_ordinal,
+            reserved_nano_usd=reserved_nano_usd,
+            reconciled_nano_usd=reconciled_nano_usd,
+            reason=reason,
+            occurred_at=_whole_second_iso(timestamp),
         )
+
+    def _append_prepared(
+        self, events: tuple[PreviewShadowEvidenceEvent, ...]
+    ) -> None:
+        self._events.extend(events)
 
 
 @dataclass(frozen=True)
@@ -329,7 +354,7 @@ class PreviewShadowSessionReceipt:
     session_ordinal: int
     allocation_ledger_revision: int
     preview_shadow_configuration_sha256: str
-    outcome: Literal["settled", "stopped", "ambiguous"]
+    outcome: Literal["settled", "stopped"]
     attempt_count: int
     reconciled_spend_nano_usd: int
     outstanding_attempt_reservations_nano_usd: Literal[0]
@@ -488,22 +513,24 @@ class PreviewShadowLocalSpendLedger:
             self.stop("session_budget_exhausted")
             raise PreviewShadowRuntimeError("session_budget_exhausted")
         ordinal = self._next_attempt_ordinal
-        self._next_attempt_ordinal += 1
-        self._evidence.record(
+        outstanding_before = self.outstanding_reserved_nano_usd
+        attempt_event = self._evidence._prepare(
             "attempt",
             "attempt_started",
             attempt_ordinal=ordinal,
-            reserved_nano_usd=self.outstanding_reserved_nano_usd,
+            reserved_nano_usd=outstanding_before,
             reconciled_nano_usd=self._reconciled_nano_usd,
         )
-        self._open[ordinal] = reservation
-        self._evidence.record(
+        reserved_event = self._evidence._prepare(
             "reserved",
             "attempt_reserved",
             attempt_ordinal=ordinal,
-            reserved_nano_usd=self.outstanding_reserved_nano_usd,
+            reserved_nano_usd=outstanding_before + reservation,
             reconciled_nano_usd=self._reconciled_nano_usd,
         )
+        self._next_attempt_ordinal += 1
+        self._open[ordinal] = reservation
+        self._evidence._append_prepared((attempt_event, reserved_event))
         return ordinal
 
     def reconcile_attempt(
@@ -513,6 +540,8 @@ class PreviewShadowLocalSpendLedger:
         *,
         normalized_cost_evidence_nano_usd: int | None = None,
     ) -> PreviewShadowAttemptReceipt:
+        if not _positive_integer(ordinal) or type(outcome) is not str:
+            raise PreviewShadowRuntimeError("attempt_invalid")
         reservation = self._open.get(ordinal)
         if reservation is None or outcome not in _ATTEMPT_OUTCOMES:
             raise PreviewShadowRuntimeError("attempt_invalid")
@@ -529,30 +558,46 @@ class PreviewShadowLocalSpendLedger:
         total = self._reconciled_nano_usd + reconciled
         if not _safe_nonnegative_integer(total):
             raise PreviewShadowRuntimeError("session_budget_exhausted")
-        del self._open[ordinal]
-        self._reconciled_nano_usd = total
         receipt = PreviewShadowAttemptReceipt(
             attempt_ordinal=ordinal,
             outcome=outcome,
             reserved_nano_usd=reservation,
             reconciled_nano_usd=reconciled,
         )
-        self._receipts.append(receipt)
-        self._evidence.record(
+        remaining_reserved = self.outstanding_reserved_nano_usd - reservation
+        reconciled_event = self._evidence._prepare(
             "reconciled",
             f"attempt_{outcome}",
             attempt_ordinal=ordinal,
-            reserved_nano_usd=self.outstanding_reserved_nano_usd,
-            reconciled_nano_usd=self._reconciled_nano_usd,
+            reserved_nano_usd=remaining_reserved,
+            reconciled_nano_usd=total,
         )
-        if self._reconciled_nano_usd >= self.lease.session_budget_nano_usd:
-            self.stop("session_budget_exhausted")
+        exhausted = total >= self.lease.session_budget_nano_usd
+        stop_event = (
+            self._evidence._prepare(
+                "stopped",
+                "session_budget_exhausted",
+                attempt_ordinal=None,
+                reserved_nano_usd=remaining_reserved,
+                reconciled_nano_usd=total,
+            )
+            if exhausted
+            else None
+        )
+        del self._open[ordinal]
+        self._reconciled_nano_usd = total
+        self._receipts.append(receipt)
+        if exhausted:
+            self._admission_open = False
+        self._evidence._append_prepared(
+            (reconciled_event,) if stop_event is None else (reconciled_event, stop_event)
+        )
         return receipt
 
     def stop(self, reason: str) -> None:
         if self._closed:
             raise PreviewShadowRuntimeError("closed")
-        if reason not in {
+        if type(reason) is not str or reason not in {
             "session_budget_exhausted",
             "attempt_limit_reached",
             "kill_switch_closed",
@@ -560,14 +605,15 @@ class PreviewShadowLocalSpendLedger:
             "settle_timeout",
         }:
             raise PreviewShadowRuntimeError("invalid_config")
-        self._admission_open = False
-        self._evidence.record(
+        event = self._evidence._prepare(
             "stopped",
             reason,
             attempt_ordinal=None,
             reserved_nano_usd=self.outstanding_reserved_nano_usd,
             reconciled_nano_usd=self._reconciled_nano_usd,
         )
+        self._admission_open = False
+        self._evidence._append_prepared((event,))
 
     def settle_open_attempts_as_ambiguous(self) -> None:
         for ordinal in tuple(self._open):
@@ -581,17 +627,48 @@ class PreviewShadowLocalSpendLedger:
             or settle_completed and not cleanup_completed
         ):
             raise PreviewShadowRuntimeError("closed")
-        self._admission_open = False
-        self.settle_open_attempts_as_ambiguous()
-        self._settle_completed = settle_completed
-        self._cleanup_completed = cleanup_completed
-        self._closed = cleanup_completed
-        self._evidence.record(
+        future_total = self._reconciled_nano_usd
+        future_reserved = self.outstanding_reserved_nano_usd
+        planned_receipts: list[PreviewShadowAttemptReceipt] = []
+        planned_events: list[PreviewShadowEvidenceEvent] = []
+        for ordinal, reservation in tuple(self._open.items()):
+            future_total += reservation
+            future_reserved -= reservation
+            if not _safe_nonnegative_integer(future_total):
+                raise PreviewShadowRuntimeError("session_budget_exhausted")
+            planned_receipts.append(
+                PreviewShadowAttemptReceipt(
+                    attempt_ordinal=ordinal,
+                    outcome="ambiguous",
+                    reserved_nano_usd=reservation,
+                    reconciled_nano_usd=reservation,
+                )
+            )
+            planned_events.append(
+                self._evidence._prepare(
+                    "reconciled",
+                    "attempt_ambiguous",
+                    attempt_ordinal=ordinal,
+                    reserved_nano_usd=future_reserved,
+                    reconciled_nano_usd=future_total,
+                )
+            )
+        terminal_event = self._evidence._prepare(
             "settled" if settle_completed and cleanup_completed else "stopped",
             "settle_completed" if settle_completed else "settle_timeout",
             attempt_ordinal=None,
             reserved_nano_usd=0,
-            reconciled_nano_usd=self._reconciled_nano_usd,
+            reconciled_nano_usd=future_total,
+        )
+        self._admission_open = False
+        self._open.clear()
+        self._receipts.extend(planned_receipts)
+        self._reconciled_nano_usd = future_total
+        self._settle_completed = settle_completed
+        self._cleanup_completed = cleanup_completed
+        self._closed = cleanup_completed
+        self._evidence._append_prepared(
+            (*planned_events, terminal_event)
         )
 
 
@@ -689,13 +766,22 @@ class PreviewShadowRuntime:
                 return self.ledger.settle_completed is True
             task = asyncio.create_task(self._settle_shadow_once(shadow))
             object.__setattr__(self, "_settle_task", task)
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError:
-            # Caller cancellation does not cancel the one shared cleanup. The
-            # cleanup is already bounded by the same absolute deadline.
-            await asyncio.shield(task)
-            raise
+        cancellation_observed = False
+        while True:
+            try:
+                result = await asyncio.shield(task)
+                break
+            except asyncio.CancelledError:
+                # Repeated caller cancellation cannot escape before the one
+                # shared, internally bounded cleanup freezes its final state.
+                cancellation_observed = True
+                current = asyncio.current_task()
+                if current is not None:
+                    while current.cancelling():
+                        current.uncancel()
+        if cancellation_observed:
+            raise asyncio.CancelledError
+        return result
 
     async def _settle_shadow_once(
         self, shadow: PreviewShadowSettledSession
@@ -722,12 +808,12 @@ class PreviewShadowRuntime:
             settled = False
         finally:
             try:
-                completed, _ = await _await_until_deadline(
+                completed, shutdown_confirmed = await _await_until_deadline(
                     shadow.shutdown(),
                     operation_deadline=deadline - _CANCELLATION_GRACE_SECONDS,
                     cancellation_deadline=deadline,
                 )
-                cleanup_completed = completed
+                cleanup_completed = completed and shutdown_confirmed is True
             except asyncio.CancelledError:
                 cleanup_completed = False
             except Exception:

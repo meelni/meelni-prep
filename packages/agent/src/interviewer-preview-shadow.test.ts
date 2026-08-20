@@ -6,31 +6,39 @@ import {
   ADAPTIVE_INTERVIEWER_PREPARATION_AUTHORIZATION_CONTRACT_VERSION,
   ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_AUTHORIZATION_VERSION,
   ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
-  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONTROL_PLANE_STORE_VERSION,
   ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG,
   ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SELECTED_CANDIDATE_SHA256,
-  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
-  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION,
   adaptiveInterviewerPreviewShadowAuthorizationId,
   adaptiveInterviewerPreviewShadowConfigurationSha256,
   assessAdaptiveInterviewerTransition,
-  controlPlaneActivateAdaptiveInterviewerPreviewShadow,
-  controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease,
-  controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger,
-  controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession,
-  controlPlaneRecordAdaptiveInterviewerPreviewShadowStopIncomplete,
   createAdaptiveInterviewerPreviewShadowOwnerRequest,
-  createAdaptiveInterviewerPreviewShadowActivationCommand,
-  createAdaptiveInterviewerPreviewShadowSessionReceipt,
-  createAdaptiveInterviewerPreviewShadowStopIncompleteIncident,
   parseAdaptiveInterviewerPreparationAuthorization,
   parseAdaptiveInterviewerPreviewShadowAuthorization,
   parseAdaptiveInterviewerPreviewShadowAuthorizationJson,
   parseAdaptiveInterviewerPreviewShadowRuntimeConfig,
-  parseAdaptiveInterviewerPreviewShadowSessionLease,
   type AdaptiveInterviewerPreviewShadowAuthorization,
-  type AdaptiveInterviewerPreviewShadowDurableActivationStore,
 } from "./index";
+import {
+  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_COHORT_STOP_EVENT_VERSION,
+  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_CONTROL_PLANE_STORE_VERSION,
+  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_VERIFIER_VERSION,
+  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
+  ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_STOP_INCOMPLETE_INCIDENT_VERSION,
+  createAdaptiveInterviewerPreviewShadowReferenceModelActivationCommand,
+  createAdaptiveInterviewerPreviewShadowReferenceModelCohortStopEvent,
+  createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt,
+  createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident,
+  parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease,
+  referenceModelActivateAdaptiveInterviewerPreviewShadow,
+  referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease,
+  referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger,
+  referenceModelReconcileAdaptiveInterviewerPreviewShadowSession,
+  referenceModelRecordAdaptiveInterviewerPreviewShadowCohortStop,
+  referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete,
+  type AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore,
+  type AdaptiveInterviewerPreviewShadowReferenceModelActivationContext,
+  type AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier,
+} from "./interviewer-preview-shadow-control-plane";
 
 const CANDIDATE_SHA = "a".repeat(40);
 const SESSION_BINDING = "b".repeat(64);
@@ -81,15 +89,68 @@ function bindings() {
   };
 }
 
+function activationContext(
+  overrides: Partial<AdaptiveInterviewerPreviewShadowReferenceModelActivationContext> = {}
+): AdaptiveInterviewerPreviewShadowReferenceModelActivationContext {
+  return {
+    candidate_git_sha: CANDIDATE_SHA,
+    preview_shadow_configuration_sha256:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+    selected_candidate_configuration_sha256:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SELECTED_CANDIDATE_SHA256,
+    target_stage: "preview_shadow",
+    target_environment: "preview_staging",
+    target_cohort: "shadow",
+    current_time: NOW.toISOString(),
+    ...overrides,
+  };
+}
+
+const ownerVerifierCalls = new WeakMap<object, unknown[]>();
+
+function trustedOwnerDecisionVerifier(): AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier {
+  const calls: unknown[] = [];
+  const verifier: AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier = {
+    contract_version:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_VERIFIER_VERSION,
+    verifyOwnerDecision(input, moduleOwnedVerification) {
+      calls.push(input);
+      return moduleOwnedVerification;
+    },
+  };
+  ownerVerifierCalls.set(verifier, calls);
+  return verifier;
+}
+
+function verifierCalls(
+  verifier: AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier
+): readonly unknown[] {
+  return ownerVerifierCalls.get(verifier) ?? [];
+}
+
+function activationInput(
+  store: AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore = durableStore(),
+  candidateAuthorization: AdaptiveInterviewerPreviewShadowAuthorization = authorization(),
+  context: AdaptiveInterviewerPreviewShadowReferenceModelActivationContext = activationContext(),
+  ownerDecisionVerifier: AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier = trustedOwnerDecisionVerifier()
+) {
+  return {
+    authorization: candidateAuthorization,
+    context,
+    ownerDecisionVerifier,
+    store,
+  };
+}
+
 const durableStoreCalls = new WeakMap<object, unknown[]>();
 
 function durableStore(
   outcomes: ("activated" | "replayed" | "unavailable")[] = ["activated"]
-): AdaptiveInterviewerPreviewShadowDurableActivationStore {
+): AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore {
   const calls: unknown[] = [];
-  const store: AdaptiveInterviewerPreviewShadowDurableActivationStore = {
+  const store: AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore = {
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONTROL_PLANE_STORE_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_CONTROL_PLANE_STORE_VERSION,
     activateOnce(command) {
       calls.push(command);
       const outcome = outcomes.shift() ?? "replayed";
@@ -103,7 +164,7 @@ function durableStore(
 }
 
 function callsFor(
-  store: AdaptiveInterviewerPreviewShadowDurableActivationStore
+  store: AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore
 ): readonly unknown[] {
   return durableStoreCalls.get(store) ?? [];
 }
@@ -222,15 +283,13 @@ test("checked cross-runtime config, authorization, and lease digests are byte-id
     adaptiveInterviewerPreviewShadowAuthorizationId(parsedAuthorization),
     fixture.authorization_sha256
   );
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: parsedAuthorization,
-    store: durableStore(),
-    now: NOW,
-  });
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput(durableStore(), parsedAuthorization)
+  );
   const allocated =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
       ledger:
-        controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
           activation
         ),
       expectedRevision: 0,
@@ -417,35 +476,29 @@ test("Preview authority is rejected by preparation and generic rollout-stage dom
   );
 });
 
-test("stage authorization activates once only through the durable control plane", () => {
+test("stage authorization activates once only through the injected durable-store protocol", () => {
   const store = durableStore(["activated", "replayed"]);
-  const receipt = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store,
-    now: NOW,
-  });
+  const receipt = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput(store)
+  );
   assert.equal(receipt.run_id, RUN_ID);
   assert.equal(receipt.durable_control_plane_authority, true);
   assert.equal(callsFor(store).length, 1);
   assert.throws(
     () =>
-      controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-        authorization: authorization(),
-        store,
-        now: NOW,
-      }),
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(store)
+      ),
     /replayed/
   );
   assert.throws(
     () =>
-      controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-        authorization: authorization(),
-        store: {
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput({
           ...durableStore(),
           contract_version: "process-local-store" as never,
-        },
-        now: NOW,
-      }),
+        })
+      ),
     /control_plane_required/
   );
 
@@ -456,44 +509,164 @@ test("stage authorization activates once only through the durable control plane"
   const untouched = durableStore();
   assert.throws(
     () =>
-      controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-        authorization: malformed,
-        store: untouched,
-        now: NOW,
-      }),
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(untouched, malformed)
+      ),
     /authorization_invalid/
   );
   assert.equal(callsFor(untouched).length, 0);
 });
 
+test("reference activation requires independent bindings and an opaque trusted owner decision", () => {
+  const verifier = trustedOwnerDecisionVerifier();
+  const store = durableStore();
+  const forgedCandidate = {
+    ...authorization(),
+    candidate_git_sha: "f".repeat(40),
+  } as AdaptiveInterviewerPreviewShadowAuthorization;
+  assert.throws(
+    () =>
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(store, forgedCandidate, activationContext(), verifier)
+      ),
+    /authorization_invalid/
+  );
+  assert.equal(verifierCalls(verifier).length, 0);
+  assert.equal(callsFor(store).length, 0);
+
+  for (const context of [
+    activationContext({ candidate_git_sha: "f".repeat(40) }),
+    activationContext({
+      preview_shadow_configuration_sha256: "f".repeat(64),
+    }),
+    activationContext({
+      selected_candidate_configuration_sha256: "f".repeat(64),
+    }),
+  ]) {
+    const untouchedVerifier = trustedOwnerDecisionVerifier();
+    assert.throws(
+      () =>
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput(
+            durableStore(),
+            authorization(),
+            context,
+            untouchedVerifier
+          )
+        ),
+      /activation_invalid|authorization_invalid/
+    );
+    assert.equal(verifierCalls(untouchedVerifier).length, 0);
+  }
+
+  const expected = authorization();
+  const authenticatingVerifier: AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier = {
+    contract_version:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_VERIFIER_VERSION,
+    verifyOwnerDecision(input, moduleOwnedVerification) {
+      if (
+        input.authorization_id !==
+          adaptiveInterviewerPreviewShadowAuthorizationId(expected) ||
+        input.owner_decision_reference !== expected.owner_decision_reference ||
+        input.authorization_nonce !== expected.authorization_nonce ||
+        input.authorization_expires_at !== expected.authorization_expires_at
+      ) {
+        throw new Error("untrusted");
+      }
+      return moduleOwnedVerification;
+    },
+  };
+  for (const forged of [
+    {
+      ...expected,
+      owner_decision_reference: "linear:SAV-476:comment:forged",
+    },
+    { ...expected, authorization_nonce: "e".repeat(64) },
+  ] as AdaptiveInterviewerPreviewShadowAuthorization[]) {
+    const untouchedStore = durableStore();
+    assert.throws(
+      () =>
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput(
+            untouchedStore,
+            forged,
+            activationContext(),
+            authenticatingVerifier
+          )
+        ),
+      /owner_decision_unverified/
+    );
+    assert.equal(callsFor(untouchedStore).length, 0);
+  }
+
+  let firstVerification: unknown;
+  const staleVerifier: AdaptiveInterviewerPreviewShadowReferenceModelOwnerDecisionVerifier = {
+    contract_version:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_VERIFIER_VERSION,
+    verifyOwnerDecision(_input, moduleOwnedVerification) {
+      if (firstVerification === undefined) {
+        firstVerification = moduleOwnedVerification;
+        return moduleOwnedVerification;
+      }
+      return firstVerification as never;
+    },
+  };
+  referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput(durableStore(), authorization(), activationContext(), staleVerifier)
+  );
+  const secondStore = durableStore();
+  assert.throws(
+    () =>
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(
+          secondStore,
+          authorization(),
+          activationContext(),
+          staleVerifier
+        )
+      ),
+    /owner_decision_unverified/
+  );
+  assert.equal(callsFor(secondStore).length, 0);
+
+  assert.throws(
+    () =>
+      referenceModelActivateAdaptiveInterviewerPreviewShadow({
+        ...activationInput(),
+        ownerDecisionVerifier: {
+          contract_version:
+            ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_VERIFIER_VERSION,
+          verifyOwnerDecision() {
+            return true;
+          },
+        } as never,
+      }),
+    /owner_decision_unverified/
+  );
+});
+
 test("reference stores cannot claim cross-instance replay protection", () => {
   const first = durableStore();
   const second = durableStore();
-  const firstReceipt = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: first,
-    now: NOW,
-  });
-  const secondReceipt = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: second,
-    now: NOW,
-  });
+  const firstReceipt = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput(first)
+  );
+  const secondReceipt = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput(second)
+  );
   assert.equal(firstReceipt.authorization_id, secondReceipt.authorization_id);
   assert.equal(callsFor(first).length, 1);
   assert.equal(callsFor(second).length, 1);
 });
 
 test("control-plane session leases are exact, integrity-bound, and runtime-parseable only", () => {
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  });
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
   const ledger =
-    controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
   const allocated =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
       ledger,
       expectedRevision: 0,
       sessionBindingSha256: SESSION_BINDING,
@@ -504,7 +677,7 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   assert.equal(allocated.lease.maximum_attempts, 10);
   assert.equal(allocated.lease.attempt_reservation_nano_usd, 100e6);
   assert.deepEqual(
-    parseAdaptiveInterviewerPreviewShadowSessionLease(
+    parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
       Object.fromEntries(Object.entries(allocated.lease).reverse()),
       {
         runId: RUN_ID,
@@ -526,7 +699,7 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   ] as const) {
     assert.throws(
       () =>
-        parseAdaptiveInterviewerPreviewShadowSessionLease(
+        parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
           { ...allocated.lease, [field]: value },
           {
             runId: RUN_ID,
@@ -541,7 +714,7 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   }
   assert.throws(
     () =>
-      parseAdaptiveInterviewerPreviewShadowSessionLease(
+      parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
         allocated.lease,
         {
           runId: RUN_ID,
@@ -556,7 +729,7 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   symbolLease[Symbol("hidden")] = true;
   assert.throws(
     () =>
-      parseAdaptiveInterviewerPreviewShadowSessionLease(
+      parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
         symbolLease,
         {
           runId: RUN_ID,
@@ -569,7 +742,7 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   );
   assert.throws(
     () =>
-      parseAdaptiveInterviewerPreviewShadowSessionLease(
+      parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
         { ...allocated.lease, session_ordinal: Number.MAX_SAFE_INTEGER + 1 },
         {
           runId: RUN_ID,
@@ -582,18 +755,16 @@ test("control-plane session leases are exact, integrity-bound, and runtime-parse
   );
 });
 
-test("authoritative cohort ledger counts open session leases and reconciles idempotently", () => {
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  });
+test("reference-model cohort ledger counts open session leases and reconciles idempotently", () => {
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
   let ledger =
-    controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
   const leases = [];
   for (let index = 0; index < 10; index += 1) {
     const allocation =
-      controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
         ledger,
         expectedRevision: ledger.revision,
         sessionBindingSha256: index.toString(16).padStart(64, "0"),
@@ -606,7 +777,7 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
   assert.equal(ledger.outstanding_session_reservations_nano_usd, 10e9);
   assert.throws(
     () =>
-      controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
         ledger,
         expectedRevision: ledger.revision,
         sessionBindingSha256: "f".repeat(64),
@@ -615,9 +786,9 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
       }),
     /cohort_cap_reached/
   );
-  const receipt = createAdaptiveInterviewerPreviewShadowSessionReceipt({
+  const receipt = createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
     run_id: RUN_ID,
     lease_id: leases[0].lease_id,
     session_ordinal: leases[0].session_ordinal,
@@ -626,23 +797,23 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
     outcome: "settled",
     attempt_count: 2,
-    reconciled_spend_nano_usd: 2_000_000,
+    reconciled_spend_nano_usd: 200_000_000,
     outstanding_attempt_reservations_nano_usd: 0,
     attempt_receipts_sha256: "a".repeat(64),
     settled_at: "2026-08-20T08:45:00.000Z",
   });
   assert.equal(Object.isFrozen(receipt), true);
   const reconciled =
-    controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+    referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
       ledger,
       expectedRevision: ledger.revision,
       receipt,
     });
   assert.equal(reconciled.outstanding_session_reservations_nano_usd, 9e9);
-  assert.equal(reconciled.reconciled_spend_nano_usd, 2e6);
-  assert.equal(reconciled.stopped, false);
+  assert.equal(reconciled.reconciled_spend_nano_usd, 200e6);
+  assert.equal(reconciled.stopped, true);
   assert.deepEqual(
-    controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+    referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
       ledger: reconciled,
       expectedRevision: reconciled.revision,
       receipt,
@@ -651,7 +822,7 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
   );
   assert.throws(
     () =>
-      controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+      referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
         ledger: reconciled,
         expectedRevision: reconciled.revision,
         receipt: {
@@ -663,16 +834,16 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
   );
   assert.throws(
     () =>
-      controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
         ledger: reconciled,
         expectedRevision: reconciled.revision,
         sessionBindingSha256: "f".repeat(64),
         issuedAt: NOW,
         expiresAt: new Date("2026-08-20T09:00:00.000Z"),
       }),
-    /cohort_cap_reached/
+    /session_allocation_denied/
   );
-  const secondReceipt = createAdaptiveInterviewerPreviewShadowSessionReceipt({
+  const secondReceipt = createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
     ...Object.fromEntries(
       Object.entries(receipt).filter(
         ([key]) => key !== "receipt_id" && key !== "integrity_sha256"
@@ -684,20 +855,22 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
     settled_at: "2026-08-20T08:46:00.000Z",
   } as never);
   const twiceReconciled =
-    controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+    referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
       ledger: reconciled,
       expectedRevision: reconciled.revision,
       receipt: secondReceipt,
     });
-  const additional =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
-      ledger: twiceReconciled,
-      expectedRevision: twiceReconciled.revision,
-      sessionBindingSha256: "f".repeat(64),
-      issuedAt: NOW,
-      expiresAt: new Date("2026-08-20T09:00:00.000Z"),
-    });
-  assert.equal(additional.ledger.allocated_session_count, 11);
+  assert.throws(
+    () =>
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: twiceReconciled,
+        expectedRevision: twiceReconciled.revision,
+        sessionBindingSha256: "f".repeat(64),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      }),
+    /session_allocation_denied/
+  );
 
   const symbolReceiptPayload = Object.fromEntries(
     Object.entries(receipt).filter(
@@ -707,7 +880,7 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
   symbolReceiptPayload[Symbol("hidden")] = true;
   assert.throws(
     () =>
-      createAdaptiveInterviewerPreviewShadowSessionReceipt(
+      createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt(
         symbolReceiptPayload as never
       ),
     /session_receipt_invalid/
@@ -715,15 +888,13 @@ test("authoritative cohort ledger counts open session leases and reconciles idem
 });
 
 test("stop-incomplete incidents stop allocation and retain the full session lease", () => {
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  });
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
   const allocation =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
       ledger:
-        controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
           activation
         ),
       expectedRevision: 0,
@@ -732,9 +903,9 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
       expiresAt: new Date("2026-08-20T09:00:00.000Z"),
     });
   const incident =
-    createAdaptiveInterviewerPreviewShadowStopIncompleteIncident({
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
       contract_version:
-        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION,
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_STOP_INCOMPLETE_INCIDENT_VERSION,
       run_id: RUN_ID,
       lease_id: allocation.lease.lease_id,
       session_ordinal: allocation.lease.session_ordinal,
@@ -752,7 +923,7 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
       termination_acknowledgement_required: true,
     });
   const stopped =
-    controlPlaneRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+    referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
       ledger: allocation.ledger,
       expectedRevision: allocation.ledger.revision,
       incident,
@@ -760,18 +931,42 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
   assert.equal(stopped.stopped, true);
   assert.equal(stopped.open_leases.length, 1);
   assert.equal(stopped.outstanding_session_reservations_nano_usd, 1e9);
-  assert.deepEqual(stopped.stop_incomplete_lease_ids, [incident.lease_id]);
   assert.deepEqual(
-    controlPlaneRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+    stopped.stop_incomplete_incidents.map((recorded) => recorded.lease_id),
+    [incident.lease_id]
+  );
+  assert.deepEqual(
+    referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
       ledger: stopped,
       expectedRevision: stopped.revision,
       incident,
     }),
     stopped
   );
+  const {
+    incident_id: _incidentId,
+    integrity_sha256: _incidentIntegrity,
+    ...originalIncidentPayload
+  } = incident;
+  const divergentIncident =
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
+      ...originalIncidentPayload,
+      attempt_count: 2,
+      reconciled_spend_nano_usd: 200_000_000,
+      observed_at: "2026-08-20T08:45:01.000Z",
+    });
   assert.throws(
     () =>
-      controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+        ledger: stopped,
+        expectedRevision: stopped.revision,
+        incident: divergentIncident,
+      }),
+    /stop_incomplete_incident_invalid/
+  );
+  assert.throws(
+    () =>
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
         ledger: stopped,
         expectedRevision: stopped.revision,
         sessionBindingSha256: "f".repeat(64),
@@ -782,12 +977,23 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
   );
   assert.throws(
     () =>
-      controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: { ...allocation.ledger, allocated_session_count: 0 },
+        expectedRevision: allocation.ledger.revision,
+        sessionBindingSha256: "f".repeat(64),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      }),
+    /ledger_invalid/
+  );
+  assert.throws(
+    () =>
+      referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
         ledger: stopped,
         expectedRevision: stopped.revision,
-        receipt: createAdaptiveInterviewerPreviewShadowSessionReceipt({
+        receipt: createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
           contract_version:
-            ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
+            ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
           run_id: RUN_ID,
           lease_id: allocation.lease.lease_id,
           session_ordinal: allocation.lease.session_ordinal,
@@ -804,6 +1010,310 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
         }),
       }),
     /session_receipt_invalid/
+  );
+
+  const excessAllocation =
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      ledger: referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput()
+        )
+      ),
+      expectedRevision: 0,
+      sessionBindingSha256: "9".repeat(64),
+      issuedAt: NOW,
+      expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+    });
+  const excessIncident =
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
+      ...originalIncidentPayload,
+      lease_id: excessAllocation.lease.lease_id,
+      session_ordinal: excessAllocation.lease.session_ordinal,
+      allocation_ledger_revision:
+        excessAllocation.lease.allocation_ledger_revision,
+      attempt_count: 10,
+      reconciled_spend_nano_usd: 11_000_000_000,
+      observed_at: "2026-08-20T08:47:00.000Z",
+    });
+  const excessStopped =
+    referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+      ledger: excessAllocation.ledger,
+      expectedRevision: excessAllocation.ledger.revision,
+      incident: excessIncident,
+    });
+  assert.equal(excessStopped.outstanding_session_reservations_nano_usd, 1e9);
+  assert.equal(excessStopped.stop_incomplete_excess_spend_nano_usd, 10e9);
+  assert.equal(
+    excessStopped.outstanding_session_reservations_nano_usd +
+      excessStopped.stop_incomplete_excess_spend_nano_usd,
+    11e9
+  );
+  assert.equal(excessStopped.stopped, true);
+});
+
+test("reference-model evidence digests are canonical and conservatively bounded", () => {
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
+  const allocation =
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      ledger:
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+          activation
+        ),
+      expectedRevision: 0,
+      sessionBindingSha256: SESSION_BINDING,
+      issuedAt: NOW,
+      expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+    });
+  const receiptPayload = {
+    contract_version:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
+    run_id: RUN_ID,
+    lease_id: allocation.lease.lease_id,
+    session_ordinal: 1,
+    allocation_ledger_revision: 1,
+    preview_shadow_configuration_sha256:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+    outcome: "settled" as const,
+    attempt_count: 1,
+    reconciled_spend_nano_usd: 100_000_000,
+    outstanding_attempt_reservations_nano_usd: 0 as const,
+    attempt_receipts_sha256: "a".repeat(64),
+    settled_at: "2026-08-20T08:45:00.000Z",
+  };
+  const receipt =
+    createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt(
+      receiptPayload
+    );
+  const reorderedReceipt =
+    createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt(
+      Object.fromEntries(Object.entries(receiptPayload).reverse()) as never
+    );
+  assert.equal(reorderedReceipt.receipt_id, receipt.receipt_id);
+  for (const [attemptCount, spend] of [
+    [1, 99_999_999],
+    [10, 999_999_999],
+    [Number.MAX_SAFE_INTEGER + 1, 1_000_000_000],
+    [1, Number.MAX_SAFE_INTEGER + 1],
+  ]) {
+    assert.throws(
+      () =>
+        createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
+          ...receiptPayload,
+          attempt_count: attemptCount,
+          reconciled_spend_nano_usd: spend,
+        }),
+      /session_receipt_invalid/
+    );
+  }
+  for (const [attemptCount, spend] of [
+    [0, 0],
+    [1, 100_000_000],
+    [10, 1_000_000_000],
+  ]) {
+    assert.doesNotThrow(() =>
+      createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
+        ...receiptPayload,
+        attempt_count: attemptCount,
+        reconciled_spend_nano_usd: spend,
+      })
+    );
+  }
+
+  const incidentPayload = {
+    contract_version:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_STOP_INCOMPLETE_INCIDENT_VERSION,
+    run_id: RUN_ID,
+    lease_id: allocation.lease.lease_id,
+    session_ordinal: 1,
+    allocation_ledger_revision: 1,
+    preview_shadow_configuration_sha256:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+    reason: "cleanup_unconfirmed" as const,
+    attempt_count: 1,
+    reconciled_spend_nano_usd: 100_000_000,
+    retained_session_reservation_nano_usd: 1_000_000_000 as const,
+    attempt_receipts_sha256: "b".repeat(64),
+    observed_at: "2026-08-20T08:45:00.000Z",
+    requires_allocation_stop: true as const,
+    termination_acknowledgement_required: true as const,
+  };
+  const incident =
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
+      incidentPayload
+    );
+  const reorderedIncident =
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
+      Object.fromEntries(Object.entries(incidentPayload).reverse()) as never
+    );
+  assert.equal(reorderedIncident.incident_id, incident.incident_id);
+  assert.throws(
+    () =>
+      createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
+        { ...incidentPayload, attempt_count: 10, reconciled_spend_nano_usd: 0 }
+      ),
+    /stop_incomplete_incident_invalid/
+  );
+});
+
+test("reference-model ledger rejects forged relations and records closed stop events", () => {
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
+  const first =
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      ledger:
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+          activation
+        ),
+      expectedRevision: 0,
+      sessionBindingSha256: "1".repeat(64),
+      issuedAt: NOW,
+      expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+    });
+  const receipt =
+    createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
+      contract_version:
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
+      run_id: RUN_ID,
+      lease_id: first.lease.lease_id,
+      session_ordinal: 1,
+      allocation_ledger_revision: 1,
+      preview_shadow_configuration_sha256:
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+      outcome: "settled",
+      attempt_count: 1,
+      reconciled_spend_nano_usd: 100_000_000,
+      outstanding_attempt_reservations_nano_usd: 0,
+      attempt_receipts_sha256: "c".repeat(64),
+      settled_at: "2026-08-20T08:45:00.000Z",
+    });
+  const reconciled =
+    referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
+      ledger: first.ledger,
+      expectedRevision: first.ledger.revision,
+      receipt,
+    });
+  const second =
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      ledger: reconciled,
+      expectedRevision: reconciled.revision,
+      sessionBindingSha256: "2".repeat(64),
+      issuedAt: NOW,
+      expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+    });
+  const forgedLedgers = [
+    { ...second.ledger, allocated_session_count: 1 },
+    {
+      ...second.ledger,
+      open_leases: [
+        { ...second.ledger.open_leases[0], session_ordinal: 1 },
+      ],
+    },
+    {
+      ...second.ledger,
+      open_leases: [
+        { ...second.ledger.open_leases[0], allocation_ledger_revision: 1 },
+      ],
+    },
+    {
+      ...second.ledger,
+      reconciled_sessions: [
+        {
+          ...second.ledger.reconciled_sessions[0],
+          reconciliation_ledger_revision: 3,
+        },
+      ],
+    },
+    { ...second.ledger, reconciled_spend_nano_usd: 0 },
+    { ...second.ledger, stopped: true },
+    { ...second.ledger, revision: 4 },
+    {
+      ...second.ledger,
+      reconciled_sessions: [
+        {
+          ...second.ledger.reconciled_sessions[0],
+          reconciled_spend_nano_usd: 0,
+        },
+      ],
+    },
+  ];
+  for (const forged of forgedLedgers) {
+    assert.throws(
+      () =>
+        referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+          ledger: forged as never,
+          expectedRevision: second.ledger.revision,
+          sessionBindingSha256: "3".repeat(64),
+          issuedAt: NOW,
+          expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+        }),
+      /ledger_invalid/
+    );
+  }
+
+  const empty =
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput()
+      )
+    );
+  const stopEvent =
+    createAdaptiveInterviewerPreviewShadowReferenceModelCohortStopEvent({
+      contract_version:
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_COHORT_STOP_EVENT_VERSION,
+      run_id: RUN_ID,
+      reason: "kill_switch_failure",
+      evidence_sha256: "d".repeat(64),
+      observed_at: "2026-08-20T08:30:00.000Z",
+    });
+  const stopped = referenceModelRecordAdaptiveInterviewerPreviewShadowCohortStop({
+    ledger: empty,
+    expectedRevision: 0,
+    event: stopEvent,
+  });
+  assert.equal(stopped.stopped, true);
+  assert.equal(stopped.revision, 1);
+  assert.deepEqual(
+    referenceModelRecordAdaptiveInterviewerPreviewShadowCohortStop({
+      ledger: stopped,
+      expectedRevision: 1,
+      event: stopEvent,
+    }),
+    stopped
+  );
+  const divergentStop =
+    createAdaptiveInterviewerPreviewShadowReferenceModelCohortStopEvent({
+      contract_version:
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_COHORT_STOP_EVENT_VERSION,
+      run_id: RUN_ID,
+      reason: "kill_switch_failure",
+      evidence_sha256: "e".repeat(64),
+      observed_at: "2026-08-20T08:31:00.000Z",
+    });
+  assert.throws(
+    () =>
+      referenceModelRecordAdaptiveInterviewerPreviewShadowCohortStop({
+        ledger: stopped,
+        expectedRevision: 1,
+        event: divergentStop,
+      }),
+    /cohort_stop_event_invalid/
+  );
+
+  const hugeSparse: unknown[] = [];
+  hugeSparse.length = 0xffffffff;
+  assert.throws(
+    () =>
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: { ...empty, open_leases: hugeSparse } as never,
+        expectedRevision: 0,
+        sessionBindingSha256: "f".repeat(64),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      }),
+    /ledger_invalid/
   );
 });
 
@@ -832,6 +1342,41 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   );
   assert.equal(authorizationProbe.reads(), 0);
 
+  const contextProbe = accessorClone(activationContext(), "candidate_git_sha");
+  const contextVerifier = trustedOwnerDecisionVerifier();
+  assert.throws(
+    () =>
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(
+          durableStore(),
+          authorization(),
+          contextProbe.clone,
+          contextVerifier
+        )
+      ),
+    /activation_invalid/
+  );
+  assert.equal(contextProbe.reads(), 0);
+  assert.equal(verifierCalls(contextVerifier).length, 0);
+
+  const verifierProbe = accessorClone(
+    trustedOwnerDecisionVerifier(),
+    "verifyOwnerDecision"
+  );
+  assert.throws(
+    () =>
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(
+          durableStore(),
+          authorization(),
+          activationContext(),
+          verifierProbe.clone
+        )
+      ),
+    /control_plane_unavailable/
+  );
+  assert.equal(verifierProbe.reads(), 0);
+
   const mutableAuthorization = JSON.parse(
     JSON.stringify(authorization())
   ) as AdaptiveInterviewerPreviewShadowAuthorization;
@@ -844,15 +1389,13 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   mutableAuthorization.candidate_git_sha = "f".repeat(40);
   assert.equal(parsedAuthorization.candidate_git_sha, CANDIDATE_SHA);
 
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  });
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
   const activationProbe = accessorClone(activation, "run_id");
   assert.throws(
     () =>
-      controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+      referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
         activationProbe.clone
       ),
     /activation_invalid/
@@ -860,9 +1403,9 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   assert.equal(activationProbe.reads(), 0);
 
   const resultReads = { value: 0 };
-  const resultStore: AdaptiveInterviewerPreviewShadowDurableActivationStore = {
+  const resultStore: AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore = {
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONTROL_PLANE_STORE_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_CONTROL_PLANE_STORE_VERSION,
     activateOnce() {
       const result = { run_id: RUN_ID } as Record<string, unknown>;
       Object.defineProperty(result, "outcome", {
@@ -877,37 +1420,37 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   };
   assert.throws(
     () =>
-      controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-        authorization: authorization(),
-        store: resultStore,
-        now: NOW,
-      }),
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(resultStore)
+      ),
     /control_plane_unavailable/
   );
   assert.equal(resultReads.value, 0);
 
-  const mutableNow = new Date(NOW);
-  const timeMutatingStore: AdaptiveInterviewerPreviewShadowDurableActivationStore = {
+  const mutableContext = activationContext();
+  const timeMutatingStore: AdaptiveInterviewerPreviewShadowReferenceModelDurableActivationStore = {
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONTROL_PLANE_STORE_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_CONTROL_PLANE_STORE_VERSION,
     activateOnce() {
-      mutableNow.setUTCFullYear(2030);
+      mutableContext.current_time = "2030-08-20T08:00:00.000Z";
       return { outcome: "activated", run_id: RUN_ID };
     },
   };
   assert.equal(
-    controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-      authorization: authorization(),
-      store: timeMutatingStore,
-      now: mutableNow,
-    }).activated_at,
+    referenceModelActivateAdaptiveInterviewerPreviewShadow(
+      activationInput(
+        timeMutatingStore,
+        authorization(),
+        mutableContext
+      )
+    ).activated_at,
     NOW.toISOString()
   );
 
   const allocation =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
       ledger:
-        controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
           activation
         ),
       expectedRevision: 0,
@@ -918,7 +1461,7 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   const leaseProbe = accessorClone(allocation.lease, "run_id");
   assert.throws(
     () =>
-      parseAdaptiveInterviewerPreviewShadowSessionLease(
+      parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
         leaseProbe.clone,
         {
           runId: RUN_ID,
@@ -934,7 +1477,7 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   const ledgerProbe = accessorClone(allocation.ledger, "revision");
   assert.throws(
     () =>
-      controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
         ledger: ledgerProbe.clone,
         expectedRevision: 1,
         sessionBindingSha256: "f".repeat(64),
@@ -945,9 +1488,9 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   );
   assert.equal(ledgerProbe.reads(), 0);
 
-  const receipt = createAdaptiveInterviewerPreviewShadowSessionReceipt({
+  const receipt = createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
     run_id: RUN_ID,
     lease_id: allocation.lease.lease_id,
     session_ordinal: allocation.lease.session_ordinal,
@@ -965,7 +1508,7 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   const receiptProbe = accessorClone(receipt, "receipt_id");
   assert.throws(
     () =>
-      controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+      referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
         ledger: allocation.ledger,
         expectedRevision: allocation.ledger.revision,
         receipt: receiptProbe.clone,
@@ -975,9 +1518,9 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   assert.equal(receiptProbe.reads(), 0);
 
   const incident =
-    createAdaptiveInterviewerPreviewShadowStopIncompleteIncident({
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
       contract_version:
-        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION,
+        ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_STOP_INCOMPLETE_INCIDENT_VERSION,
       run_id: RUN_ID,
       lease_id: allocation.lease.lease_id,
       session_ordinal: allocation.lease.session_ordinal,
@@ -998,7 +1541,7 @@ test("public Preview inputs reject accessors without invoking them and snapshot 
   const incidentProbe = accessorClone(incident, "incident_id");
   assert.throws(
     () =>
-      controlPlaneRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+      referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
         ledger: allocation.ledger,
         expectedRevision: allocation.ledger.revision,
         incident: incidentProbe.clone,
@@ -1020,11 +1563,43 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidateAuthorization of ownExtraVariants(authorization())) {
     assert.throws(
       () =>
-        createAdaptiveInterviewerPreviewShadowActivationCommand(
+        createAdaptiveInterviewerPreviewShadowReferenceModelActivationCommand(
           candidateAuthorization,
-          NOW
+          activationContext()
         ),
       /authorization_invalid|activation_invalid/
+    );
+  }
+  for (const candidateContext of ownExtraVariants(activationContext())) {
+    const verifier = trustedOwnerDecisionVerifier();
+    assert.throws(
+      () =>
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput(
+            durableStore(),
+            authorization(),
+            candidateContext,
+            verifier
+          )
+        ),
+      /activation_invalid/
+    );
+    assert.equal(verifierCalls(verifier).length, 0);
+  }
+  for (const candidateVerifier of ownExtraVariants(
+    trustedOwnerDecisionVerifier()
+  )) {
+    assert.throws(
+      () =>
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput(
+            durableStore(),
+            authorization(),
+            activationContext(),
+            candidateVerifier
+          )
+        ),
+      /control_plane_unavailable/
     );
   }
   for (const candidateBindings of ownExtraVariants(bindings())) {
@@ -1039,15 +1614,13 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
     );
   }
 
-  const activation = controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  });
+  const activation = referenceModelActivateAdaptiveInterviewerPreviewShadow(
+    activationInput()
+  );
   for (const candidateActivation of ownExtraVariants(activation)) {
     assert.throws(
       () =>
-        controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
           candidateActivation
         ),
       /activation_invalid/
@@ -1056,30 +1629,24 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidateStore of ownExtraVariants(durableStore())) {
     assert.throws(
       () =>
-        controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-          authorization: authorization(),
-          store: candidateStore,
-          now: NOW,
-        }),
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(
+        activationInput(candidateStore)
+      ),
       /control_plane_unavailable/
     );
   }
-  for (const candidateRequest of ownExtraVariants({
-    authorization: authorization(),
-    store: durableStore(),
-    now: NOW,
-  })) {
+  for (const candidateRequest of ownExtraVariants(activationInput())) {
     assert.throws(
       () =>
-        controlPlaneActivateAdaptiveInterviewerPreviewShadow(candidateRequest),
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(candidateRequest),
       /control_plane_unavailable/
     );
   }
 
   const ledger =
-    controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(activation);
   const allocation =
-    controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+    referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
       ledger,
       expectedRevision: 0,
       sessionBindingSha256: SESSION_BINDING,
@@ -1089,7 +1656,7 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidateLedger of ownExtraVariants(allocation.ledger)) {
     assert.throws(
       () =>
-        controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
           ledger: candidateLedger,
           expectedRevision: 1,
           sessionBindingSha256: "f".repeat(64),
@@ -1102,7 +1669,7 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidateLease of ownExtraVariants(allocation.lease)) {
     assert.throws(
       () =>
-        parseAdaptiveInterviewerPreviewShadowSessionLease(
+        parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
           candidateLease,
           {
             runId: RUN_ID,
@@ -1121,7 +1688,7 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   })) {
     assert.throws(
       () =>
-        parseAdaptiveInterviewerPreviewShadowSessionLease(
+        parseAdaptiveInterviewerPreviewShadowReferenceModelSessionLease(
           allocation.lease,
           candidateExpected,
           new Date("2026-08-20T08:30:00.000Z")
@@ -1140,14 +1707,14 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
     { ...allocation.ledger, open_leases: sparseOpenLeases },
     {
       ...allocation.ledger,
-      reconciled_receipt_ids: Object.assign([], {
+      reconciled_sessions: Object.assign([], {
         [Symbol("hidden")]: true,
       }),
     },
   ]) {
     assert.throws(
       () =>
-        controlPlaneAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
           ledger: driftedLedger as never,
           expectedRevision: 1,
           sessionBindingSha256: "f".repeat(64),
@@ -1160,7 +1727,7 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
 
   const receiptPayload = {
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
     run_id: RUN_ID,
     lease_id: allocation.lease.lease_id,
     session_ordinal: 1,
@@ -1177,16 +1744,16 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidatePayload of ownExtraVariants(receiptPayload)) {
     assert.throws(
       () =>
-        createAdaptiveInterviewerPreviewShadowSessionReceipt(candidatePayload),
+        createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt(candidatePayload),
       /session_receipt_invalid/
     );
   }
   const receipt =
-    createAdaptiveInterviewerPreviewShadowSessionReceipt(receiptPayload);
+    createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt(receiptPayload);
   for (const candidateReceipt of ownExtraVariants(receipt)) {
     assert.throws(
       () =>
-        controlPlaneReconcileAdaptiveInterviewerPreviewShadowSession({
+        referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
           ledger: allocation.ledger,
           expectedRevision: 1,
           receipt: candidateReceipt,
@@ -1197,7 +1764,7 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
 
   const incidentPayload = {
     contract_version:
-      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_STOP_INCOMPLETE_INCIDENT_VERSION,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_STOP_INCOMPLETE_INCIDENT_VERSION,
     run_id: RUN_ID,
     lease_id: allocation.lease.lease_id,
     session_ordinal: 1,
@@ -1216,20 +1783,20 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   for (const candidatePayload of ownExtraVariants(incidentPayload)) {
     assert.throws(
       () =>
-        createAdaptiveInterviewerPreviewShadowStopIncompleteIncident(
+        createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
           candidatePayload
         ),
       /stop_incomplete_incident_invalid/
     );
   }
   const incident =
-    createAdaptiveInterviewerPreviewShadowStopIncompleteIncident(
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
       incidentPayload
     );
   for (const candidateIncident of ownExtraVariants(incident)) {
     assert.throws(
       () =>
-        controlPlaneRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+        referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
           ledger: allocation.ledger,
           expectedRevision: 1,
           incident: candidateIncident,
@@ -1238,17 +1805,23 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
     );
   }
 
-  const dateWithExtra = new Date(NOW);
-  Object.defineProperty(dateWithExtra, "hidden", { value: true });
-  assert.throws(
-    () =>
-      controlPlaneActivateAdaptiveInterviewerPreviewShadow({
-        authorization: authorization(),
-        store: durableStore(),
-        now: dateWithExtra,
-      }),
-    /control_plane_unavailable/
-  );
+  for (const invalidActivationTime of [
+    new Date(NOW),
+    "2026-08-20T01:00:00-07:00",
+    "2026-08-20T08:00:00Z",
+  ]) {
+    assert.throws(
+      () =>
+        referenceModelActivateAdaptiveInterviewerPreviewShadow(
+          activationInput(
+            durableStore(),
+            authorization(),
+            activationContext({ current_time: invalidActivationTime as never })
+          )
+        ),
+      /activation_invalid/
+    );
+  }
   class DateSubclass extends Date {}
   for (const invalidNow of [
     new Date(NOW.getTime() + 1),
@@ -1267,24 +1840,59 @@ test("every public Preview record and array rejects symbol, non-enumerable, and 
   }
 });
 
-test("worker/runtime source cannot activate runs, mint leases, or claim global caps", () => {
+test("runtime and public package cannot construct or export the reference model", () => {
+  const publicIndex = readFileSync("packages/agent/src/index.ts", "utf8");
+  const referenceSource = readFileSync(
+    "packages/agent/src/interviewer-preview-shadow-control-plane.ts",
+    "utf8"
+  );
+  assert.match(
+    publicIndex,
+    /Inert source-attestation import only;[\s\S]*import "\.\/interviewer-preview-shadow-control-plane";/
+  );
+  assert.doesNotMatch(
+    publicIndex,
+    /export\s+(?:\*|\{[^}]*\})\s+from\s+["']\.\/interviewer-preview-shadow-control-plane["']/
+  );
+  assert.doesNotMatch(referenceSource, /^export (?:async )?function controlPlane/m);
+  const exportedNames = [
+    ...referenceSource.matchAll(
+      /^export (?:const|function|interface|type)\s+([A-Za-z0-9_]+)/gm
+    ),
+  ].map((match) => match[1]);
+  assert.ok(exportedNames.length > 0);
+  assert.ok(
+    exportedNames.every((name) =>
+      /ReferenceModel|referenceModel|REFERENCE_MODEL/.test(name)
+    )
+  );
+  assert.doesNotMatch(
+    referenceSource,
+    /process\.env|Deno\.env|Bun\.env|OpenAIResponsesDirectorAdapter|createPreviewShadowRuntime|createRoom|register(?:Factory|Adapter)|Statsig/
+  );
   const appSource = readFileSync("agent/interview/agent.py", "utf8");
   assert.match(appSource, /adapter=None,/);
-  assert.doesNotMatch(appSource, /controlPlaneActivate|SessionLease/);
+  assert.doesNotMatch(
+    appSource,
+    /interviewer-preview-shadow-control-plane|controlPlaneActivate/
+  );
   for (const path of [
     "agent/shared/interview_controller.py",
     "agent/shared/interview_director.py",
     "agent/shared/openai_responses_director_adapter.py",
   ]) {
     const source = readFileSync(path, "utf8");
-    assert.doesNotMatch(source, /activateOnce|controlPlaneAllocate/);
+    assert.doesNotMatch(
+      source,
+      /interviewer-preview-shadow-control-plane|activateOnce|controlPlaneAllocate/
+    );
   }
   assert.throws(
     () =>
-      controlPlaneCreateAdaptiveInterviewerPreviewShadowCohortLedger(
-        createAdaptiveInterviewerPreviewShadowSessionReceipt({
+      referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+        createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
           contract_version:
-            ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SESSION_RECEIPT_VERSION,
+            ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
           run_id: RUN_ID,
           lease_id: "a".repeat(64),
           session_ordinal: 1,

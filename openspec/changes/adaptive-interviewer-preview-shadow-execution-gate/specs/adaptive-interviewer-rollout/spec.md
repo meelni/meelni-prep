@@ -10,6 +10,11 @@ digest, selected candidate, environment, stage, cohort, owner values, rehearsal
 matrix, external reference, time window, and one-time nonce. Missing, extra,
 duplicate, malformed, expired, not-yet-valid, drifted, or replayed input SHALL
 fail closed. Preparation and Production/default-on validators SHALL reject it.
+At activation/CAS time, independently trusted bindings SHALL supply the exact
+deployed/reviewed SHA, config/selection digests, target, and current time. An
+injected authenticated owner-decision verifier SHALL return a fresh opaque
+result bound to the authorization digest, external reference, decision/expiry,
+and nonce. Self-binding or a plain boolean SHALL fail closed.
 
 #### Scenario: Broad or prior approval is reused
 
@@ -40,6 +45,12 @@ timeout, cancellation, invalid response, and ambiguous outcomes SHALL retain
 the full attempt reservation. Trusted larger billing SHALL reconcile upward
 and stop rather than be clipped. Sanitized receipts SHALL reconcile centrally
 and idempotently outside the speech path.
+
+Session receipt and stop-incomplete IDs SHALL be treated as integrity and
+idempotency digests only. The future durable adapter SHALL authenticate worker
+provenance and the reconciliation channel before accepting them. Incident
+spend above the full retained lease SHALL be accounted immediately as exact
+excess and a future termination acknowledgement SHALL not double count it.
 
 #### Scenario: Transport times out after possible provider acceptance
 

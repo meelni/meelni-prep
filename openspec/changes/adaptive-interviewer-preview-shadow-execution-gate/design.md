@@ -7,9 +7,14 @@ configuration and authorization digests, pending request generation, and pure
 reference protocols for one durable control-plane activation plus atomic
 cohort-ledger session leases. They do not provide live cross-process replay or
 cap enforcement; a follow-up authenticated durable adapter must do that.
-Self-digests provide integrity, not authenticity. Preview authorization is
-domain-separated from preparation and Production actions and cannot authorize
-influence or a later stage. Workers do not consume stage authorization.
+Activation requires independent exact SHA/config/selection/target/time bindings
+and a fresh opaque result from an injected trusted owner-decision verifier
+before CAS; it never self-binds from the submitted record. Lease, terminal-
+receipt, and stop-incomplete self-digests provide integrity/idempotency, not
+authenticity. The future durable adapter must authenticate worker provenance
+and the reconciliation channel. Preview authorization is domain-separated from
+preparation and Production actions and cannot authorize influence or a later
+stage. Workers do not consume stage authorization.
 
 ## Runtime seam
 
@@ -27,10 +32,11 @@ The control plane allocates a derived 1,000,000,000 nano-USD session lease.
 Within it, at most ten attempts each reserve 100,000,000 nano-USD before I/O.
 Normalized successful usage retains the conservative attempt reservation;
 failure/timeout/cancel/ambiguity also retains it; larger observed billing
-reconciles upward and stops. Global
-overall/stop caps include outstanding session leases only in the authoritative
-cohort ledger. Sanitized receipts reconcile centrally outside speech. This
-slice defines pure protocols but no live durable adapter.
+reconciles upward and stops. Global overall/stop caps include outstanding
+session leases only in the future durable cohort ledger. The reference model
+also records stop-incomplete spend above the retained lease as exact excess
+without double counting. Sanitized receipts reconcile centrally outside
+speech. This slice defines pure protocols but no live durable adapter.
 
 ## Lifecycle
 

@@ -18,6 +18,8 @@ from shared.interview_director import (  # noqa: E402
     DirectorContext,
     DirectorContextTurn,
     DirectorError,
+    DirectorShadowConfig,
+    InterviewDirectorShadowSession,
 )
 from shared.interviewer_contracts import (  # noqa: E402
     DIRECTOR_POLICY_CONTRACT_VERSION,
@@ -241,7 +243,7 @@ class SettledShadow:
             self.wait_cancelled.set()
             raise
 
-    async def shutdown(self) -> None:
+    async def shutdown(self) -> bool:
         self.shutdown_calls += 1
         self.shutdown_started.set()
         try:
@@ -250,6 +252,7 @@ class SettledShadow:
             if self.shutdown_error:
                 raise RuntimeError("content-must-not-escape")
             self.adapter_close_observed = True
+            return True
         except asyncio.CancelledError:
             self.shutdown_cancelled.set()
             raise
@@ -262,6 +265,28 @@ class SettledShadow:
 
     def write_feedback(self, _text: str) -> None:
         self.forbidden_calls += 1
+
+
+class CloseProbeAdapter:
+    version = "director-close-probe.v1"
+
+    def __init__(self, *, fail: bool = False, wait_forever: bool = False) -> None:
+        self.fail = fail
+        self.wait_forever = wait_forever
+        self.close_calls = 0
+        self.close_cancelled = asyncio.Event()
+
+    async def close(self, *, affinity_key: str) -> None:
+        del affinity_key
+        self.close_calls += 1
+        try:
+            if self.wait_forever:
+                await asyncio.Event().wait()
+            if self.fail:
+                raise RuntimeError("provider-secret-body")
+        except asyncio.CancelledError:
+            self.close_cancelled.set()
+            raise
 
 
 class PreviewShadowLeaseTests(unittest.TestCase):
@@ -493,6 +518,59 @@ class PreviewShadowSpendTests(unittest.TestCase):
         ):
             ledger.reserve_attempt()
 
+    def test_reconcile_rejects_integer_aliases_and_is_atomic(self):
+        ledger, evidence = self.fresh_ledger()
+        ordinal = ledger.reserve_attempt()
+
+        def snapshot():
+            return (
+                ledger._next_attempt_ordinal,
+                dict(ledger._open),
+                ledger.receipts,
+                ledger.reconciled_nano_usd,
+                ledger.admission_open,
+                tuple(event.to_wire() for event in evidence.events),
+            )
+
+        baseline = snapshot()
+        invalid_calls = (
+            lambda: ledger.reconcile_attempt(True, "failed"),
+            lambda: ledger.reconcile_attempt(1.0, "failed"),
+            lambda: ledger.reconcile_attempt(float("nan"), "failed"),
+            lambda: ledger.reconcile_attempt(float("inf"), "failed"),
+            lambda: ledger.reconcile_attempt(-1, "failed"),
+            lambda: ledger.reconcile_attempt(9_007_199_254_740_992, "failed"),
+            lambda: ledger.reconcile_attempt(ordinal, []),
+            lambda: ledger.reconcile_attempt(ordinal, "provider-secret-body"),
+            lambda: ledger.reconcile_attempt(
+                ordinal,
+                "succeeded",
+                normalized_cost_evidence_nano_usd=True,
+            ),
+            lambda: ledger.reconcile_attempt(
+                ordinal,
+                "succeeded",
+                normalized_cost_evidence_nano_usd=-1,
+            ),
+            lambda: ledger.reconcile_attempt(
+                ordinal,
+                "succeeded",
+                normalized_cost_evidence_nano_usd=float("nan"),
+            ),
+            lambda: ledger.reconcile_attempt(
+                ordinal,
+                "failed",
+                normalized_cost_evidence_nano_usd=1,
+            ),
+        )
+        for invalid_call in invalid_calls:
+            with self.subTest(call=repr(invalid_call)):
+                with self.assertRaisesRegex(
+                    PreviewShadowRuntimeError, "attempt_invalid"
+                ):
+                    invalid_call()
+                self.assertEqual(snapshot(), baseline)
+
 
 class PreviewShadowAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_adapter_accounts_success_invalid_response_and_cancel(self):
@@ -705,6 +783,77 @@ class PreviewShadowLifecycleTests(unittest.IsolatedAsyncioTestCase):
             first_incident,
             created.create_stop_incomplete_incident(),
         )
+
+    async def test_actual_director_requires_adapter_close_confirmation(self):
+        for adapter in (
+            CloseProbeAdapter(fail=True),
+            CloseProbeAdapter(wait_forever=True),
+        ):
+            with self.subTest(
+                fail=adapter.fail,
+                wait_forever=adapter.wait_forever,
+            ):
+                created = runtime()
+                assert created is not None
+                shadow = InterviewDirectorShadowSession(
+                    config=DirectorShadowConfig(enabled=False),
+                    session_id="session-preview-close",
+                    adapter=adapter,
+                    state_provider=lambda: None,
+                )
+                self.assertFalse(await created.settle_shadow(shadow))
+                self.assertEqual(adapter.close_calls, 1)
+                if adapter.wait_forever:
+                    self.assertTrue(adapter.close_cancelled.is_set())
+                self.assertFalse(created.ledger.cleanup_completed)
+                with self.assertRaisesRegex(
+                    PreviewShadowRuntimeError, "attempt_invalid"
+                ):
+                    created.create_session_receipt()
+                self.assertEqual(
+                    created.create_stop_incomplete_incident().reason,
+                    "cleanup_unconfirmed",
+                )
+
+    async def test_repeated_caller_cancellation_waits_for_shared_cleanup(self):
+        created = runtime()
+        assert created is not None
+        shadow = SettledShadow(shutdown_forever=True)
+        caller = asyncio.create_task(created.settle_shadow(shadow))
+        await shadow.shutdown_started.wait()
+        caller.cancel()
+        await asyncio.sleep(0)
+        caller.cancel()
+        await asyncio.sleep(0)
+        self.assertFalse(caller.done())
+        with self.assertRaises(asyncio.CancelledError):
+            await caller
+        self.assertTrue(created._settle_task is not None)
+        self.assertTrue(created._settle_task.done())
+        self.assertTrue(shadow.shutdown_cancelled.is_set())
+        self.assertFalse(created.ledger.cleanup_completed)
+        first_incident = created.create_stop_incomplete_incident()
+        self.assertIs(first_incident, created.create_stop_incomplete_incident())
+
+    async def test_repeated_child_cancellation_freezes_one_incomplete_result(self):
+        created = runtime()
+        assert created is not None
+        shadow = SettledShadow(shutdown_forever=True)
+        caller = asyncio.create_task(created.settle_shadow(shadow))
+        await shadow.shutdown_started.wait()
+        assert created._settle_task is not None
+        created._settle_task.cancel()
+        created._settle_task.cancel()
+        self.assertFalse(await asyncio.wait_for(caller, timeout=0.6))
+        self.assertTrue(created._settle_task.done())
+        self.assertFalse(created.ledger.cleanup_completed)
+        self.assertFalse(created.ledger.admission_open)
+        with self.assertRaisesRegex(
+            PreviewShadowRuntimeError, "attempt_invalid"
+        ):
+            created.create_session_receipt()
+        first_incident = created.create_stop_incomplete_incident()
+        self.assertIs(first_incident, created.create_stop_incomplete_incident())
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Date: 2026-08-20
 Base commit: `a618adab77441f378e9cd0775c93e7c9ce38b7fb`
 Base tree: `0de7929d6b8c1944a6d4d4128c98a751a82f0d4b`
-Status: repository candidate validated; live execution unauthorized and blocked
+Status: replacement repository candidate validated; live execution unauthorized and blocked
 
 ## Authority and intake status
 
@@ -32,12 +32,12 @@ The 28-cell live rehearsal matrix remains `unperformed`.
 
 ## Provider-free contract results
 
-- Preview TypeScript focused remediation: 13 passed, 0 failed.
-- Full exact-Node-22 `test:agent`: 105 passed, 0 failed.
-- Preview Python runtime plus adapter focused remediation: 30 passed, 0 failed
+- Preview TypeScript focused remediation: 16 passed, 0 failed.
+- Full exact-Node-22 `test:agent`: 108 passed, 0 failed.
+- Preview Python runtime plus adapter focused remediation: 38 passed, 0 failed
   in the pinned Python environment.
-- Pinned full Python agent: 314 passed, 0 failed, 0 skipped.
-- Production/default-on authorization: 12 passed, 0 failed.
+- Pinned full Python agent: 322 passed, 0 failed, 0 skipped.
+- Production/default-on authorization: 15 passed, 0 failed.
 - Core: 489 passed, 0 failed.
 - Integrations: 111 passed, 0 failed.
 - Operations: 74 TypeScript plus 46 Node tests passed, 0 failed.
@@ -64,14 +64,17 @@ An independent exact-base/current metafile comparison proved:
   `packages/agent/src/interviewer-preview-shadow-control-plane.ts`;
 - removals: none;
 - external imports: the exact existing 17-entry list, all Node builtins;
-- bundle bytes: 1,489,324;
+- bundle bytes: 1,488,348;
 - bundle SHA-256:
-  `757bacee9bdd838bec91ca35dd9f219da9f62d5af5bafde05b5ca7fac94980d6`.
+  `d96158145f6a3cf89018247871ad2efff51bd2a27d3a6b2c8d596a6b9f9701e1`.
 
 `calibration:verify-runtime` rebuilt the bundle byte-for-byte and matched the
 checked manifest. The bundle diff contains only six inert declarations for the
 two new modules; it contains no Preview runtime construction, authorization,
-provider, or execution path.
+provider, or execution path. The agent package index does not export the
+reference-model API; one inert side-effect import retains that source in the
+calibration attestation graph only. The application and Python runtime do not
+import or construct it.
 
 ## Proven fail-closed boundaries
 
@@ -80,10 +83,14 @@ provider, or execution path.
   fail closed.
 - Validated TypeScript values are deeply frozen; Python leases/receipts are
   copied into frozen values.
-- Activation revalidates the complete authorization immediately before the
-  durable CAS interface. Independent in-memory reference stores demonstrate
-  that only a future durable adapter can provide global one-time authority.
-- A lease self-digest is integrity, not authenticity. Missing/rejected durable
+- Activation revalidates the complete authorization against independently
+  supplied SHA/config/selection/target/time bindings and a fresh opaque trusted
+  owner-decision verification immediately before the durable CAS interface.
+  Independent in-memory reference stores demonstrate that only a future durable
+  authenticated adapter can provide global one-time authority.
+- Lease, terminal-receipt, and stop-incomplete self-digests provide integrity/
+  idempotency, not authenticity. The future durable adapter must authenticate
+  worker provenance/channel. Missing/rejected durable
   admission produces typed `disabled|unavailable` with `adapter=None`; no
   OpenAI adapter or shadow work begins.
 - Receipt identity binds run, lease, allocation revision, attempt digest/count,

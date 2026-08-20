@@ -31,14 +31,17 @@ Create a domain-separated `preview_shadow` boundary with four deep modules:
 2. A deterministic runtime configuration pins the selected adapter/provider/
    model and the complete owner envelope. Its digest uses the contract version,
    one NUL byte, and canonical JSON. No environment value participates.
-3. A durable control-plane activation consumes stage authorization exactly once
-   and creates one authoritative cohort ledger. That ledger atomically allocates
-   a bounded, integrity-bound session lease before room/worker construction and
-   reconciles idempotent sanitized receipts outside the speech path. This slice
-   specifies pure reference models only; separate in-memory instances do not
-   provide replay protection. Live execution remains blocked until an
-   authenticated durable adapter implements them. Lease self-digests provide
-   integrity, not authenticity.
+3. A future durable control-plane activation consumes stage authorization
+   exactly once and creates one authoritative cohort ledger. Activation must
+   independently bind the deployed/reviewed SHA, config/selection digests,
+   target, and trusted time, then require a fresh opaque result from an
+   authenticated owner-decision verifier before CAS. This slice specifies a
+   pure reference model only; separate in-memory instances do not provide replay
+   protection or authority. Live execution remains blocked until a durable
+   authenticated adapter implements it. Lease, terminal-receipt, and
+   stop-incomplete IDs are unkeyed self-digests: integrity/idempotency only, not
+   authenticity. The future adapter must authenticate worker provenance and the
+   reconciliation channel.
 4. The Python runtime construction seam accepts only an explicitly injected
    admitted unexpired session lease, trusted durable-admission verifier, and
    transport factory. Default-off is typed `disabled`; missing durable
@@ -62,12 +65,16 @@ it, reconciliation records the larger amount; local/session and central/run
 admission stop as applicable, and observed spend is never clipped.
 
 LiveKit Agents 1.6.5 documents `AgentSession.shutdown(drain=True)` as
-non-blocking and `AgentSession.aclose()` as awaitable. Non-production deployment
-redeploys immediately disconnect active sessions and does not drain. Therefore
-the Preview shadow never controls voice-session shutdown or drains speech. Its
-own settle path fences new work, cancels in-flight Director tasks, and closes
-the adapter under one coalesced absolute 250 ms deadline; the canonical runtime independently owns any
-awaited `AgentSession.aclose()` and transcript settlement.
+non-blocking and `AgentSession.aclose()` as awaitable. Current LiveKit Cloud
+[rolling deployment](https://docs.livekit.io/deploy/agents/managing-deployments/)
+routes new sessions to new instances while old instances may remain for up to
+one hour to finish; production server mode also supports
+[graceful drain](https://docs.livekit.io/agents/server/lifecycle/). Deployment
+rollback is therefore not a precise per-session shadow stop. Preview shadow
+never controls voice-session shutdown or drains speech. Its own settle path
+fences new work, cancels in-flight Director tasks, and closes the adapter under
+one coalesced absolute 250 ms deadline; the canonical runtime independently
+owns any awaited `AgentSession.aclose()` and transcript settlement.
 
 Cleanup confirmation is a budget-release boundary. A successful terminal
 session receipt is forbidden unless shutdown and adapter close completed.
@@ -75,7 +82,9 @@ Bounded cleanup ambiguity instead creates one domain-separated,
 content-free stop-incomplete incident; the authoritative ledger must retain the
 full session lease and stop new allocations until authenticated worker/process
 termination acknowledgement. This slice intentionally defines no
-acknowledgement transition, so the reference model cannot reopen itself.
+acknowledgement transition, so the reference model cannot reopen itself. Spend
+observed above the retained lease is recorded immediately as incident excess;
+a future acknowledgement must reconcile it without double counting.
 
 ## Consequences
 
@@ -100,5 +109,6 @@ acknowledgement transition, so the reference model cannot reopen itself.
   application authority.
 - Release reservations on transport failure or cancellation: a provider may
   have accepted or billed an attempt even when Meelni lacks final usage.
-- Use LiveKit non-production redeploy as rollback: it disconnects active
-  sessions immediately and cannot prove transcript/feedback isolation.
+- Use a LiveKit redeploy as per-session rollback: rolling deployment and drain
+  lifecycles cannot precisely fence one shadow session or prove transcript/
+  feedback isolation.

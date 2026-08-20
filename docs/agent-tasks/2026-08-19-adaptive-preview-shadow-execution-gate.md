@@ -49,7 +49,9 @@ connector reauthentication; no live authorization
 
 - `@meelni/agent`: own the closed authorization, exact Preview configuration,
   canonical digest, pending request generator, and pure control-plane reference
-  protocols. A follow-up authenticated durable adapter owns one-time activation.
+  protocols. Activation requires independently trusted exact bindings and a
+  fresh opaque authenticated-owner result; a follow-up durable adapter owns
+  both that authority and the one-time CAS.
 - Python agent: own typed default-off/unavailable provider-neutral construction,
   attempt reservation/reconciliation, lifecycle settle/shutdown, and sanitized
   terminal/stop-incomplete evidence.
@@ -71,8 +73,8 @@ Completed provider-free evidence is recorded in
 `docs/evidence/adaptive-interviewer-preview-shadow-provider-free-validation.md`.
 The independent calibration graph delta is exactly 424 -> 426 inputs with only
 the two intended Preview-shadow TypeScript modules added, no removals, builtin-
-only externals, 1,489,324 bundle bytes, and SHA-256
-`757bacee9bdd838bec91ca35dd9f219da9f62d5af5bafde05b5ca7fac94980d6`.
+only externals, 1,488,348 bundle bytes, and SHA-256
+`d96158145f6a3cf89018247871ad2efff51bd2a27d3a6b2c8d596a6b9f9701e1`.
 
 ## Rollout
 

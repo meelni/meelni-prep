@@ -11,7 +11,7 @@ Status: repository contract; no live authorization is checked in
 - Authorization digest: `adaptive-interviewer-preview-shadow-authorization-digest.v1`
 - Activation command/receipt: `adaptive-interviewer-preview-shadow-activation-command.v1` /
   `adaptive-interviewer-preview-shadow-activation-receipt.v1`
-- Cohort ledger: `adaptive-interviewer-preview-shadow-cohort-ledger.v1`
+- Cohort ledger reference model: `adaptive-interviewer-preview-shadow-cohort-ledger.v2`
 - Session lease/digest: `adaptive-interviewer-preview-shadow-session-lease.v1` /
   `adaptive-interviewer-preview-shadow-session-lease-digest.v1`
 - Session receipt/digest: `adaptive-interviewer-preview-shadow-session-receipt.v1` /
@@ -84,7 +84,17 @@ stage authorization. Activation claim failure is replay and produces no run.
 The content-free activation receipt binds the authorization ID, run ID,
 candidate SHA, config digest, target, and activation time.
 
-The activated run owns one durable authoritative cohort ledger. Before any
+At activation/CAS time, the durable implementation MUST independently supply
+the exact deployed/reviewed candidate SHA, Preview configuration digest,
+selected-candidate digest, environment, stage, cohort, and trusted current
+time. It MUST authenticate the external owner decision and return a fresh
+record-bound capability covering the authorization digest, owner reference,
+decision time, expiry, and nonce. Self-binding those values from the submitted
+authorization, accepting a boolean, or trusting TypeScript shape is invalid.
+The repository reference model validates this protocol but supplies neither
+the trusted owner verifier nor durable authority.
+
+The future activated run owns one durable authoritative cohort ledger. Before any
 room or worker construction, that ledger atomically allocates a closed session
 lease. The lease binds the run, candidate/config/adapter, environment/stage/
 cohort, one session ordinal, a sanitized session-binding SHA-256, issue/expiry,
@@ -152,6 +162,12 @@ terminal receipt, records larger spend without clipping, and stops the run on a
 cap or invariant breach. There is no database/network round trip for each
 spoken turn beyond the provider request itself.
 
+Session receipt and stop-incomplete incident IDs are also unkeyed canonical
+self-digests. They provide deterministic integrity/idempotency, not
+authenticity. A future durable adapter MUST authenticate worker provenance and
+the reconciliation channel before accepting either record; the reference
+model parser does not turn them into authenticated evidence.
+
 A terminal session receipt is valid only after local shutdown and adapter close
 are confirmed. If bounded cleanup cannot be confirmed, the runtime emits one
 separate immutable `stop-incomplete` incident rather than a terminal receipt.
@@ -161,7 +177,11 @@ reservation. Central handling MUST keep the lease open, retain its full
 reservation, and stop new allocation until an authenticated durable worker or
 process termination acknowledgement is recorded. This repository ships no
 termination-ack transition, so its pure reference model cannot release that
-reservation or reopen allocation.
+reservation or reopen allocation. If incident spend exceeds the retained
+1,000,000,000 nano-USD lease, the reference model records the excess
+immediately while also retaining the full lease. A future termination
+acknowledgement MUST replace or reconcile that open reservation/excess
+atomically and MUST NOT count the already-recorded excess twice.
 
 ## Lifecycle and evidence
 
