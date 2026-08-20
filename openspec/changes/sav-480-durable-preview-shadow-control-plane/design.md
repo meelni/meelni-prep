@@ -15,7 +15,9 @@ Artifact JSON and direct artifact, authorization, context, and registry objects
 use the same bounded descriptor snapshots and small per-field/container limits
 before any date, base64, PEM, or signature operation. The opaque authenticated
 result proves the historical decision and bindings but does not itself authorize
-new consumption.
+new consumption. The five authority flags are exact `false` primitives before
+canonical serialization, and the public signing-message helper uses the same
+closed validator rather than trusting its compile-time payload type.
 
 After signature verification, PostgreSQL rechecks authorization validity using
 its own clock while holding the run row/activation CAS. Unique authorization

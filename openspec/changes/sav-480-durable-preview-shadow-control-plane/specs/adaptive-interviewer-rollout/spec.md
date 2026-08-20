@@ -12,9 +12,12 @@ keys, inputs over 64 KiB UTF-8, nesting over depth 32, missing or extra fields,
 accessors, unsafe integers, noncanonical timestamps, and signature or key-window
 drift. Direct artifact, authorization, context, and registry objects SHALL have
 the same descriptor, per-field, container-count, byte, and depth bounds before
-date, base64, or cryptographic work. The opaque result SHALL prove authenticity
-without granting consume authority. The durable database SHALL consume authorization ID, nonce, decision
-reference, and artifact digest exactly once using database time at the CAS.
+date, base64, canonical serialization, or cryptographic work. Every authority
+flag SHALL be the literal `false` before canonicalization, including when the
+public signing-message helper receives a direct object. The opaque result SHALL
+prove authenticity without granting consume authority. The durable database
+SHALL consume authorization ID, nonce, decision reference, and artifact digest
+exactly once using database time at the CAS.
 
 #### Scenario: Activation acknowledgement is lost
 

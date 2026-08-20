@@ -365,6 +365,79 @@ test("direct artifacts are bounded before registry parsing, dates, base64, or cr
   }
   assert.equal(registryReads, 0);
 
+  const authorityFlags = [
+    "default_on_authorized",
+    "later_stage_authorized",
+    "launch_go_no_go_authorized",
+    "preview_influence_authorized",
+    "production_authorized",
+  ] as const;
+  let hostileSerializationCalls = 0;
+  for (const authorityFlag of authorityFlags) {
+    const hostileValue = {
+      toJSON() {
+        hostileSerializationCalls += 1;
+        throw new Error("raw-owner-authority-secret");
+      },
+    };
+    const hostilePayload = {
+      ...payload(),
+      [authorityFlag]: hostileValue,
+    };
+    assert.throws(
+      () =>
+        verify({
+          artifact: { ...artifact(), payload: hostilePayload },
+          keyRegistry: hostileRegistry,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(
+          error.message,
+          "preview_shadow_owner_decision_artifact_invalid"
+        );
+        assert.doesNotMatch(error.message, /secret/);
+        return true;
+      }
+    );
+    assert.throws(
+      () =>
+        previewShadowOwnerDecisionSignatureMessage(
+          hostilePayload as unknown as PreviewShadowOwnerDecisionPayload
+        ),
+      /preview_shadow_owner_decision_artifact_invalid/
+    );
+  }
+  assert.equal(hostileSerializationCalls, 0);
+  assert.equal(registryReads, 0);
+
+  const cyclicAuthority: Record<string, unknown> = {};
+  cyclicAuthority.self = cyclicAuthority;
+  assert.throws(
+    () =>
+      verify({
+        artifact: {
+          ...artifact(),
+          payload: {
+            ...payload(),
+            preview_influence_authorized: cyclicAuthority,
+          },
+        },
+        keyRegistry: hostileRegistry,
+      }),
+    /preview_shadow_owner_decision_artifact_invalid/
+  );
+  assert.throws(
+    () =>
+      previewShadowOwnerDecisionSignatureMessage({
+        ...payload(),
+        preview_influence_authorized:
+          cyclicAuthority as unknown as false,
+      }),
+    /preview_shadow_owner_decision_artifact_invalid/
+  );
+  assert.equal(registryReads, 0);
+
   assert.throws(
     () =>
       verify({
