@@ -24,6 +24,7 @@ import {
   MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
   TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
   QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT,
+  DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT,
   RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
   QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
@@ -162,11 +163,11 @@ async function run(url: string, environmentIdentity: string) {
         ![
           2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
           24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-          41, 42, 43,
+          41, 42, 43, 44,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation through 43 question-ranking-index migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 44 durable Preview-shadow control-plane migrations; found ${migrations.length}`
         );
       }
       const legacyRuntimeSettlementLineage =
@@ -180,11 +181,11 @@ async function run(url: string, environmentIdentity: string) {
         legacyRuntimeSettlementLineage &&
         ![
           23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-          40, 41, 42, 43,
+          40, 41, 42, 43, 44,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0042 reconciliation states"
+          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0043 reconciliation states"
         );
       }
       migrations.forEach((migration, index) => {
@@ -473,7 +474,8 @@ async function run(url: string, environmentIdentity: string) {
         | "shadow_feedback_artifacts"
         | "managed_service_role_grants"
         | "total_required_scorecards"
-        | "question_ranking_indexes";
+        | "question_ranking_indexes"
+        | "durable_preview_shadow_control_plane";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -568,12 +570,16 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "managed_service_role_grants";
       } else if (migrations.length === 42) {
         startingContract = "total_required_scorecards";
-      } else {
+      } else if (migrations.length === 43) {
         startingContract = "question_ranking_indexes";
+      } else {
+        startingContract = "durable_preview_shadow_control_plane";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length >= 40
+          migrations.length >= 44
+            ? 48
+            : migrations.length >= 40
             ? 42
             : migrations.length >= 38
               ? 41
@@ -620,7 +626,9 @@ async function run(url: string, environmentIdentity: string) {
             : await getDatabaseSchemaContract(tx)
         );
         const expectedFingerprint =
-          migrations.length === 43
+          migrations.length === 44
+            ? DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT
+            : migrations.length === 43
             ? QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
             : migrations.length === 42
               ? TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
@@ -667,7 +675,8 @@ async function run(url: string, environmentIdentity: string) {
                                                     ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
                                                     : migrations.length === 6
                                                       ? RELAUNCH_SCHEMA_FINGERPRINT
-                                                      : migrations.length === 7
+                                                        : migrations.length ===
+                                                            7
                                                         ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
                                                         : migrations.length ===
                                                             8
@@ -800,7 +809,9 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 43
+          migrations.length === 44
+            ? DURABLE_PREVIEW_SHADOW_CONTROL_PLANE_SCHEMA_FINGERPRINT
+            : migrations.length === 43
             ? QUESTION_RANKING_INDEXES_SCHEMA_FINGERPRINT
             : migrations.length === 42
               ? TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
@@ -847,7 +858,8 @@ async function run(url: string, environmentIdentity: string) {
                                                     ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
                                                     : migrations.length === 23
                                                       ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-                                                      : migrations.length === 22
+                                                        : migrations.length ===
+                                                            22
                                                         ? FEEDBACK_V2_SCHEMA_FINGERPRINT
                                                         : migrations.length ===
                                                             21

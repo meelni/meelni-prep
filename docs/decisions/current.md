@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Make Preview-Shadow Authority Durable Before Any Room Construction](2026-08-20-durable-preview-shadow-control-plane.md): Authenticate the exact owner decision, consume activation once in PostgreSQL, allocate leases before LiveKit construction, and reconcile capability-authenticated evidence durably while application/runtime wiring remains absent.
 - [Prepare A Fail-Closed Preview-Shadow Execution Gate](2026-08-19-prepare-preview-shadow-execution-gate.md): Require a fresh exact-merged-SHA/config one-time authorization, conservative attempt reservations, injected default-none construction, and bounded content-free lifecycle evidence before any Preview-shadow provider work.
 - [Prepare The OpenAI Responses Director Adapter Candidate](2026-08-19-prepare-openai-responses-director-adapter-candidate.md): Implement the exact owner-selected stateless OpenAI Responses adapter behind the existing Director seam, with strict no-tools/no-storage normalization and conservative cost accounting, while leaving application wiring absent and all live authority pending.
 - [Stage Adaptive Interviewer Rollout Under Owner Gates](2026-08-19-stage-adaptive-interviewer-rollout-under-owner-gates.md): Keep the system held at synthetic, separate the pending template from a closed value-bearing candidate-preparation authorization, require exact-SHA/config owner gates, distinguish active-session influence revocation from new-session rollback, and authorize bounded Preview shadow separately.
