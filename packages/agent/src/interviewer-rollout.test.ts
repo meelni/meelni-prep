@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -841,6 +842,47 @@ test("preparation authorization is not a rollout-stage authorization", () => {
       configurationSha256:
         preparationAuthorization().selected_candidate_configuration_sha256,
       ownerAuthorization: preparationAuthorization() as never,
+    }),
+    { accepted: false, reason: "owner_authorization_mismatch" }
+  );
+});
+
+test("SAV-478 checked-in preparation authority is exact, current, and not live authority", () => {
+  const contents = readFileSync(
+    "docs/evidence/sav-478-director-adapter-preparation-authorization.json",
+    "utf8"
+  );
+  const parsed = parseAdaptiveInterviewerPreparationAuthorizationJson(
+    contents,
+    {
+      candidateGitSha: "0312c34c84509187649a6af46b6c8a21c6a398e5",
+      repositoryRolloutConfigurationSha256:
+        "ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042",
+    },
+    new Date("2026-08-20T04:43:27.000Z")
+  );
+
+  assert.equal(
+    parsed.owner_decision_reference,
+    "linear:SAV-476:comment:05d1d32b-a1aa-45ff-b83a-4645904b4398"
+  );
+  assert.equal(
+    parsed.selected_candidate_configuration_sha256,
+    "b8cc8547c6d2573b7d323b3327ab31bf74c237a1486c13e0e7780a63880e25ac"
+  );
+  assert.deepEqual(parsed.selection_configuration.director, {
+    adapter_id: "meelni_director_openai_responses",
+    adapter_version: "interview-director-adapter.openai-responses.v1",
+    provider: "openai-api",
+    model: "gpt-5.4-mini-2026-03-17",
+  });
+  assert.deepEqual(
+    assessAdaptiveInterviewerTransition({
+      from: "synthetic",
+      to: "preview_shadow",
+      candidateGitSha: parsed.candidate_git_sha,
+      configurationSha256: parsed.selected_candidate_configuration_sha256,
+      ownerAuthorization: parsed as never,
     }),
     { accepted: false, reason: "owner_authorization_mismatch" }
   );

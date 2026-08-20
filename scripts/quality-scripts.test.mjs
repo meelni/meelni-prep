@@ -62,6 +62,13 @@ test("CI includes deterministic stacked PR regression fixtures", () => {
   assert.equal(scripts["check:ci"], "npm run check && npm run test:ci");
 });
 
+test("CI installs pinned Python agent dependencies before contract tests", () => {
+  assert.match(
+    ciWorkflow,
+    /static:[\s\S]*?- name: Install CI quality tooling\s+run: python -m pip install --disable-pip-version-check uv==0\.7\.6[\s\S]*?- name: Install pinned Python agent dependencies\s+run: uv pip install --no-config --no-cache --system --requirements agent\/requirements\.txt[\s\S]*?- name: Run Python agent contract tests/
+  );
+});
+
 test("CI includes feedback and consent accessibility regression fixtures", () => {
   assert.match(scripts["test:ci"], /npm\s+run\s+test:ui/);
   assert.match(
