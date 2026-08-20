@@ -111,6 +111,7 @@ async function main(): Promise<void> {
     await verifyExpiredLeaseReplay(databases, clients[0]!);
     await verifyStopIncompleteRecovery(databases);
     await verifyDatabaseClockAtLock(databases, clients);
+    await verifyDatabaseClockAtAllocationCompletion(databases[0]!, clients[0]!);
     await verifyTransactionRollback(databases[0]!, clients[0]!);
     await verifyGlobalReservationCap(databases[0]!);
     await verifyPrivacy(clients[0]!);
@@ -376,6 +377,18 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     runControlCapability: capability("reconcile-run"),
   });
   const runId = activated.run.run_id;
+  await assertCode(
+    () =>
+      stores[0]!.allocateSessionLease({
+        runId,
+        expectedRevision: 0,
+        sessionBindingSha256: sha("oversized-time-session"),
+        expiresAt: "2".repeat(1_000_000),
+        workerEvidenceCapability: capability("oversized-time-worker"),
+        terminationCapability: capability("oversized-time-termination"),
+      }),
+    "preview_shadow_control_plane_invalid"
+  );
   const expiresAt = new Date(fixture.now.getTime() + 1_800_000).toISOString();
   const sameRequest = {
     runId,
@@ -1011,6 +1024,79 @@ async function verifyDatabaseClockAtLock(
   releaseLock();
   await holder;
   await assertCode(() => allocation, "preview_shadow_control_plane_denied");
+}
+
+async function verifyDatabaseClockAtAllocationCompletion(
+  database: Database,
+  client: postgres.Sql
+): Promise<void> {
+  const fixture = await createFixture(
+    database,
+    "db-clock-allocation-completion",
+    -60,
+    5
+  );
+  const store = createDurablePreviewShadowControlPlaneStore(database);
+  const activated = await store.activate({
+    authenticatedOwnerDecision: verifyFixture(fixture),
+    runControlCapability: capability("db-clock-completion-run"),
+  });
+  await client.unsafe(`
+    CREATE FUNCTION sav_480_delay_lease_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      PERFORM pg_sleep(5.1);
+      RETURN NEW;
+    END
+    $$;
+    CREATE TRIGGER sav_480_delay_lease_insert
+    BEFORE INSERT ON adaptive_interviewer_preview_shadow_session_lease
+    FOR EACH ROW EXECUTE FUNCTION sav_480_delay_lease_insert();
+  `);
+  try {
+    await assertCode(
+      () =>
+        store.allocateSessionLease({
+          runId: activated.run.run_id,
+          expectedRevision: 0,
+          sessionBindingSha256: sha("db-clock-completion-session"),
+          expiresAt: fixture.authorization.authorization_expires_at,
+          workerEvidenceCapability: capability("db-clock-completion-worker"),
+          terminationCapability: capability("db-clock-completion-termination"),
+        }),
+      "preview_shadow_control_plane_denied"
+    );
+  } finally {
+    await client.unsafe(`
+      DROP TRIGGER sav_480_delay_lease_insert
+      ON adaptive_interviewer_preview_shadow_session_lease;
+      DROP FUNCTION sav_480_delay_lease_insert();
+    `);
+  }
+  const [run] = await client<
+    {
+      allocated_session_count: number;
+      outstanding_session_reservations_nano_usd: string;
+      revision: number;
+    }[]
+  >`
+    SELECT allocated_session_count,
+      outstanding_session_reservations_nano_usd::text,
+      revision
+    FROM adaptive_interviewer_preview_shadow_run
+    WHERE run_id = ${activated.run.run_id}
+  `;
+  assert.deepEqual(run, {
+    allocated_session_count: 0,
+    outstanding_session_reservations_nano_usd: "0",
+    revision: 0,
+  });
+  const [leaseCount] = await client<{ count: string }[]>`
+    SELECT count(*)::text AS count
+    FROM adaptive_interviewer_preview_shadow_session_lease
+    WHERE run_id = ${activated.run.run_id}
+  `;
+  assert.equal(leaseCount!.count, "0");
 }
 
 async function verifyTransactionRollback(

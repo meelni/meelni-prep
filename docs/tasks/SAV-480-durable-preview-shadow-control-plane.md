@@ -80,8 +80,9 @@
   incident, event, and acknowledgement idempotency; process restart; token
   forgery/cross-lease replay; content-free persisted evidence.
 - Terminal provider-free evidence:
-  - strict verifier/evidence builders and workflow facade: 8 passed, including
-    bounded artifact/authorization/key-registry inputs before date or crypto;
+  - strict verifier/evidence builders and workflow facade: 9 passed, including
+    bounded artifact/authorization/key-registry and nested runtime-config inputs
+    before date or crypto;
   - no-wiring/source contracts: 3 passed;
   - disposable PostgreSQL matrix: 6 FORCE-RLS tables plus activation,
     concurrency, restart, post-expiry exact replay, closed/revoked lease replay,

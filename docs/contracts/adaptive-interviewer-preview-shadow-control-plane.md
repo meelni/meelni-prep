@@ -61,6 +61,9 @@ Every transition holds a `FOR UPDATE` lock on the run row, uses the database
 clock for expiry, validates expected revision and persisted relational totals,
 and commits one contiguous revision. Automatic stop recording may commit the
 allocation revision followed by one stop-event revision in the same transaction.
+New allocation re-reads the database clock after those writes; if its
+authorization or lease expired during the transaction, every allocation write
+rolls back and no executable lease is returned.
 
 ## Allocation
 

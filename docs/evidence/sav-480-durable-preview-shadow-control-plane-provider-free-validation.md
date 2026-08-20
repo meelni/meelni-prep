@@ -35,7 +35,8 @@ Date: 2026-08-20
 The disposable loopback PostgreSQL matrix passed concurrent same and divergent
 activation, distinct nonce/reference races, process-restart replay, DB-clock
 expiry while locked, exact activation replay after expiry, absent-run expiry
-denial, lease allocation races, executable versus closed lease replay,
+denial, lease allocation races, post-write expiry rollback before lease return,
+executable versus closed lease replay,
 run-control revocation of open leases, wrong/cross-run capabilities,
 receipt/incident/stop-event replay and divergence, evidence reconciliation for
 revoked leases, upward spend after stop, retained-reservation excess,
@@ -46,7 +47,7 @@ in rows.
 
 ## Focused contracts
 
-- Owner decision verifier, canonical evidence builders, and workflow facade: 8
+- Owner decision verifier, canonical evidence builders, and workflow facade: 9
   passed, 0 failed.
 - Durable source/no-wiring/privacy contracts: 3 passed, 0 failed.
 - Migration, auth-doctor, migration-doc, and source-focused Node contracts: 14
@@ -55,7 +56,8 @@ in rows.
   traps fail with closed content-free errors and cannot leak caller text.
   Artifact, authorization, and key-registry inputs are snapshotted and bounded
   before date parsing or Ed25519 work; oversized signatures, timestamps, tokens,
-  arrays, objects, and JSON fail closed before cryptographic verification.
+  arrays, objects, nested runtime configuration, and JSON fail closed before
+  cryptographic verification.
 
 ## Broad provider-free matrix
 

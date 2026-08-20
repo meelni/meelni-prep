@@ -40,6 +40,9 @@ children, applies one transition, and validates the next totals before commit.
 Revisions are contiguous. Integer nano-USD values use PostgreSQL `bigint` and
 safe JavaScript integers; aggregate evidence is bounded by the accepted
 6,250,000,000,000 nano-USD sanity ceiling, not by the lower allocation caps.
+New lease allocation also re-reads database time after its writes and before
+completion; crossing authorization or lease expiry rolls the entire allocation
+back instead of returning executable material.
 
 ## Pre-room allocation and retry
 
