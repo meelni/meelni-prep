@@ -29,6 +29,11 @@ may cancel it sooner. An adapter-specific limits factory and the SDK client both
 fix retries at zero. Cancellation propagates. The adapter locally validates
 prewarm/recovery/close state and never creates continuation state.
 
+The seam preserves only three content-free recommendation failure categories:
+request deadline is `deadline_exceeded`, transport/service failure is
+`transport_unavailable`, and a returned response that fails normalization is
+`invalid_adapter_result`. Raw provider details never cross the seam.
+
 ## Request and privacy
 
 The pure request builder serializes a minimal JSON data envelope. It omits
