@@ -560,7 +560,7 @@ def list_probe_candidates(state: ControllerState) -> tuple[dict[str, str], ...]:
             continue
         candidates.append(
             {
-                "probe_candidate_id": _probe_candidate_id(
+                "probe_candidate_id": probe_candidate_id(
                     state.active_question_id,
                     move_type,
                     state.current_topic,
@@ -572,6 +572,16 @@ def list_probe_candidates(state: ControllerState) -> tuple[dict[str, str], ...]:
             }
         )
     return tuple(candidates)
+
+
+def probe_candidate_id(question_id: str, move_type: str, topic: str) -> str:
+    """Return the canonical controller identity for a question-local probe."""
+    _require_identifier(question_id, "invalid_event")
+    _require_identifier(topic, "invalid_event")
+    if move_type not in ("probe", "clarify", "challenge"):
+        raise ControllerError("invalid_event")
+    material = f"{question_id}\n{move_type}\n{topic}".encode("utf-8")
+    return f"probe:{hashlib.sha256(material).hexdigest()[:24]}"
 
 
 def _complete_candidate_turn(
@@ -729,7 +739,7 @@ def _admit_interviewer_move(
         if event.probe_candidate_id is not None:
             raise ControllerError("move_target_mismatch")
     elif event.move_type in ("probe", "clarify", "challenge"):
-        expected_candidate_id = _probe_candidate_id(
+        expected_candidate_id = probe_candidate_id(
             projected.active_question_id,
             event.move_type,
             projected.current_topic,
@@ -1415,11 +1425,6 @@ def _validate_event_shape(event: ControllerEvent) -> None:
 
 def _candidate_digest(normalized: str) -> str:
     return f"sha256:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
-
-
-def _probe_candidate_id(question_id: str, move_type: str, topic: str) -> str:
-    material = f"{question_id}\n{move_type}\n{topic}".encode("utf-8")
-    return f"probe:{hashlib.sha256(material).hexdigest()[:24]}"
 
 
 def _parse_timestamp(value: str) -> datetime:

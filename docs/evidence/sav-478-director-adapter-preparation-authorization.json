@@ -1,0 +1,89 @@
+{
+  "contract_version": "adaptive-interviewer-owner-preparation-authorization.v1",
+  "rollout_contract_version": "adaptive-interviewer-rollout.v1",
+  "requested_authority": "prepare_isolated_preview_shadow_candidate_only",
+  "current_stage": "synthetic",
+  "future_live_stage": "preview_shadow",
+  "candidate_git_sha": "0312c34c84509187649a6af46b6c8a21c6a398e5",
+  "repository_rollout_configuration_sha256": "ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042",
+  "selection_configuration": {
+    "contract_version": "adaptive-interviewer-preview-shadow-selection.v1",
+    "director": {
+      "adapter_id": "meelni_director_openai_responses",
+      "adapter_version": "interview-director-adapter.openai-responses.v1",
+      "provider": "openai-api",
+      "model": "gpt-5.4-mini-2026-03-17"
+    },
+    "preview_limits": {
+      "maximum_sessions": 25,
+      "maximum_spend_nano_usd": 25000000000
+    },
+    "privacy_and_retention": {
+      "policy_version": "adaptive-interviewer-preview-privacy.v1",
+      "policy_accepted": true,
+      "data_scope": "synthetic_owner_rehearsal_only",
+      "customer_data_allowed": false,
+      "provider_training_allowed": false,
+      "provider_policy_reference": "openai-api-data-controls-2026-08-19",
+      "maximum_provider_payload_retention_days": 30,
+      "maximum_transcript_retention_days": 7,
+      "maximum_raw_audio_retention_days": 0
+    },
+    "entry_thresholds": {
+      "minimum_completed_sessions": 20,
+      "minimum_quality_score_bps": 7708,
+      "maximum_first_audio_p50_ms": 1200,
+      "maximum_first_audio_p95_ms": 2500,
+      "minimum_completion_rate_bps": 9500,
+      "maximum_fallback_rate_bps": 500,
+      "maximum_tool_failure_rate_bps": 200,
+      "maximum_recommendation_age_ms": 3000,
+      "minimum_recommendation_freshness_rate_bps": 9500,
+      "minimum_interruption_recovery_rate_bps": 9000,
+      "minimum_feedback_integrity_rate_bps": 10000
+    },
+    "stop_thresholds": {
+      "maximum_cumulative_spend_nano_usd": 10000000000,
+      "minimum_quality_score_bps": 7008,
+      "maximum_first_audio_p50_ms": 1800,
+      "maximum_first_audio_p95_ms": 3450,
+      "minimum_completion_rate_bps": 9000,
+      "maximum_fallback_rate_bps": 1000,
+      "maximum_tool_failure_rate_bps": 500,
+      "maximum_recommendation_age_ms": 5000,
+      "minimum_recommendation_freshness_rate_bps": 8000,
+      "minimum_interruption_recovery_rate_bps": 8000,
+      "minimum_feedback_integrity_rate_bps": 10000
+    },
+    "non_tunable_hard_stops": {
+      "evidence_digest_drift": true,
+      "version_pin_mismatch": true,
+      "unauthorized_stage_or_cohort": true,
+      "deterministic_invariant_regression": true,
+      "any_session_or_transcript_loss": true,
+      "kill_switch_failure": true
+    }
+  },
+  "selected_candidate_configuration_sha256": "b8cc8547c6d2573b7d323b3327ab31bf74c237a1486c13e0e7780a63880e25ac",
+  "owner_decision": "approved",
+  "owner_decision_reference": "linear:SAV-476:comment:05d1d32b-a1aa-45ff-b83a-4645904b4398",
+  "owner_decided_at": "2026-08-20T04:43:26.000Z",
+  "authorization_expires_at": "2026-08-27T04:43:26.000Z",
+  "candidate_preparation_authorized": true,
+  "rollout_transition_authorized": false,
+  "allowed_repository_actions": [
+    "implement_selected_director_adapter_candidate",
+    "configure_selected_director_adapter_candidate",
+    "add_provider_free_candidate_validation"
+  ],
+  "denied_authority": [
+    "provider_calls",
+    "provider_spend",
+    "deployment",
+    "live_rooms",
+    "preview_influence",
+    "production",
+    "default_on",
+    "launch_go_no_go"
+  ]
+}
