@@ -22,6 +22,7 @@ import {
   createDurablePreviewShadowStopIncompleteIncident,
   type DurablePreviewShadowControlPlaneStore,
   PreviewShadowControlPlaneError,
+  verifyDurablePreviewShadowSessionLeaseAdmission,
 } from "../lib/db/adaptive-interviewer-preview-shadow-control-plane";
 import * as schema from "../lib/db/schema";
 import {
@@ -299,10 +300,7 @@ async function verifyActivationCasAndRestart(
   const postExpiryReplay = await createDurablePreviewShadowControlPlaneStore(
     databases[3]!
   ).activate({
-    authenticatedOwnerDecision: verifyFixture(
-      postExpiry,
-      databaseAfterExpiry
-    ),
+    authenticatedOwnerDecision: verifyFixture(postExpiry, databaseAfterExpiry),
     runControlCapability: postExpiryCapability,
   });
   assert.equal(postExpiryReplay.outcome, "replayed");
@@ -398,15 +396,43 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     workerEvidenceCapability: capability("same-worker"),
     terminationCapability: capability("same-termination"),
   };
-  const same = (await Promise.all([
-    stores[0]!.allocateSessionLease(sameRequest),
-    stores[1]!.allocateSessionLease(sameRequest),
-  ])).map(executableAllocation);
+  const same = (
+    await Promise.all([
+      stores[0]!.allocateSessionLease(sameRequest),
+      stores[1]!.allocateSessionLease(sameRequest),
+    ])
+  ).map(executableAllocation);
   assert.deepEqual(same.map((result) => result.outcome).sort(), [
     "allocated",
     "replayed",
   ]);
   assert.equal(same[0]!.lease.lease_id, same[1]!.lease.lease_id);
+  assert.deepEqual(
+    await verifyDurablePreviewShadowSessionLeaseAdmission(databases[2]!, {
+      lease: same[0]!.lease,
+      workerEvidenceCapability: capability("same-worker"),
+    }),
+    same[0]!.lease
+  );
+  await assertCode(
+    () =>
+      verifyDurablePreviewShadowSessionLeaseAdmission(databases[2]!, {
+        lease: same[0]!.lease,
+        workerEvidenceCapability: capability("wrong-admission-worker"),
+      }),
+    "preview_shadow_control_plane_unauthenticated"
+  );
+  await assertCode(
+    () =>
+      verifyDurablePreviewShadowSessionLeaseAdmission(databases[2]!, {
+        lease: {
+          ...same[0]!.lease,
+          session_binding_sha256: sha("forged-admission-binding"),
+        },
+        workerEvidenceCapability: capability("same-worker"),
+      }),
+    "preview_shadow_control_plane_denied"
+  );
   await assertCode(
     () =>
       stores[2]!.allocateSessionLease({
@@ -446,13 +472,15 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
       "preview_shadow_control_plane_invalid"
     );
   }
-  const second = executableAllocation(await stores[2]!.allocateSessionLease({
-    ...sameRequest,
-    expectedRevision: 1,
-    sessionBindingSha256: sha("second-session"),
-    workerEvidenceCapability: capability("second-worker"),
-    terminationCapability: capability("second-termination"),
-  }));
+  const second = executableAllocation(
+    await stores[2]!.allocateSessionLease({
+      ...sameRequest,
+      expectedRevision: 1,
+      sessionBindingSha256: sha("second-session"),
+      workerEvidenceCapability: capability("second-worker"),
+      terminationCapability: capability("second-termination"),
+    })
+  );
   assert.equal(second.lease.session_ordinal, 2);
 
   const stop = createDurablePreviewShadowCohortStopEvent({
@@ -480,6 +508,14 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     event: stop,
   });
   assert.equal(stopped.run.stopped, true);
+  await assertCode(
+    () =>
+      verifyDurablePreviewShadowSessionLeaseAdmission(databases[2]!, {
+        lease: same[0]!.lease,
+        workerEvidenceCapability: capability("same-worker"),
+      }),
+    "preview_shadow_control_plane_denied"
+  );
   const replayedStop = await stores[1]!.recordCohortStopEvent({
     runId,
     expectedRevision: 2,
@@ -622,14 +658,16 @@ async function verifyStopIncompleteRecovery(
     authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("recovery-run"),
   });
-  const leaseResult = executableAllocation(await stores[0]!.allocateSessionLease({
-    runId: activated.run.run_id,
-    expectedRevision: 0,
-    sessionBindingSha256: sha("recovery-session"),
-    expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
-    workerEvidenceCapability: capability("recovery-worker"),
-    terminationCapability: capability("recovery-termination"),
-  }));
+  const leaseResult = executableAllocation(
+    await stores[0]!.allocateSessionLease({
+      runId: activated.run.run_id,
+      expectedRevision: 0,
+      sessionBindingSha256: sha("recovery-session"),
+      expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
+      workerEvidenceCapability: capability("recovery-worker"),
+      terminationCapability: capability("recovery-termination"),
+    })
+  );
   const incident = createDurablePreviewShadowStopIncompleteIncident({
     contract_version:
       "adaptive-interviewer-preview-shadow-stop-incomplete-incident.v1",
@@ -891,7 +929,10 @@ async function verifyRevokedLeaseIncidentReconciliation(
     incident,
   });
   assert.equal(recorded.outcome, "recorded");
-  assert.equal(recorded.run.outstanding_session_reservations_nano_usd, 1_000_000_000);
+  assert.equal(
+    recorded.run.outstanding_session_reservations_nano_usd,
+    1_000_000_000
+  );
 }
 
 async function verifyActivationDatabaseClockAtLock(
@@ -1109,14 +1150,16 @@ async function verifyTransactionRollback(
     authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("rollback-run"),
   });
-  const allocated = executableAllocation(await store.allocateSessionLease({
-    runId: activated.run.run_id,
-    expectedRevision: 0,
-    sessionBindingSha256: sha("rollback-session"),
-    expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
-    workerEvidenceCapability: capability("rollback-worker"),
-    terminationCapability: capability("rollback-termination"),
-  }));
+  const allocated = executableAllocation(
+    await store.allocateSessionLease({
+      runId: activated.run.run_id,
+      expectedRevision: 0,
+      sessionBindingSha256: sha("rollback-session"),
+      expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
+      workerEvidenceCapability: capability("rollback-worker"),
+      terminationCapability: capability("rollback-termination"),
+    })
+  );
   const terminal = receipt(
     activated.run.run_id,
     allocated.lease,
@@ -1190,17 +1233,19 @@ async function verifyGlobalReservationCap(database: Database): Promise<void> {
     })
   ).run;
   const expiresAt = new Date(fixture.now.getTime() + 1_800_000).toISOString();
-  let finalRequest: Parameters<
-    DurablePreviewShadowControlPlaneStore["allocateSessionLease"]
-  >[0] | null = null;
+  let finalRequest:
+    | Parameters<
+        DurablePreviewShadowControlPlaneStore["allocateSessionLease"]
+      >[0]
+    | null = null;
   for (let index = 1; index <= 10; index += 1) {
     finalRequest = {
-        runId: run.run_id,
-        expectedRevision: run.revision,
-        sessionBindingSha256: sha(`cap-session-${index}`),
-        expiresAt,
-        workerEvidenceCapability: capability(`cap-worker-${index}`),
-        terminationCapability: capability(`cap-termination-${index}`),
+      runId: run.run_id,
+      expectedRevision: run.revision,
+      sessionBindingSha256: sha(`cap-session-${index}`),
+      expiresAt,
+      workerEvidenceCapability: capability(`cap-worker-${index}`),
+      terminationCapability: capability(`cap-termination-${index}`),
     };
     run = executableAllocation(
       await store.allocateSessionLease(finalRequest)
@@ -1213,7 +1258,9 @@ async function verifyGlobalReservationCap(database: Database): Promise<void> {
   assert.ok(finalRequest);
   const replay = await store.allocateSessionLease(finalRequest);
   assert.equal(replay.outcome, "replayed");
-  assert.ok(replay.outcome === "replayed" && replay.lease.session_ordinal === 10);
+  assert.ok(
+    replay.outcome === "replayed" && replay.lease.session_ordinal === 10
+  );
 }
 
 async function verifyPrivacy(client: postgres.Sql): Promise<void> {

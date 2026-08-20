@@ -1,6 +1,7 @@
 # Adaptive Interviewer Preview-Shadow Execution
 
-Current state: repository gate under implementation; live execution prohibited
+Current state: SAV-482 operator candidate under implementation; live execution
+remains blocked until protected merge and a fresh exact-merged-SHA signature
 
 ## What this runbook does not authorize
 
@@ -10,10 +11,10 @@ speech, use customer data, enter Production, enable default-on, or infer GO.
 The SAV-478 preparation artifact and the owner’s broad “approve all gates”
 direction are not executable Preview-shadow authorization.
 
-Generic Vercel Preview is web-only. The future target is the isolated
+Generic Vercel Preview is web-only. The target is the isolated
 provider-backed `preview_staging` lane corresponding to the documented Meelni
-staging environment and `meelni-preview` LiveKit project, but this repository
-slice does not inspect or mutate either system.
+staging environment and `meelni-preview` LiveKit project. Provider-free
+verification does not inspect or mutate either system.
 
 ## Provider-free verification
 
@@ -41,8 +42,7 @@ reads `os.environ`, `.env`, or a credential variable.
 
 ## After the repository candidate is merged
 
-1. Create/sync the missing PR-sized Linear child after connector
-   reauthentication; keep SAV-476 open.
+1. Keep SAV-482 attached to SAV-476 and keep SAV-476 open.
 2. Check out the exact reviewed merge on `origin/main` and confirm a clean tree.
 3. Generate a pending request with the exact 40-character merged SHA. The
    generated record remains pending and non-executable.
@@ -60,19 +60,21 @@ reads `os.environ`, `.env`, or a credential variable.
    250b per-session observed ceiling separate from the exact 6.25t safe
    aggregate; stopped allocation must not prevent already-open sessions from
    reconciling upward.
-6. This repository slice has no durable control-plane adapter, so runtime
-   construction returns typed `unavailable` with no adapter. The checked pure
-   transition functions are reference models, not live cap/replay enforcement;
-   distinct in-memory instances cannot provide a global CAS. Implement/review
-   the authenticated durable follow-up before any provider, deploy, or room
-   action. Lease, terminal-receipt, and stop-incomplete self-digests provide
-   integrity/idempotency only. They never substitute for authenticated owner
-   decision, trusted lease admission, or authenticated worker provenance and
-   reconciliation channel.
-7. Only a separate operations slice may supply provider credentials/deploy/
-   room authority. Before an attempt, require isolated target identity, all
-   shadow flags, influence false, exact adapter pins, open budget reservation,
-   and the canonical kill switch.
+6. Use the merged durable PostgreSQL store and dedicated staging-only internal
+   endpoint for lease admission and terminal reconciliation. The package-level
+   transition module remains a non-exported reference model; it is not the
+   live authority. Lease, terminal-receipt, and stop-incomplete self-digests
+   provide integrity/idempotency only and never replace authenticated owner
+   decision or capability-bound provenance.
+7. Deploy the exact merged agent source with `agent/interview/deploy.sh
+preview-shadow`. The wrapper requires the canonical Preview config, exact
+   candidate SHA, a five-name owner-only external runtime file, the exact
+   staging Vercel endpoint, an existing LiveKit `OPENAI_API_KEY` secret, source
+   attributes, and the isolated Preview agent identity. It snapshots source
+   from Git and never mutates Production.
+8. Before an attempt, require isolated target identity, all Shadow flags,
+   influence false, exact adapter pins, open budget reservation, and the
+   canonical kill switch.
 
 ## Stop and rollback
 
@@ -87,9 +89,8 @@ confirmed. Otherwise emit the distinct content-free stop-incomplete incident,
 keep the entire session lease reservation open, and require the durable control
 plane to stop new allocation. Do not convert that incident into settlement or
 release budget until an authenticated worker/process termination
-acknowledgement exists. This repository deliberately ships neither that
-acknowledgement transition nor a durable control-plane adapter, so the pure
-reference model remains stopped permanently after such an incident. If the
+acknowledgement exists. The durable acknowledgement never reopens a stopped
+run. If the
 incident records spend above the retained lease, retain both the full lease and
 only the derived excess; a future acknowledgement must atomically replace or
 reconcile those values without counting the excess twice.
@@ -121,8 +122,8 @@ not contain identities, room/session names, transcript/prompt text, provider
 payloads/IDs, or raw exceptions. Local attempt receipts reconcile centrally
 outside the speech path; the runtime performs no per-turn ledger network I/O.
 A stop-incomplete incident is evidence that settlement was not confirmed and
-is never a terminal session receipt. A future durable reconciler must
-authenticate worker provenance/channel before accepting either record; their
+is never a terminal session receipt. The durable reconciler must authenticate
+worker provenance/channel before accepting either record; their
 unkeyed IDs do not authenticate the sender.
 
 The all-round/adverse-voice matrix is four rounds crossed with seven fixed

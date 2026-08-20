@@ -6,7 +6,7 @@ import test from "node:test";
 const WORKFLOW = "lib/workflows/adaptive-interviewer-preview-shadow-rehearsal";
 const PYTHON_BOOTSTRAP = "shared.preview_shadow_job";
 
-test("Preview-shadow rehearsal wiring has no application or ordinary start consumer", () => {
+test("Preview-shadow rehearsal wiring has only the isolated interview worker consumer", () => {
   assert.deepEqual(
     grep(WORKFLOW, [
       "app",
@@ -20,7 +20,7 @@ test("Preview-shadow rehearsal wiring has no application or ordinary start consu
   );
   assert.deepEqual(
     grep(PYTHON_BOOTSTRAP, ["agent/interview", "agent/demo", "agent/agent.py"]),
-    []
+    ["agent/interview/agent.py"]
   );
   assert.deepEqual(
     grep("preview_shadow_job", [
@@ -28,7 +28,7 @@ test("Preview-shadow rehearsal wiring has no application or ordinary start consu
       "agent/demo",
       "agent/agent.py",
     ]),
-    []
+    ["agent/interview/agent.py"]
   );
 });
 
