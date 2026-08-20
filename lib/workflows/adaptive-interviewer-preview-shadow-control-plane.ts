@@ -1,7 +1,7 @@
 import type {
   PreviewShadowActivationContext,
   PreviewShadowOwnerKeyRegistry,
-  VerifiedPreviewShadowOwnerDecision,
+  AuthenticatedPreviewShadowOwnerDecision,
 } from "@/lib/security/adaptive-interviewer-preview-shadow-owner-decision";
 import {
   PreviewShadowControlPlaneError,
@@ -16,7 +16,7 @@ export interface DurablePreviewShadowOwnerDecisionVerifier {
     context: PreviewShadowActivationContext;
     keyRegistry: PreviewShadowOwnerKeyRegistry;
     now: Date;
-  }): VerifiedPreviewShadowOwnerDecision;
+  }): AuthenticatedPreviewShadowOwnerDecision;
 }
 
 export interface DurablePreviewShadowControlPlaneWorkflow {
@@ -76,9 +76,9 @@ export function createDurablePreviewShadowControlPlaneWorkflow(input: {
         "context",
         "runControlCapability",
       ]);
-      let verified: VerifiedPreviewShadowOwnerDecision;
+      let authenticated: AuthenticatedPreviewShadowOwnerDecision;
       try {
-        verified = verifyOwnerDecision.call(verifier, {
+        authenticated = verifyOwnerDecision.call(verifier, {
           artifact: request.artifact,
           authorization: request.authorization,
           context: request.context as PreviewShadowActivationContext,
@@ -91,7 +91,7 @@ export function createDurablePreviewShadowControlPlaneWorkflow(input: {
         );
       }
       return activateStore.call(store, {
-        verifiedOwnerDecision: verified,
+        authenticatedOwnerDecision: authenticated,
         runControlCapability: request.runControlCapability as string,
       });
     },

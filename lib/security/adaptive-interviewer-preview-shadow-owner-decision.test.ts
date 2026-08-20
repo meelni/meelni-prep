@@ -18,15 +18,15 @@ import {
   PREVIEW_SHADOW_OWNER_ID,
   PREVIEW_SHADOW_OWNER_KEY_REGISTRY_CONTRACT,
   PREVIEW_SHADOW_OWNER_ROLE,
-  assertPreviewShadowOwnerDecisionVerified,
+  assertPreviewShadowOwnerDecisionAuthenticated,
   parsePreviewShadowOwnerDecisionArtifactJson,
   previewShadowOwnerDecisionSignatureMessage,
-  verifyPreviewShadowOwnerDecision,
+  authenticatePreviewShadowOwnerDecision,
   type PreviewShadowActivationContext,
   type PreviewShadowOwnerDecisionArtifact,
   type PreviewShadowOwnerDecisionPayload,
   type PreviewShadowOwnerKeyRegistry,
-  type VerifiedPreviewShadowOwnerDecision,
+  type AuthenticatedPreviewShadowOwnerDecision,
 } from "./adaptive-interviewer-preview-shadow-owner-decision";
 
 const CANDIDATE_SHA = "a".repeat(40);
@@ -155,10 +155,10 @@ function registry(): PreviewShadowOwnerKeyRegistry {
 
 function verify(
   overrides: Partial<
-    Parameters<typeof verifyPreviewShadowOwnerDecision>[0]
+    Parameters<typeof authenticatePreviewShadowOwnerDecision>[0]
   > = {}
 ) {
-  return verifyPreviewShadowOwnerDecision({
+  return authenticatePreviewShadowOwnerDecision({
     artifact: artifact(),
     authorization: authorization(),
     context: context(),
@@ -170,7 +170,7 @@ function verify(
 
 test("authenticates one exact domain-separated owner decision without raw material", () => {
   const verified = verify();
-  assertPreviewShadowOwnerDecisionVerified(verified);
+  assertPreviewShadowOwnerDecisionAuthenticated(verified);
   assert.equal(
     verified.authorizationId,
     adaptiveInterviewerPreviewShadowAuthorizationId(authorization())
@@ -182,10 +182,10 @@ test("authenticates one exact domain-separated owner decision without raw materi
   assert.equal(JSON.stringify(verified).includes("PRIVATE KEY"), false);
   assert.throws(
     () =>
-      assertPreviewShadowOwnerDecisionVerified({
+      assertPreviewShadowOwnerDecisionAuthenticated({
         ...verified,
-      } as VerifiedPreviewShadowOwnerDecision),
-    /owner_decision_unverified/
+      } as AuthenticatedPreviewShadowOwnerDecision),
+    /owner_decision_unauthenticated/
   );
 });
 
@@ -223,11 +223,18 @@ test("rejects binding, signature, key, time, and cross-domain drift with closed 
           keys: [{ ...registry().keys[0]!, status: "revoked" }],
         },
       }),
-    () => verify({ now: new Date("2026-08-21T07:00:00.000Z") }),
   ];
   for (const run of cases) {
     assert.throws(run, /^Error: preview_shadow_/);
   }
+  const authenticatedExpiredDecision = verify({
+    now: new Date("2026-08-21T07:00:00.000Z"),
+  });
+  assertPreviewShadowOwnerDecisionAuthenticated(authenticatedExpiredDecision);
+  assert.equal(
+    authenticatedExpiredDecision.authorizationExpiresAt,
+    "2026-08-21T07:00:00.000Z"
+  );
 });
 
 test("strict JSON rejects duplicates, oversized/deep input, and object descriptor tricks", () => {
@@ -246,10 +253,26 @@ test("strict JSON rejects duplicates, oversized/deep input, and object descripto
       ),
     /artifact_invalid/
   );
+  assert.deepEqual(
+    parsePreviewShadowOwnerDecisionArtifactJson(
+      `${json}${" ".repeat(
+        PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES -
+          Buffer.byteLength(json, "utf8")
+      )}`
+    ),
+    artifact()
+  );
   assert.throws(
     () =>
       parsePreviewShadowOwnerDecisionArtifactJson(
         " ".repeat(PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES + 1)
+      ),
+    /artifact_invalid/
+  );
+  assert.throws(
+    () =>
+      parsePreviewShadowOwnerDecisionArtifactJson(
+        JSON.stringify(Array.from({ length: 65 }, () => 0))
       ),
     /artifact_invalid/
   );
@@ -291,6 +314,97 @@ test("strict JSON rejects duplicates, oversized/deep input, and object descripto
       assert.doesNotMatch(error.message, /secret/);
       return true;
     }
+  );
+});
+
+test("direct artifacts are bounded before registry parsing, dates, base64, or crypto", () => {
+  let registryReads = 0;
+  const hostileRegistry = new Proxy(registry(), {
+    ownKeys() {
+      registryReads += 1;
+      throw new Error("raw-owner-key-secret");
+    },
+  });
+  const hugeValues = [
+    {
+      ...artifact(),
+      signature: { ...artifact().signature, value: "A".repeat(1_000_000) },
+    },
+    {
+      ...artifact(),
+      payload: { ...payload(), owner_decided_at: "2".repeat(1_000_000) },
+    },
+    {
+      ...artifact(),
+      payload: {
+        ...payload(),
+        owner_decision_reference: "r".repeat(1_000_000),
+      },
+    },
+    {
+      ...artifact(),
+      payload: { ...payload(), signing_key_id: "k".repeat(1_000_000) },
+    },
+    {
+      ...artifact(),
+      payload: { ...payload(), authorization_nonce: "d".repeat(1_000_000) },
+    },
+    {
+      ...artifact(),
+      payload: {
+        ...payload(),
+        target_environment: "e".repeat(1_000_000) as never,
+      },
+    },
+  ];
+  for (const candidate of hugeValues) {
+    assert.throws(
+      () => verify({ artifact: candidate, keyRegistry: hostileRegistry }),
+      /preview_shadow_owner_decision_artifact_invalid/
+    );
+  }
+  assert.equal(registryReads, 0);
+
+  assert.throws(
+    () =>
+      verify({
+        authorization: {
+          ...authorization(),
+          owner_decided_at: "2".repeat(1_000_000),
+        },
+        keyRegistry: hostileRegistry,
+      }),
+    /preview_shadow_authorization_invalid/
+  );
+  assert.equal(registryReads, 0);
+  for (const timestampKey of ["notBefore", "notAfter"] as const) {
+    assert.throws(
+      () =>
+        verify({
+          keyRegistry: {
+            ...registry(),
+            keys: [
+              {
+                ...registry().keys[0]!,
+                [timestampKey]: "2".repeat(1_000_000),
+              },
+            ],
+          },
+        }),
+      /preview_shadow_owner_key_registry_invalid/
+    );
+  }
+
+  const noncanonicalBase64 = {
+    ...artifact(),
+    signature: {
+      ...artifact().signature,
+      value: `${"A".repeat(85)}B==`,
+    },
+  };
+  assert.throws(
+    () => verify({ artifact: noncanonicalBase64 }),
+    /preview_shadow_owner_decision_artifact_invalid/
   );
 });
 

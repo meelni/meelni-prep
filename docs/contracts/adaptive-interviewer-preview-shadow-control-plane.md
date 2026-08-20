@@ -28,13 +28,17 @@ The payload is a closed canonical projection binding:
 - fixed false Production, default-on, influence, later-stage, and GO/NO-GO
   authorities.
 
-The verifier accepts an explicit registry and trusted current time. It rejects
-duplicate JSON keys, inputs above 64 KiB UTF-8, nesting over 32, unexpected
-keys/descriptors/prototypes, invalid base64/signature/key windows, time drift,
-or any independent binding mismatch. Signature verification covers the ASCII
+The authenticator accepts an explicit registry and trusted current time. JSON
+and direct-object artifact, authorization, context, and registry paths converge
+on bounded descriptor snapshots before date, base64, or cryptographic work. It
+rejects duplicate JSON keys, inputs above 64 KiB UTF-8, nesting over 32,
+container-count or per-field bounds, unexpected keys/descriptors/prototypes,
+invalid base64/signature/key-at-decision windows, future decisions, or any
+independent binding mismatch. Signature verification covers the ASCII
 artifact contract, one NUL byte, then canonical payload JSON. No private key,
 authorization file, registry file, environment value, or credential is read by
-the verifier.
+the authenticator. Its module-branded result proves authenticity and bindings;
+it is not consume authority and may represent an expired historical decision.
 
 ## Durable activation and run
 
@@ -42,7 +46,10 @@ Activation requires the parsed SAV-479 authorization, signed decision artifact,
 independent context, expected database-clock window, and a caller-stable random
 run-control capability. The transaction verifies one unique authorization ID,
 authorization nonce, owner decision reference, and signed-artifact digest and
-creates exactly one run. It stores no raw authorization or signature.
+creates exactly one run. It stores no raw authorization or signature. An exact
+authenticated replay of an existing run remains readable after authorization
+expiry and returns no capability material; an absent run is never created after
+expiry, and any changed artifact/binding/run capability conflicts.
 
 The run owns fixed caps: 25 sessions, 25,000,000,000 nano-USD overall,
 10,000,000,000 nano-USD cumulative stop, 1,000,000,000 nano-USD per open lease,
@@ -64,15 +71,21 @@ pairwise distinct for the run, including across already allocated leases. The
 transaction denies stopped/expired/stale/wrong-target/cap-
 exceeding state and otherwise emits the exact SAV-479 lease. Run/session ordinal,
 session binding, allocation revision, and lease ID are unique. Exact same-input
-retry returns the persisted lease; changed capability, time, or binding state is
-a content-free conflict.
+retry returns executable lease material only while that durable lease is still
+open, DB-current, and not revoked. Expired, revoked, terminal, stop-incomplete,
+or termination-acknowledged replay returns `replayed_closed` plus a closed state
+and lease ID, with no executable lease. Changed capability, time, or binding
+state is a content-free conflict. A cap-reaching final allocation remains open;
+the automatic cap event stops new allocation but does not revoke that admitted
+lease.
 
 Allocation MUST complete before a LiveKit room, dispatch, participant token,
 worker, or provider adapter is constructed. This slice provides no consumer.
 
 ## Reconciliation
 
-- A terminal receipt requires the exact lease worker capability, one open lease,
+- A terminal receipt requires the exact lease worker capability, one open or
+  run-control-revoked lease,
   exact self-digest, at least `attempt_count * 100,000,000` nano-USD, zero local
   outstanding attempt reservations, and no prior incident. It releases the 1b
   reservation and records un-clipped observed spend up to 250b.
@@ -80,7 +93,9 @@ worker, or provider adapter is constructed. This slice provides no consumer.
   entire 1b reservation, records `max(0, observed - 1b)` as excess, and stops
   the run. There is exactly one incident per lease.
 - A cohort stop event requires the run-control capability and exactly one closed
-  reason/evidence pair per reason. It stops allocation before any new lease.
+  reason/evidence pair per reason. It atomically stops allocation and marks all
+  still-open leases revoked without releasing their reservations. Revoked leases
+  remain evidence-reconcilable but cannot be re-emitted for execution.
 - A termination acknowledgement requires the lease's distinct termination
   capability, the existing incident, content-free termination disposition and
   evidence digest, and final spend at least equal to incident spend. It releases

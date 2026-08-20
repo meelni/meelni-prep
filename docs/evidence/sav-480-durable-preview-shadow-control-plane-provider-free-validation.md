@@ -28,27 +28,34 @@ Date: 2026-08-20
   run/ordinal/allocation-revision/configuration tuple and bind termination
   acknowledgements to the exact run/lease/incident tuple.
 - Canonical schema fingerprint:
-  `51b2acb2c1b00dd94d15c8a204009a70e680d3a8c1d27ed185f47261266860be`.
+  `6527d4c95a623e4759c92197f380e9bded41ca557165d4300e4e497fedc6cd48`.
 - Full clean/upgrade/rolling/reconciliation migration rehearsal: passed.
 - `drizzle-kit check` with the split legacy/durable schema discovery: passed.
 
 The disposable loopback PostgreSQL matrix passed concurrent same and divergent
 activation, distinct nonce/reference races, process-restart replay, DB-clock
-expiry while locked, lease allocation races, wrong/cross-run capabilities,
-receipt/incident/stop-event replay and divergence, upward spend after stop,
-retained-reservation excess, termination acknowledgement, cap stop, injected
-partial-transaction rollback, ordinary-role denial, service-role access, and
-absence of raw authorization/signature/capability/customer content in rows.
+expiry while locked, exact activation replay after expiry, absent-run expiry
+denial, lease allocation races, executable versus closed lease replay,
+run-control revocation of open leases, wrong/cross-run capabilities,
+receipt/incident/stop-event replay and divergence, evidence reconciliation for
+revoked leases, upward spend after stop, retained-reservation excess,
+termination acknowledgement, cap stop with the final admitted lease preserved,
+injected partial-transaction rollback, ordinary-role denial, service-role
+access, and absence of raw authorization/signature/capability/customer content
+in rows.
 
 ## Focused contracts
 
-- Owner decision verifier, canonical evidence builders, and workflow facade: 7
+- Owner decision verifier, canonical evidence builders, and workflow facade: 8
   passed, 0 failed.
 - Durable source/no-wiring/privacy contracts: 3 passed, 0 failed.
 - Migration, auth-doctor, migration-doc, and source-focused Node contracts: 14
   passed, 0 failed.
 - Hostile accessors, symbols, non-enumerables, prototypes, and Proxy reflection
   traps fail with closed content-free errors and cannot leak caller text.
+  Artifact, authorization, and key-registry inputs are snapshotted and bounded
+  before date parsing or Ed25519 work; oversized signatures, timestamps, tokens,
+  arrays, objects, and JSON fail closed before cryptographic verification.
 
 ## Broad provider-free matrix
 

@@ -23,6 +23,10 @@ export const PREVIEW_SHADOW_OWNER_APPROVAL =
   "APPROVE_BOUNDED_PREVIEW_SHADOW" as const;
 export const PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES = 64 * 1024;
 export const PREVIEW_SHADOW_OWNER_DECISION_MAX_DEPTH = 32;
+const PREVIEW_SHADOW_OWNER_DECISION_MAX_JSON_VALUES = 128;
+const PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES = 64;
+const CANONICAL_TIMESTAMP_LENGTH = 24;
+const ED25519_SIGNATURE_BASE64_LENGTH = 88;
 
 const ARTIFACT_KEYS = ["contract", "payload", "signature"] as const;
 const PAYLOAD_KEYS = [
@@ -121,10 +125,10 @@ export interface PreviewShadowActivationContext
   exposure: "none";
 }
 
-declare const VERIFIED_OWNER_DECISION: unique symbol;
+declare const AUTHENTICATED_OWNER_DECISION: unique symbol;
 
-export interface VerifiedPreviewShadowOwnerDecision {
-  readonly [VERIFIED_OWNER_DECISION]: true;
+export interface AuthenticatedPreviewShadowOwnerDecision {
+  readonly [AUTHENTICATED_OWNER_DECISION]: true;
   readonly authorization: AdaptiveInterviewerPreviewShadowAuthorization;
   readonly authorizationId: string;
   readonly artifactSha256: string;
@@ -141,13 +145,15 @@ export interface VerifiedPreviewShadowOwnerDecision {
   readonly exposure: "none";
 }
 
-const verifiedDecisions = new WeakSet<VerifiedPreviewShadowOwnerDecision>();
+const authenticatedDecisions =
+  new WeakSet<AuthenticatedPreviewShadowOwnerDecision>();
 
 export function parsePreviewShadowOwnerDecisionArtifactJson(
   contents: string
 ): PreviewShadowOwnerDecisionArtifact {
   if (
     typeof contents !== "string" ||
+    contents.length > PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES ||
     Buffer.byteLength(contents, "utf8") >
       PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
   ) {
@@ -172,13 +178,13 @@ export function previewShadowOwnerDecisionSignatureMessage(
   );
 }
 
-export function verifyPreviewShadowOwnerDecision(input: {
+export function authenticatePreviewShadowOwnerDecision(input: {
   artifact: unknown;
   authorization: unknown;
   context: PreviewShadowActivationContext;
   keyRegistry: unknown;
   now: Date;
-}): VerifiedPreviewShadowOwnerDecision {
+}): AuthenticatedPreviewShadowOwnerDecision {
   const request = exactRecord(input, [
     "artifact",
     "authorization",
@@ -190,8 +196,17 @@ export function verifyPreviewShadowOwnerDecision(input: {
   const context = parseActivationContext(request.context);
   let authorization: AdaptiveInterviewerPreviewShadowAuthorization;
   try {
+    const authorizationSnapshot = snapshotDataRecord(
+      request.authorization,
+      invalidAuthorization
+    );
+    assertAuthorizationPrimitiveBounds(authorizationSnapshot);
+    const ownerDecidedAt = parseWholeSecond(
+      authorizationSnapshot.owner_decided_at,
+      invalidAuthorization
+    );
     authorization = parseAdaptiveInterviewerPreviewShadowAuthorization(
-      snapshotDataRecord(request.authorization, invalidAuthorization),
+      authorizationSnapshot,
       {
         candidateGitSha: context.candidateGitSha,
         previewShadowConfigurationSha256:
@@ -199,8 +214,14 @@ export function verifyPreviewShadowOwnerDecision(input: {
         selectedCandidateConfigurationSha256:
           context.selectedCandidateConfigurationSha256,
       },
-      now
+      ownerDecidedAt
     );
+    if (
+      Buffer.byteLength(JSON.stringify(authorization), "utf8") >
+      PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
+    ) {
+      invalidAuthorization();
+    }
   } catch {
     invalidAuthorization();
   }
@@ -247,8 +268,7 @@ export function verifyPreviewShadowOwnerDecision(input: {
     invalidArtifact
   );
   if (
-    decidedAt.getTime() > now.getTime() ||
-    expiresAt.getTime() <= now.getTime()
+    decidedAt.getTime() > now.getTime()
   ) {
     invalidTime();
   }
@@ -270,8 +290,6 @@ export function verifyPreviewShadowOwnerDecision(input: {
   if (
     decidedAt.getTime() < keyNotBefore.getTime() ||
     decidedAt.getTime() >= keyNotAfter.getTime() ||
-    now.getTime() < keyNotBefore.getTime() ||
-    now.getTime() >= keyNotAfter.getTime() ||
     expiresAt.getTime() > keyNotAfter.getTime()
   ) {
     invalidKey();
@@ -299,7 +317,7 @@ export function verifyPreviewShadowOwnerDecision(input: {
   }
 
   const canonicalArtifact = canonicalArtifactJson(artifact);
-  const verified = deepFreeze({
+  const authenticated = deepFreeze({
     authorization,
     authorizationId,
     artifactSha256: createHash("sha256")
@@ -320,16 +338,16 @@ export function verifyPreviewShadowOwnerDecision(input: {
     targetEnvironment: context.targetEnvironment,
     targetCohort: context.targetCohort,
     exposure: context.exposure,
-  }) as VerifiedPreviewShadowOwnerDecision;
-  verifiedDecisions.add(verified);
-  return verified;
+  }) as AuthenticatedPreviewShadowOwnerDecision;
+  authenticatedDecisions.add(authenticated);
+  return authenticated;
 }
 
-export function assertPreviewShadowOwnerDecisionVerified(
-  value: VerifiedPreviewShadowOwnerDecision
+export function assertPreviewShadowOwnerDecisionAuthenticated(
+  value: AuthenticatedPreviewShadowOwnerDecision
 ): void {
-  if (!verifiedDecisions.has(value)) {
-    throw new Error("preview_shadow_owner_decision_unverified");
+  if (!authenticatedDecisions.has(value)) {
+    throw new Error("preview_shadow_owner_decision_unauthenticated");
   }
 }
 
@@ -379,6 +397,22 @@ function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
     SIGNATURE_KEYS,
     invalidArtifact
   );
+  assertArtifactPrimitiveBounds(record, payload, signature);
+  const boundedArtifact: PreviewShadowOwnerDecisionArtifact = {
+    contract: PREVIEW_SHADOW_OWNER_DECISION_CONTRACT,
+    payload: canonicalPayload(payload),
+    signature: {
+      algorithm: "ed25519",
+      keyId: signature.keyId as string,
+      value: signature.value as string,
+    },
+  };
+  if (
+    Buffer.byteLength(canonicalArtifactJson(boundedArtifact), "utf8") >
+    PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
+  ) {
+    invalidArtifact();
+  }
   if (
     record.contract !== PREVIEW_SHADOW_OWNER_DECISION_CONTRACT ||
     typeof payload.authorization_id !== "string" ||
@@ -431,13 +465,109 @@ function parseArtifact(value: unknown): PreviewShadowOwnerDecisionArtifact {
   }
   return deepFreeze({
     contract: PREVIEW_SHADOW_OWNER_DECISION_CONTRACT,
-    payload: canonicalPayload(payload),
+    payload: boundedArtifact.payload,
     signature: {
-      algorithm: signature.algorithm as "ed25519",
-      keyId: signature.keyId as string,
-      value: signature.value as string,
+      algorithm: boundedArtifact.signature.algorithm,
+      keyId: boundedArtifact.signature.keyId,
+      value: boundedArtifact.signature.value,
     },
   });
+}
+
+function assertArtifactPrimitiveBounds(
+  record: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  signature: Record<string, unknown>
+): void {
+  if (
+    record.contract !== PREVIEW_SHADOW_OWNER_DECISION_CONTRACT ||
+    typeof payload.authorization_expires_at !== "string" ||
+    payload.authorization_expires_at.length !== CANONICAL_TIMESTAMP_LENGTH ||
+    typeof payload.authorization_id !== "string" ||
+    payload.authorization_id.length !== 64 ||
+    typeof payload.authorization_nonce !== "string" ||
+    payload.authorization_nonce.length !== 64 ||
+    typeof payload.candidate_git_sha !== "string" ||
+    payload.candidate_git_sha.length !== 40 ||
+    typeof payload.owner_id !== "string" ||
+    payload.owner_id.length > 32 ||
+    typeof payload.owner_role !== "string" ||
+    payload.owner_role.length > 32 ||
+    typeof payload.owner_decision !== "string" ||
+    payload.owner_decision.length > 40 ||
+    typeof payload.owner_decided_at !== "string" ||
+    payload.owner_decided_at.length !== CANONICAL_TIMESTAMP_LENGTH ||
+    typeof payload.owner_decision_reference !== "string" ||
+    payload.owner_decision_reference.length < 1 ||
+    payload.owner_decision_reference.length > 200 ||
+    typeof payload.owner_direction_reference !== "string" ||
+    payload.owner_direction_reference.length < 1 ||
+    payload.owner_direction_reference.length > 200 ||
+    typeof payload.preview_shadow_configuration_sha256 !== "string" ||
+    payload.preview_shadow_configuration_sha256.length !== 64 ||
+    typeof payload.selected_candidate_configuration_sha256 !== "string" ||
+    payload.selected_candidate_configuration_sha256.length !== 64 ||
+    typeof payload.signing_key_id !== "string" ||
+    payload.signing_key_id.length < 1 ||
+    payload.signing_key_id.length > 80 ||
+    typeof payload.target_stage !== "string" ||
+    payload.target_stage.length > 32 ||
+    typeof payload.target_environment !== "string" ||
+    payload.target_environment.length > 32 ||
+    typeof payload.target_cohort !== "string" ||
+    payload.target_cohort.length > 32 ||
+    typeof payload.exposure !== "string" ||
+    payload.exposure.length > 16 ||
+    typeof signature.algorithm !== "string" ||
+    signature.algorithm.length > 16 ||
+    signature.algorithm !== "ed25519" ||
+    typeof signature.keyId !== "string" ||
+    signature.keyId.length < 1 ||
+    signature.keyId.length > 80 ||
+    typeof signature.value !== "string" ||
+    signature.value.length !== ED25519_SIGNATURE_BASE64_LENGTH
+  ) {
+    invalidArtifact();
+  }
+}
+
+function assertAuthorizationPrimitiveBounds(
+  record: Record<string, unknown>
+): void {
+  const exactLengths: ReadonlyArray<readonly [string, number]> = [
+    ["candidate_git_sha", 40],
+    ["preview_shadow_configuration_sha256", 64],
+    ["selected_candidate_configuration_sha256", 64],
+    ["authorization_nonce", 64],
+    ["owner_decided_at", CANONICAL_TIMESTAMP_LENGTH],
+    ["authorization_expires_at", CANONICAL_TIMESTAMP_LENGTH],
+  ];
+  for (const [key, length] of exactLengths) {
+    if (typeof record[key] !== "string" || record[key].length !== length) {
+      invalidAuthorization();
+    }
+  }
+  const boundedLengths: ReadonlyArray<readonly [string, number]> = [
+    ["contract_version", 80],
+    ["requested_authority", 80],
+    ["current_stage", 32],
+    ["target_stage", 32],
+    ["target_environment", 32],
+    ["target_cohort", 32],
+    ["exposure", 16],
+    ["owner_direction_reference", 200],
+    ["owner_decision", 32],
+    ["owner_decision_reference", 200],
+  ];
+  for (const [key, maximum] of boundedLengths) {
+    if (
+      typeof record[key] !== "string" ||
+      record[key].length < 1 ||
+      record[key].length > maximum
+    ) {
+      invalidAuthorization();
+    }
+  }
 }
 
 function parseRegistry(value: unknown): PreviewShadowOwnerKeyRegistry {
@@ -459,7 +589,9 @@ function parseRegistry(value: unknown): PreviewShadowOwnerKeyRegistry {
       keyIds.has(key.keyId) ||
       (key.status !== "active" && key.status !== "revoked") ||
       typeof key.notBefore !== "string" ||
+      key.notBefore.length !== CANONICAL_TIMESTAMP_LENGTH ||
       typeof key.notAfter !== "string" ||
+      key.notAfter.length !== CANONICAL_TIMESTAMP_LENGTH ||
       typeof key.publicKeyPem !== "string" ||
       key.publicKeyPem.length > 512
     ) {
@@ -478,6 +610,12 @@ function parseRegistry(value: unknown): PreviewShadowOwnerKeyRegistry {
       status: key.status as "active" | "revoked",
     };
   });
+  if (
+    Buffer.byteLength(JSON.stringify(keys), "utf8") >
+    PREVIEW_SHADOW_OWNER_DECISION_MAX_BYTES
+  ) {
+    invalidRegistry();
+  }
   return deepFreeze({
     contract: PREVIEW_SHADOW_OWNER_KEY_REGISTRY_CONTRACT,
     ownerId: PREVIEW_SHADOW_OWNER_ID,
@@ -655,10 +793,15 @@ function deepFreeze<T>(value: T): T {
 
 function parseJsonRejectingDuplicateKeys(contents: string): unknown {
   let offset = 0;
+  let parsedValues = 0;
   const whitespace = () => {
     while (/[ \t\r\n]/.test(contents[offset] ?? "")) offset += 1;
   };
   const value = (depth = 0): unknown => {
+    parsedValues += 1;
+    if (parsedValues > PREVIEW_SHADOW_OWNER_DECISION_MAX_JSON_VALUES) {
+      throw new Error("json_value_count_invalid");
+    }
     if (depth > PREVIEW_SHADOW_OWNER_DECISION_MAX_DEPTH) {
       throw new Error("json_depth_invalid");
     }
@@ -702,6 +845,12 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       whitespace();
       if (contents[offset] !== ":") throw new Error("json_invalid");
       offset += 1;
+      if (
+        entries.length >=
+        PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
+      ) {
+        throw new Error("json_entry_count_invalid");
+      }
       entries.push([key, value(depth + 1)]);
       whitespace();
       if (contents[offset] === "}") {
@@ -721,6 +870,12 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       return values;
     }
     while (true) {
+      if (
+        values.length >=
+        PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
+      ) {
+        throw new Error("json_entry_count_invalid");
+      }
       values.push(value(depth + 1));
       whitespace();
       if (contents[offset] === "]") {

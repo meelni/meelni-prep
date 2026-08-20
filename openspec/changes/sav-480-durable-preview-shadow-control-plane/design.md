@@ -11,10 +11,18 @@ expiry, exact candidate/config/selected-candidate digests, stage, environment,
 cohort, and exposure. The registry and verifier are explicit injected inputs;
 there is no environment or private-key read.
 
+Artifact JSON and direct artifact, authorization, context, and registry objects
+use the same bounded descriptor snapshots and small per-field/container limits
+before any date, base64, PEM, or signature operation. The opaque authenticated
+result proves the historical decision and bindings but does not itself authorize
+new consumption.
+
 After signature verification, PostgreSQL rechecks authorization validity using
 its own clock while holding the run row/activation CAS. Unique authorization
 ID, nonce, decision reference, and artifact digest constraints make activation
-one-time. Exact retry returns the same run; divergent replay conflicts. Raw
+one-time. An exact authenticated existing-run retry returns the same read-only
+run even after expiry; expiry is applied by the database clock only when a run
+would be inserted. Divergent replay conflicts. Raw
 authorization JSON, signature bytes, and capability material are never stored
 in evidence, logs, or error values.
 
@@ -41,8 +49,12 @@ open 1,000,000,000 nano-USD reservations, and stop-incomplete excess against
 the 10b hard-stop and 25b overall caps. It emits the exact SAV-479 closed lease
 for one sanitized session-binding digest. Stable caller-supplied idempotency and
 channel capabilities let an ambiguous commit be retried after a process restart
-without minting a second lease. This slice exposes no app/runtime consumer for
-that seam.
+without minting a second lease. Only an open, DB-current, non-revoked replay
+returns executable lease material. Other exact replays return a typed closed
+state without a lease. Run-control hard stops atomically revoke every still-open
+lease while retaining its reservation and ability to reconcile receipt/incident
+evidence; automatic max/cap closure preserves the final admitted lease. This
+slice exposes no app/runtime consumer for that seam.
 
 ## Evidence authentication and recovery
 

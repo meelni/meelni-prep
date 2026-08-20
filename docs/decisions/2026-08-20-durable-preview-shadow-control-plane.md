@@ -25,7 +25,8 @@ Add one server-owned PostgreSQL control plane with these boundaries:
    key ID, and bounded content-free decision evidence.
 2. Consume authorization ID, nonce, decision reference, and artifact digest in
    one durable activation CAS. Database time is final at the CAS; exact
-   ambiguous-commit retry converges, and divergent replay conflicts.
+   ambiguous-commit retry converges, including exact read-only replay after
+   authorization expiry, while absent-run expiry and divergent replay fail.
 3. Lock the run row for every transition. Allocate the exact SAV-479 session
    lease before any room/dispatch/token/worker/provider construction and count
    all open reservations plus conservative spend against both caps.
@@ -35,7 +36,11 @@ Add one server-owned PostgreSQL control plane with these boundaries:
 5. Keep stop-incomplete reservation and excess until an authenticated
    termination acknowledgement atomically replaces them with final spend.
    Recovery converges durable accounting but never reopens a stopped run.
-6. Keep this slice server-only and unwired. SAV-479 remains a test oracle, not a
+6. Return executable allocation replay material only for an open, DB-current,
+   non-revoked lease. A run-control hard stop atomically revokes open leases but
+   preserves their conservative reservations and evidence reconciliation. A
+   final lease admitted at a max/cap boundary remains executable.
+7. Keep this slice server-only and unwired. SAV-479 remains a test oracle, not a
    runtime dependency or public authority.
 
 ## Consequences

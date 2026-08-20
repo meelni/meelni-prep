@@ -150,7 +150,7 @@ CREATE TABLE "adaptive_interviewer_preview_shadow_session_lease" (
           "adaptive_interviewer_preview_shadow_session_lease"."allocation_ledger_revision" > 0 AND
           "adaptive_interviewer_preview_shadow_session_lease"."expires_at" > "adaptive_interviewer_preview_shadow_session_lease"."issued_at" AND
           "adaptive_interviewer_preview_shadow_session_lease"."expires_at" <= "adaptive_interviewer_preview_shadow_session_lease"."issued_at" + interval '1 hour'),
-	CONSTRAINT "adaptive_interviewer_preview_shadow_lease_state_check" CHECK ("adaptive_interviewer_preview_shadow_session_lease"."state" IN ('open', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged'))
+	CONSTRAINT "adaptive_interviewer_preview_shadow_lease_state_check" CHECK ("adaptive_interviewer_preview_shadow_session_lease"."state" IN ('open', 'revoked', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged'))
 );
 --> statement-breakpoint
 CREATE TABLE "adaptive_interviewer_preview_shadow_session_receipt" (

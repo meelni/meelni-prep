@@ -4,19 +4,24 @@
 
 ### Requirement: Preview-shadow activation is authenticated and globally one-time
 
-The system SHALL verify a fresh domain-separated Ed25519 owner-decision
+The system SHALL authenticate a domain-separated Ed25519 owner-decision
 artifact against an explicit versioned key registry and independently supplied
 candidate SHA, Preview configuration digest, selected-candidate digest, stage,
 environment, cohort, exposure, and current time. Parsing SHALL reject duplicate
 keys, inputs over 64 KiB UTF-8, nesting over depth 32, missing or extra fields,
 accessors, unsafe integers, noncanonical timestamps, and signature or key-window
-drift. The durable database SHALL consume authorization ID, nonce, decision
+drift. Direct artifact, authorization, context, and registry objects SHALL have
+the same descriptor, per-field, container-count, byte, and depth bounds before
+date, base64, or cryptographic work. The opaque result SHALL prove authenticity
+without granting consume authority. The durable database SHALL consume authorization ID, nonce, decision
 reference, and artifact digest exactly once using database time at the CAS.
 
 #### Scenario: Activation acknowledgement is lost
 
 - **WHEN** the exact signed request is retried after the database committed
 - **THEN** the system returns the same run and activation evidence
+- **AND** exact replay remains readable after expiry while an absent run cannot
+  be created after expiry
 - **AND** a request with any divergent binding or capability conflicts without
   creating another run
 
@@ -34,6 +39,16 @@ or cap-exceeding requests SHALL fail closed.
   remaining cap boundary
 - **THEN** exact same-binding retry converges to one lease
 - **AND** no more than the allowed unique allocation commits
+
+#### Scenario: A lease is no longer executable
+
+- **WHEN** an exact lease allocation is retried after lease expiry, terminal
+  evidence, stop-incomplete evidence, termination acknowledgement, or a later
+  authenticated run-control hard stop
+- **THEN** the system returns a typed closed replay with no executable lease
+- **AND** a run-control hard stop atomically revokes all still-open leases while
+  retaining their reservations and authenticated evidence-reconciliation paths
+- **AND** an automatic max/cap event may preserve the final admitted open lease
 
 ### Requirement: Reconciliation is authenticated, idempotent, and conservative
 

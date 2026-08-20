@@ -34,11 +34,13 @@ and a new exact-merged-SHA owner artifact is issued outside the repository:
    current time.
 2. Parse the SAV-479 authorization and the signed owner-decision artifact with
    the explicit reviewed public-key registry. Keep raw inputs outside evidence.
-3. Submit the verified values and stable run-control capability to the durable
+3. Submit the authenticated values and stable run-control capability to the durable
    activation transaction. Retry only the exact request after ambiguity.
 4. Before each `LiveKitInterviewProvider.startInterviewRoom` call, submit the
    sanitized session binding, revision, TTL, and stable per-lease worker and
-   termination capabilities. Proceed only with the committed admitted lease.
+   termination capabilities. Proceed only when the result is `allocated` or
+   `replayed` and contains the committed admitted lease. `replayed_closed` is
+   read-only evidence and must never construct a room, worker, or adapter.
 5. Deliver the lease and worker capability only to the isolated shadow runtime;
    keep the termination capability on the trusted process-supervisor channel.
 6. Reconcile a terminal receipt or stop-incomplete incident outside the speech
@@ -49,8 +51,10 @@ No part of that live sequence is wired by SAV-480.
 
 ## Stop and recovery
 
-Record the hard-stop event before admitting another lease. Existing admitted
-sessions may submit conservative evidence after the run is stopped. A terminal
+Record the hard-stop event before admitting another lease. The same transaction
+revokes every still-open lease for execution while retaining its reservation;
+those sessions may only submit authenticated conservative receipt or incident
+evidence after the run is stopped. A terminal
 receipt closes one lease. A stop-incomplete incident leaves its full reservation
 open and requires process termination.
 
@@ -64,7 +68,8 @@ stage.
 ## Evidence and incident handling
 
 Operational output is limited to content-free result codes such as `activated`,
-`replayed`, `conflict`, `denied`, `unavailable`, `recorded`, and `stopped`, plus
+`replayed`, `replayed_closed`, `conflict`, `denied`, `unavailable`, `recorded`,
+and `stopped`, plus
 approved digests/revisions/counts/amounts. Do not include raw exception text.
 If a capability or signature could have reached logs, stop, rotate the affected
 channel/key outside this repository, and retain only a sanitized incident

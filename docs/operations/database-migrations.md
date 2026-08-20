@@ -227,7 +227,7 @@ deadline.
 7. Run strict preflight again; it must report `reconciled`,
    `migrationCount: 44`, and the exact durable Preview-shadow control-plane schema
    fingerprint
-   `51b2acb2c1b00dd94d15c8a204009a70e680d3a8c1d27ed185f47261266860be`
+   `6527d4c95a623e4759c92197f380e9bded41ca557165d4300e4e497fedc6cd48`
    exported by `scripts/database-schema-contract.ts`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
