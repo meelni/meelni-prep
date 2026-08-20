@@ -1,8 +1,9 @@
 # Adaptive Interviewer Rollout Runbook
 
-Current state: `synthetic`; system recommendation: `hold_at_synthetic`; owner
-decision: `pending`. Application adapter remains `None` and all flags remain
-off. This runbook does not authorize environment access or mutation.
+Current state: `synthetic`; system recommendation: `hold_at_synthetic`. The
+owner approved repository preparation of one selected adapter candidate only;
+no live-stage decision exists. Application adapter remains `None` and all flags
+remain off. This runbook does not authorize environment access or mutation.
 
 ## Repository verification
 
@@ -37,8 +38,19 @@ approval.
 
 ## First owner gate: prepare a candidate
 
-The smallest owner action is to complete the closed
-`adaptive-interviewer-preview-shadow-selection.v1`:
+SAV-478's first gate is approved in
+`docs/evidence/sav-478-director-adapter-preparation-authorization.json`, bound
+to external reference
+`linear:SAV-476:comment:05d1d32b-a1aa-45ff-b83a-4645904b4398` and selected-
+candidate digest
+`b8cc8547c6d2573b7d323b3327ab31bf74c237a1486c13e0e7780a63880e25ac`.
+Its expiry is `2026-08-27T04:43:26.000Z`. It permits repository implementation,
+configuration, and provider-free validation of the selected adapter only. It
+does not permit a provider request, spend, environment mutation, deployment,
+live room, or rollout transition.
+
+The approved record completed the closed
+`adaptive-interviewer-preview-shadow-selection.v1` with:
 
 1. exact Director adapter ID/version, provider, and model;
 2. positive JSON-safe integer Preview session and nano-USD spend caps;
@@ -58,10 +70,10 @@ floating conversion. Entry/stop comparators must remain coherent, and evidence/
 version drift, unauthorized cohort, invariant regression, any session or
 transcript loss, and kill-switch failure remain fixed non-tunable stops.
 
-The owner then explicitly authorizes
+The owner explicitly authorized
 `prepare_isolated_preview_shadow_candidate_only` against the exact merged SHA,
 repository configuration digest, and domain-separated selected-candidate
-configuration digest. The approved v1 record also needs a whole-second UTC
+configuration digest. The approved v1 record includes a whole-second UTC
 decision time, an expiry no more than seven days later, and the exact external
 decision reference. The trusted verifier supplies current time; the record is
 invalid before its decision time and at or after expiry.

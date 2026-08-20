@@ -4,6 +4,23 @@ This directory contains reproducible, machine-readable evidence generated from
 non-secret repository inputs. Reports must not contain customer data, provider
 credentials, recordings, or real transcripts.
 
+`sav-478-director-adapter-preparation-authorization.json` is the exact closed
+first-gate owner record for repository preparation of adapter
+`meelni_director_openai_responses` at version
+`interview-director-adapter.openai-responses.v1`, provider `openai-api`, and
+model `gpt-5.4-mini-2026-03-17`. It binds base SHA
+`0312c34c84509187649a6af46b6c8a21c6a398e5`, rollout configuration SHA-256
+`ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042`,
+selected-candidate SHA-256
+`b8cc8547c6d2573b7d323b3327ab31bf74c237a1486c13e0e7780a63880e25ac`,
+and external reference
+`linear:SAV-476:comment:05d1d32b-a1aa-45ff-b83a-4645904b4398`. The supervisor
+verified that reference. The record expires at
+`2026-08-27T04:43:26.000Z` and authorizes only repository implementation,
+configuration, and provider-free tests. It grants no provider call/spend,
+deployment, live room, Preview influence, Production/default-on, or launch
+authority and cannot be reused for the second live gate.
+
 `sav-477-adaptive-interviewer-readiness.json` is a provider-free, digest-bound
 repository readiness packet. It verifies the exact SAV-467 current-runtime
 baseline/adjudication, synthetic adaptive-feedback fixture, and observability

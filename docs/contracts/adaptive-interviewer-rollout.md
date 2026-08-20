@@ -63,6 +63,28 @@ or supervisor must verify the external decision reference before repository
 work proceeds. This preparation contract is domain-separated from rollout-
 stage authorization and Production action authorization, and both reject it.
 
+## Selected repository candidate preparation
+
+For SAV-478, the owner selected adapter ID
+`meelni_director_openai_responses`, adapter version
+`interview-director-adapter.openai-responses.v1`, provider `openai-api`, and
+model snapshot `gpt-5.4-mini-2026-03-17`. The exact approved v1 record is
+checked in at
+`docs/evidence/sav-478-director-adapter-preparation-authorization.json` and
+binds base SHA `0312c34c84509187649a6af46b6c8a21c6a398e5`, repository rollout
+configuration SHA-256
+`ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042`,
+and selected-candidate SHA-256
+`b8cc8547c6d2573b7d323b3327ab31bf74c237a1486c13e0e7780a63880e25ac`.
+
+Its external owner reference is
+`linear:SAV-476:comment:05d1d32b-a1aa-45ff-b83a-4645904b4398`. The supervising
+agent verified that reference; repository parsing still does not authenticate a
+human identity. This record authorizes only the selected candidate's repository
+implementation/configuration and provider-free validation. Application wiring,
+provider calls/spend, deployment, rooms, Preview influence, Production,
+default-on, and GO/NO-GO remain unauthorized.
+
 ## Stages
 
 | Stage               | Environment                 | Director  | Exposure           | Required cohort | Safe rollback                                     |
