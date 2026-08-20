@@ -80,7 +80,8 @@ import or construct it.
 
 - Duplicate JSON keys, hidden/symbol extras, sparse arrays, unsafe integers,
   padded/case-varied bindings, stale/expired values, and digest/version drift
-  fail closed.
+  fail closed. Authorization JSON is capped at exactly 64 KiB UTF-8 and nesting
+  depth 32 before traversal.
 - Validated TypeScript values are deeply frozen; Python leases/receipts are
   copied into frozen values.
 - Activation revalidates the complete authorization against independently
@@ -97,7 +98,9 @@ import or construct it.
   outcome, and spend. Exact replay is idempotent; divergent replay conflicts.
 - Every attempt retains at least its conservative reservation. Ambiguous spend
   is never reclaimed, and upward reconciliation closes admission before any
-  next request.
+  next request. Multiple already-open sessions continue reconciling after stop;
+  the distinct exact 25x aggregate sanity ceiling cannot truncate otherwise
+  valid per-session evidence.
 - Shadow settle coalesces concurrent callers on one bounded operation, closes
   admission before cancellation, awaits cancellation, always attempts
   shutdown/adapter close in a finally path, and never touches speech,

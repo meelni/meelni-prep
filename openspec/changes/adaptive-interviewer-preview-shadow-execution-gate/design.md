@@ -2,8 +2,9 @@
 
 ## Authorization and configuration
 
-`@meelni/agent` owns strict JSON parsing, exact object schemas, canonical
-configuration and authorization digests, pending request generation, and pure
+`@meelni/agent` owns strict JSON parsing bounded to 64 KiB UTF-8 and nesting
+depth 32, exact object schemas, canonical configuration and authorization
+digests, pending request generation, and pure
 reference protocols for one durable control-plane activation plus atomic
 cohort-ledger session leases. They do not provide live cross-process replay or
 cap enforcement; a follow-up authenticated durable adapter must do that.
@@ -32,7 +33,10 @@ The control plane allocates a derived 1,000,000,000 nano-USD session lease.
 Within it, at most ten attempts each reserve 100,000,000 nano-USD before I/O.
 Normalized successful usage retains the conservative attempt reservation;
 failure/timeout/cancel/ambiguity also retains it; larger observed billing
-reconciles upward and stops. Global overall/stop caps include outstanding
+reconciles upward and stops. Each session has a separate 250b nano-USD observed
+spend sanity ceiling; the reference ledger uses the exact 25x derived safe
+aggregate ceiling so already-open stopped sessions still reconcile without
+losing evidence. Global overall/stop caps include outstanding
 session leases only in the future durable cohort ledger. The reference model
 also records stop-incomplete spend above the retained lease as exact excess
 without double counting. Sanitized receipts reconcile centrally outside

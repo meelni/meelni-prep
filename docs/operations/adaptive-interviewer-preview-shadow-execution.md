@@ -56,6 +56,10 @@ reads `os.environ`, `.env`, or a credential variable.
    atomically allocate a bounded session lease before room/worker construction,
    and reconcile sanitized receipts centrally. Never let a worker consume stage
    authority or use a process-local store for live execution.
+   Reject authorization JSON above 64 KiB UTF-8 or nesting depth 32. Keep the
+   250b per-session observed ceiling separate from the exact 6.25t safe
+   aggregate; stopped allocation must not prevent already-open sessions from
+   reconciling upward.
 6. This repository slice has no durable control-plane adapter, so runtime
    construction returns typed `unavailable` with no adapter. The checked pure
    transition functions are reference models, not live cap/replay enforcement;

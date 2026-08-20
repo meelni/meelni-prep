@@ -9,7 +9,9 @@ domain-separated authorization bound to exact candidate SHA, full config
 digest, selected candidate, environment, stage, cohort, owner values, rehearsal
 matrix, external reference, time window, and one-time nonce. Missing, extra,
 duplicate, malformed, expired, not-yet-valid, drifted, or replayed input SHALL
-fail closed. Preparation and Production/default-on validators SHALL reject it.
+fail closed. Authorization JSON SHALL reject more than 64 KiB UTF-8 or nesting
+deeper than 32 before unbounded traversal. Preparation and Production/default-
+on validators SHALL reject it.
 At activation/CAS time, independently trusted bindings SHALL supply the exact
 deployed/reviewed SHA, config/selection digests, target, and current time. An
 injected authenticated owner-decision verifier SHALL return a fresh opaque
@@ -45,6 +47,12 @@ timeout, cancellation, invalid response, and ambiguous outcomes SHALL retain
 the full attempt reservation. Trusted larger billing SHALL reconcile upward
 and stop rather than be clipped. Sanitized receipts SHALL reconcile centrally
 and idempotently outside the speech path.
+
+One session's observed evidence SHALL be bounded by the explicit 250b nano-USD
+sanity ceiling, while aggregate accounting SHALL use the exact safe 25x ceiling
+so every already-admitted session can still reconcile after a stop. The
+aggregate sanity ceiling SHALL NOT authorize new allocation above the 10b/25b
+execution caps.
 
 Session receipt and stop-incomplete IDs SHALL be treated as integrity and
 idempotency digests only. The future durable adapter SHALL authenticate worker

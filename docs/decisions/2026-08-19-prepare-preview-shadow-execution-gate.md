@@ -28,6 +28,8 @@ Create a domain-separated `preview_shadow` boundary with four deep modules:
    Preview-stage configuration digest, selected candidate digest, environment,
    stage, cohort, caps, privacy, thresholds, hard stops, rehearsal matrix,
    external reference, whole-second decision/expiry, and a one-time nonce.
+   Its JSON reader rejects more than 64 KiB UTF-8 or nesting deeper than 32
+   before unbounded traversal.
 2. A deterministic runtime configuration pins the selected adapter/provider/
    model and the complete owner envelope. Its digest uses the contract version,
    one NUL byte, and canonical JSON. No environment value participates.
@@ -63,6 +65,10 @@ is 100,000,000 nano-USD. It is deliberately much larger than the selected
 bounded request’s normalized estimate. If trustworthy provider billing exceeds
 it, reconciliation records the larger amount; local/session and central/run
 admission stop as applicable, and observed spend is never clipped.
+The per-session observed-spend sanity ceiling is 250,000,000,000 nano-USD;
+the distinct safe ledger aggregate is exactly 25 times that value. The latter
+does not expand either execution cap. It lets every already-admitted session
+record upward evidence even after allocation has stopped.
 
 LiveKit Agents 1.6.5 documents `AgentSession.shutdown(drain=True)` as
 non-blocking and `AgentSession.aclose()` as awaitable. Current LiveKit Cloud

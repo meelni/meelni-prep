@@ -72,9 +72,10 @@ external decision converts it into a distinct authorization only by supplying:
 - fixed false values for Preview influence, later stages, Production,
   default-on, and GO/NO-GO.
 
-Parsing uses a duplicate-key-rejecting JSON reader, exact object keys, safe
-integers, injected trusted time, and exact SHA/digest/stage/environment/cohort
-bindings. Authority is invalid before its decision time and at or after expiry.
+Parsing uses a duplicate-key-rejecting JSON reader with an exact 64 KiB UTF-8
+input ceiling and maximum nesting depth 32, exact object keys, safe integers,
+injected trusted time, and exact SHA/digest/stage/environment/cohort bindings.
+Authority is invalid before its decision time and at or after expiry.
 The parser validates shape and bindings; it does not authenticate the human
 behind the external reference.
 
@@ -161,6 +162,14 @@ reconciliation releases the session-lease reservation only after a valid
 terminal receipt, records larger spend without clipping, and stops the run on a
 cap or invariant breach. There is no database/network round trip for each
 spoken turn beyond the provider request itself.
+
+One receipt or incident accepts observed spend only through the explicit
+250,000,000,000 nano-USD per-session sanity ceiling. The ledger's distinct safe
+aggregate ceiling is exactly 25 times that value, 6,250,000,000,000 nano-USD.
+That ceiling is not an execution budget: allocation still stops at the 10b/25b
+caps. It exists so every already-admitted open session can reconcile upward,
+including after the run is stopped, without reusing the per-session ceiling and
+losing billing evidence.
 
 Session receipt and stop-incomplete incident IDs are also unkeyed canonical
 self-digests. They provide deterministic integrity/idempotency, not

@@ -359,6 +359,39 @@ test("config and authorization fail closed for drift, extras, malformed time, an
         duplicate,
         bindings(),
         NOW
+    ),
+    /json_invalid/
+  );
+  const authorizationJson = JSON.stringify(authorization());
+  const authorizationJsonAtLimit = `${authorizationJson}${" ".repeat(
+    64 * 1_024 - Buffer.byteLength(authorizationJson, "utf8")
+  )}`;
+  assert.equal(
+    Buffer.byteLength(authorizationJsonAtLimit, "utf8"),
+    64 * 1_024
+  );
+  assert.doesNotThrow(() =>
+    parseAdaptiveInterviewerPreviewShadowAuthorizationJson(
+      authorizationJsonAtLimit,
+      bindings(),
+      NOW
+    )
+  );
+  assert.throws(
+    () =>
+      parseAdaptiveInterviewerPreviewShadowAuthorizationJson(
+        `${authorizationJsonAtLimit} `,
+        bindings(),
+        NOW
+      ),
+    /json_invalid/
+  );
+  assert.throws(
+    () =>
+      parseAdaptiveInterviewerPreviewShadowAuthorizationJson(
+        `${"[".repeat(34)}0${"]".repeat(34)}`,
+        bindings(),
+        NOW
       ),
     /json_invalid/
   );
@@ -868,9 +901,58 @@ test("reference-model cohort ledger counts open session leases and reconciles id
         sessionBindingSha256: "f".repeat(64),
         issuedAt: NOW,
         expiresAt: new Date("2026-08-20T09:00:00.000Z"),
-      }),
+    }),
     /session_allocation_denied/
   );
+
+  let highSpendLedger =
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(activationInput())
+    );
+  const highSpendLeases = [];
+  for (let index = 0; index < 10; index += 1) {
+    const allocation =
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: highSpendLedger,
+        expectedRevision: highSpendLedger.revision,
+        sessionBindingSha256: (index + 16).toString(16).padStart(64, "0"),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      });
+    highSpendLedger = allocation.ledger;
+    highSpendLeases.push(allocation.lease);
+  }
+  for (const [index, lease] of highSpendLeases.entries()) {
+    const highSpendReceipt =
+      createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
+        contract_version:
+          ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_SESSION_RECEIPT_VERSION,
+        run_id: RUN_ID,
+        lease_id: lease.lease_id,
+        session_ordinal: lease.session_ordinal,
+        allocation_ledger_revision: lease.allocation_ledger_revision,
+        preview_shadow_configuration_sha256:
+          ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+        outcome: "settled",
+        attempt_count: 10,
+        reconciled_spend_nano_usd: 200_000_000_000,
+        outstanding_attempt_reservations_nano_usd: 0,
+        attempt_receipts_sha256: (index + 32)
+          .toString(16)
+          .padStart(64, "0"),
+        settled_at: `2026-08-20T08:5${index}:00.000Z`,
+      });
+    highSpendLedger =
+      referenceModelReconcileAdaptiveInterviewerPreviewShadowSession({
+        ledger: highSpendLedger,
+        expectedRevision: highSpendLedger.revision,
+        receipt: highSpendReceipt,
+      });
+  }
+  assert.equal(highSpendLedger.reconciled_spend_nano_usd, 2_000_000_000_000);
+  assert.equal(highSpendLedger.outstanding_session_reservations_nano_usd, 0);
+  assert.equal(highSpendLedger.reconciled_sessions.length, 10);
+  assert.equal(highSpendLedger.stopped, true);
 
   const symbolReceiptPayload = Object.fromEntries(
     Object.entries(receipt).filter(
@@ -1049,6 +1131,58 @@ test("stop-incomplete incidents stop allocation and retain the full session leas
     11e9
   );
   assert.equal(excessStopped.stopped, true);
+
+  let multipleIncidentLedger =
+    referenceModelCreateAdaptiveInterviewerPreviewShadowCohortLedger(
+      referenceModelActivateAdaptiveInterviewerPreviewShadow(activationInput())
+    );
+  const multipleIncidentLeases = [];
+  for (const binding of ["7".repeat(64), "8".repeat(64)]) {
+    const next =
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: multipleIncidentLedger,
+        expectedRevision: multipleIncidentLedger.revision,
+        sessionBindingSha256: binding,
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      });
+    multipleIncidentLedger = next.ledger;
+    multipleIncidentLeases.push(next.lease);
+  }
+  for (const [index, lease] of multipleIncidentLeases.entries()) {
+    const highSpendIncident =
+      createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
+        ...originalIncidentPayload,
+        lease_id: lease.lease_id,
+        session_ordinal: lease.session_ordinal,
+        allocation_ledger_revision: lease.allocation_ledger_revision,
+        attempt_count: 10,
+        reconciled_spend_nano_usd: 200_000_000_000,
+        attempt_receipts_sha256: (index + 48)
+          .toString(16)
+          .padStart(64, "0"),
+        observed_at: `2026-08-20T08:48:0${index}.000Z`,
+      });
+    multipleIncidentLedger =
+      referenceModelRecordAdaptiveInterviewerPreviewShadowStopIncomplete({
+        ledger: multipleIncidentLedger,
+        expectedRevision: multipleIncidentLedger.revision,
+        incident: highSpendIncident,
+      });
+  }
+  assert.equal(
+    multipleIncidentLedger.stop_incomplete_excess_spend_nano_usd,
+    398_000_000_000
+  );
+  assert.equal(
+    multipleIncidentLedger.outstanding_session_reservations_nano_usd,
+    2_000_000_000
+  );
+  assert.equal(
+    multipleIncidentLedger.stop_incomplete_excess_spend_nano_usd +
+      multipleIncidentLedger.outstanding_session_reservations_nano_usd,
+    400_000_000_000
+  );
 });
 
 test("reference-model evidence digests are canonical and conservatively bounded", () => {
@@ -1096,6 +1230,7 @@ test("reference-model evidence digests are canonical and conservatively bounded"
     [10, 999_999_999],
     [Number.MAX_SAFE_INTEGER + 1, 1_000_000_000],
     [1, Number.MAX_SAFE_INTEGER + 1],
+    [1, 250_000_000_001],
   ]) {
     assert.throws(
       () =>
@@ -1111,6 +1246,7 @@ test("reference-model evidence digests are canonical and conservatively bounded"
     [0, 0],
     [1, 100_000_000],
     [10, 1_000_000_000],
+    [10, 250_000_000_000],
   ]) {
     assert.doesNotThrow(() =>
       createAdaptiveInterviewerPreviewShadowReferenceModelSessionReceipt({
@@ -1153,6 +1289,22 @@ test("reference-model evidence digests are canonical and conservatively bounded"
       createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident(
         { ...incidentPayload, attempt_count: 10, reconciled_spend_nano_usd: 0 }
       ),
+    /stop_incomplete_incident_invalid/
+  );
+  assert.doesNotThrow(() =>
+    createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
+      ...incidentPayload,
+      attempt_count: 10,
+      reconciled_spend_nano_usd: 250_000_000_000,
+    })
+  );
+  assert.throws(
+    () =>
+      createAdaptiveInterviewerPreviewShadowReferenceModelStopIncompleteIncident({
+        ...incidentPayload,
+        attempt_count: 10,
+        reconciled_spend_nano_usd: 250_000_000_001,
+      }),
     /stop_incomplete_incident_invalid/
   );
 });
@@ -1259,6 +1411,49 @@ test("reference-model ledger rejects forged relations and records closed stop ev
         activationInput()
       )
     );
+  const aggregateBoundarySessions = Array.from({ length: 25 }, (_, index) => ({
+    receipt_id: (index + 1).toString(16).padStart(64, "0"),
+    lease_id: (index + 101).toString(16).padStart(64, "0"),
+    session_ordinal: index + 1,
+    allocation_ledger_revision: index + 1,
+    reconciliation_ledger_revision: index + 26,
+    attempt_count: 10,
+    reconciled_spend_nano_usd: 250_000_000_000,
+    outcome: "settled" as const,
+  }));
+  const aggregateBoundaryLedger = {
+    ...empty,
+    allocated_session_count: 25,
+    reconciled_spend_nano_usd: 6_250_000_000_000,
+    reconciled_sessions: aggregateBoundarySessions,
+    stopped: true,
+    revision: 50,
+  };
+  assert.throws(
+    () =>
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: aggregateBoundaryLedger,
+        expectedRevision: aggregateBoundaryLedger.revision,
+        sessionBindingSha256: "4".repeat(64),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      }),
+    /session_allocation_denied/
+  );
+  assert.throws(
+    () =>
+      referenceModelAllocateAdaptiveInterviewerPreviewShadowSessionLease({
+        ledger: {
+          ...aggregateBoundaryLedger,
+          reconciled_spend_nano_usd: 6_250_000_000_001,
+        },
+        expectedRevision: aggregateBoundaryLedger.revision,
+        sessionBindingSha256: "4".repeat(64),
+        issuedAt: NOW,
+        expiresAt: new Date("2026-08-20T09:00:00.000Z"),
+      }),
+    /ledger_invalid/
+  );
   const stopEvent =
     createAdaptiveInterviewerPreviewShadowReferenceModelCohortStopEvent({
       contract_version:

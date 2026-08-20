@@ -41,7 +41,6 @@ export const ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_OWNER_DECISION_
   "adaptive-interviewer-preview-shadow-owner-decision-verifier.v1" as const;
 
 const MAX_SESSION_LEASE_TTL_MS = 60 * 60 * 1_000;
-const MAX_SAFE_SPEND = 250_000_000_000;
 
 export interface AdaptiveInterviewerPreviewShadowReferenceModelActivationCommand {
   contract_version: typeof ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_REFERENCE_MODEL_ACTIVATION_COMMAND_VERSION;
@@ -739,7 +738,11 @@ export function createAdaptiveInterviewerPreviewShadowReferenceModelSessionRecei
     !["settled", "stopped"].includes(record.outcome as string) ||
     !nonNegativeInteger(record.attempt_count) ||
     record.attempt_count > 10 ||
-    !integerBetween(record.reconciled_spend_nano_usd, 0, MAX_SAFE_SPEND) ||
+    !integerBetween(
+      record.reconciled_spend_nano_usd,
+      0,
+      250_000_000_000
+    ) ||
     (record.reconciled_spend_nano_usd as number) <
       (record.attempt_count as number) * 100_000_000 ||
     record.outstanding_attempt_reservations_nano_usd !== 0 ||
@@ -843,7 +846,11 @@ export function createAdaptiveInterviewerPreviewShadowReferenceModelStopIncomple
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256 ||
     record.reason !== "cleanup_unconfirmed" ||
     !integerBetween(record.attempt_count, 0, 10) ||
-    !integerBetween(record.reconciled_spend_nano_usd, 0, MAX_SAFE_SPEND) ||
+    !integerBetween(
+      record.reconciled_spend_nano_usd,
+      0,
+      250_000_000_000
+    ) ||
     (record.reconciled_spend_nano_usd as number) <
       (record.attempt_count as number) * 100_000_000 ||
     record.retained_session_reservation_nano_usd !== 1_000_000_000 ||
@@ -1130,8 +1137,13 @@ export function referenceModelReconcileAdaptiveInterviewerPreviewShadowSession(i
   const outstanding =
     ledger.outstanding_session_reservations_nano_usd - open.reserved_nano_usd;
   if (
-    !integerBetween(reconciled, 0, MAX_SAFE_SPEND) ||
-    !integerBetween(outstanding, 0, MAX_SAFE_SPEND)
+    !integerBetween(reconciled, 0, 25 * 250_000_000_000) ||
+    !integerBetween(
+      outstanding,
+      0,
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.limits
+        .maximum_spend_nano_usd
+    )
   ) {
     throw new Error("adaptive_interviewer_preview_shadow_ledger_invalid");
   }
@@ -1403,7 +1415,11 @@ function validateLedger(
       !positiveInteger(reconciled.allocation_ledger_revision) ||
       !positiveInteger(reconciled.reconciliation_ledger_revision) ||
       !integerBetween(reconciled.attempt_count, 0, 10) ||
-      !integerBetween(reconciled.reconciled_spend_nano_usd, 0, MAX_SAFE_SPEND) ||
+      !integerBetween(
+        reconciled.reconciled_spend_nano_usd,
+        0,
+        250_000_000_000
+      ) ||
       (reconciled.reconciled_spend_nano_usd as number) <
         (reconciled.attempt_count as number) * 100_000_000 ||
       !["settled", "stopped"].includes(reconciled.outcome as string)
@@ -1447,7 +1463,11 @@ function validateLedger(
       !positiveInteger(stopped.allocation_ledger_revision) ||
       !positiveInteger(stopped.recorded_ledger_revision) ||
       !integerBetween(stopped.attempt_count, 0, 10) ||
-      !integerBetween(stopped.reconciled_spend_nano_usd, 0, MAX_SAFE_SPEND)
+      !integerBetween(
+        stopped.reconciled_spend_nano_usd,
+        0,
+        250_000_000_000
+      )
       ||
       (stopped.reconciled_spend_nano_usd as number) <
         (stopped.attempt_count as number) * 100_000_000
@@ -1561,20 +1581,26 @@ function validateLedger(
     record.maximum_spend_nano_usd !== 25_000_000_000 ||
     record.maximum_cumulative_spend_nano_usd !== 10_000_000_000 ||
     !integerBetween(record.allocated_session_count, 0, 25) ||
-    !integerBetween(record.reconciled_spend_nano_usd, 0, MAX_SAFE_SPEND) ||
+    !integerBetween(
+      record.reconciled_spend_nano_usd,
+      0,
+      25 * 250_000_000_000
+    ) ||
     !integerBetween(
       record.outstanding_session_reservations_nano_usd,
       0,
-      MAX_SAFE_SPEND
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.limits
+        .maximum_spend_nano_usd
     ) ||
     !integerBetween(
       record.stop_incomplete_excess_spend_nano_usd,
       0,
-      MAX_SAFE_SPEND
+      25 * 250_000_000_000
     ) ||
     !Number.isSafeInteger(reconciledTotal) ||
     !Number.isSafeInteger(incidentExcess) ||
     !Number.isSafeInteger(accountedSpend) ||
+    accountedSpend > 25 * 250_000_000_000 ||
     record.allocated_session_count !== sessionStates.length ||
     sortedSessions.some(
       (session, index) => session.session_ordinal !== index + 1

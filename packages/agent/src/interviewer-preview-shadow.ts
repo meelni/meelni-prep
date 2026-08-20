@@ -289,6 +289,13 @@ export function parseAdaptiveInterviewerPreviewShadowAuthorizationJson(
 ): AdaptiveInterviewerPreviewShadowAuthorization {
   let value: unknown;
   try {
+    if (
+      typeof contents !== "string" ||
+      contents.length > 64 * 1_024 ||
+      Buffer.byteLength(contents, "utf8") > 64 * 1_024
+    ) {
+      throw new Error("json_size_invalid");
+    }
     value = parseJsonRejectingDuplicateKeys(contents);
   } catch {
     throw new Error(
@@ -639,11 +646,14 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
   const whitespace = () => {
     while (/[ \t\r\n]/.test(contents[offset] ?? "")) offset += 1;
   };
-  const value = (): unknown => {
+  const value = (depth = 0): unknown => {
+    if (depth > 32) {
+      throw new Error("json_depth_invalid");
+    }
     whitespace();
     const character = contents[offset];
-    if (character === "{") return object();
-    if (character === "[") return array();
+    if (character === "{") return object(depth);
+    if (character === "[") return array(depth);
     if (character === '"') return string();
     for (const [literal, parsed] of [
       ["true", true],
@@ -662,7 +672,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
     offset += match[0].length;
     return Number(match[0]);
   };
-  const object = (): Record<string, unknown> => {
+  const object = (depth: number): Record<string, unknown> => {
     offset += 1;
     whitespace();
     const entries: [string, unknown][] = [];
@@ -680,7 +690,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       whitespace();
       if (contents[offset] !== ":") throw new Error("json_invalid");
       offset += 1;
-      entries.push([key, value()]);
+      entries.push([key, value(depth + 1)]);
       whitespace();
       if (contents[offset] === "}") {
         offset += 1;
@@ -690,7 +700,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       offset += 1;
     }
   };
-  const array = (): unknown[] => {
+  const array = (depth: number): unknown[] => {
     offset += 1;
     whitespace();
     const values: unknown[] = [];
@@ -699,7 +709,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       return values;
     }
     while (true) {
-      values.push(value());
+      values.push(value(depth + 1));
       whitespace();
       if (contents[offset] === "]") {
         offset += 1;
