@@ -217,7 +217,7 @@ export const adaptiveInterviewerPreviewShadowSessionLease = pgTable(
     ),
     stateCheck: check(
       "adaptive_interviewer_preview_shadow_lease_state_check",
-      sql`${table.state} IN ('open', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged')`
+      sql`${table.state} IN ('open', 'revoked', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged')`
     ),
     runOrdinalUnique: unique(
       "adaptive_interviewer_preview_shadow_lease_run_ordinal_uniq"

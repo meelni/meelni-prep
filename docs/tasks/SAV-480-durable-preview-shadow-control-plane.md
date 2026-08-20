@@ -80,13 +80,15 @@
   incident, event, and acknowledgement idempotency; process restart; token
   forgery/cross-lease replay; content-free persisted evidence.
 - Terminal provider-free evidence:
-  - strict verifier/evidence builders and workflow facade: 7 passed;
+  - strict verifier/evidence builders and workflow facade: 8 passed, including
+    bounded artifact/authorization/key-registry inputs before date or crypto;
   - no-wiring/source contracts: 3 passed;
   - disposable PostgreSQL matrix: 6 FORCE-RLS tables plus activation,
-    concurrency, restart, replay, cap, rollback, role-denial, termination, and
-    privacy scenarios passed;
+    concurrency, restart, post-expiry exact replay, closed/revoked lease replay,
+    run-control revocation, cap, rollback, role-denial, termination, and privacy
+    scenarios passed;
   - full 44-migration rehearsal: 48 tables and schema fingerprint
-    `51b2acb2c1b00dd94d15c8a204009a70e680d3a8c1d27ed185f47261266860be`;
+    `6527d4c95a623e4759c92197f380e9bded41ca557165d4300e4e497fedc6cd48`;
   - agent 108, core 111, integrations 111, operations 46, benchmark 34,
     feedback 43, calibration 173, and pinned Python agent 322 passed with no
     focused skips;

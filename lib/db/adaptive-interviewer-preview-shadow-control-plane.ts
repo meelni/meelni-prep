@@ -5,8 +5,8 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256 } from "@meelni/agent";
 import {
-  assertPreviewShadowOwnerDecisionVerified,
-  type VerifiedPreviewShadowOwnerDecision,
+  assertPreviewShadowOwnerDecisionAuthenticated,
+  type AuthenticatedPreviewShadowOwnerDecision,
 } from "@/lib/security/adaptive-interviewer-preview-shadow-owner-decision";
 import * as schema from "./schema";
 import {
@@ -211,7 +211,7 @@ export class PreviewShadowControlPlaneError extends Error {
 
 export interface DurablePreviewShadowControlPlaneStore {
   activate(input: {
-    verifiedOwnerDecision: VerifiedPreviewShadowOwnerDecision;
+    authenticatedOwnerDecision: AuthenticatedPreviewShadowOwnerDecision;
     runControlCapability: string;
   }): Promise<{
     outcome: "activated" | "replayed";
@@ -224,11 +224,25 @@ export interface DurablePreviewShadowControlPlaneStore {
     expiresAt: string;
     workerEvidenceCapability: string;
     terminationCapability: string;
-  }): Promise<{
-    outcome: "allocated" | "replayed";
-    run: DurablePreviewShadowRun;
-    lease: DurablePreviewShadowSessionLease;
-  }>;
+  }): Promise<
+    | {
+        outcome: "allocated" | "replayed";
+        run: DurablePreviewShadowRun;
+        lease: DurablePreviewShadowSessionLease;
+      }
+    | {
+        outcome: "replayed_closed";
+        run: DurablePreviewShadowRun;
+        lease_id: string;
+        lease_state:
+          | "expired"
+          | "revoked"
+          | "settled"
+          | "stopped"
+          | "stop_incomplete"
+          | "termination_acknowledged";
+      }
+  >;
   reconcileSessionReceipt(input: {
     runId: string;
     expectedRevision: number;
@@ -302,18 +316,18 @@ export function createDurablePreviewShadowControlPlaneStore(
 async function activate(
   database: PreviewShadowControlPlaneDatabase,
   input: {
-    verifiedOwnerDecision: VerifiedPreviewShadowOwnerDecision;
+    authenticatedOwnerDecision: AuthenticatedPreviewShadowOwnerDecision;
     runControlCapability: string;
   }
 ) {
   const request = exactRecord(input, [
-    "verifiedOwnerDecision",
+    "authenticatedOwnerDecision",
     "runControlCapability",
   ]);
-  const verified =
-    request.verifiedOwnerDecision as VerifiedPreviewShadowOwnerDecision;
+  const authenticated =
+    request.authenticatedOwnerDecision as AuthenticatedPreviewShadowOwnerDecision;
   try {
-    assertPreviewShadowOwnerDecisionVerified(verified);
+    assertPreviewShadowOwnerDecisionAuthenticated(authenticated);
   } catch {
     unauthenticated();
   }
@@ -322,22 +336,31 @@ async function activate(
     request.runControlCapability
   );
   const runId = digest(PREVIEW_SHADOW_RUN_DIGEST_VERSION, {
-    authorization_id: verified.authorizationId,
-    candidate_git_sha: verified.candidateGitSha,
+    authorization_id: authenticated.authorizationId,
+    candidate_git_sha: authenticated.candidateGitSha,
     preview_shadow_configuration_sha256:
-      verified.previewShadowConfigurationSha256,
+      authenticated.previewShadowConfigurationSha256,
     selected_candidate_configuration_sha256:
-      verified.selectedCandidateConfigurationSha256,
-    target_stage: verified.targetStage,
-    target_environment: verified.targetEnvironment,
-    target_cohort: verified.targetCohort,
-    exposure: verified.exposure,
+      authenticated.selectedCandidateConfigurationSha256,
+    target_stage: authenticated.targetStage,
+    target_environment: authenticated.targetEnvironment,
+    target_cohort: authenticated.targetCohort,
+    exposure: authenticated.exposure,
   });
 
   return database.transaction(async (tx) => {
-    const decidedAt = parseWholeSecond(verified.ownerDecidedAt);
-    const expiresAt = parseWholeSecond(verified.authorizationExpiresAt);
-    const existing = await findRunForUpdate(tx, verified.authorizationId);
+    const decidedAt = parseWholeSecond(authenticated.ownerDecidedAt);
+    const expiresAt = parseWholeSecond(authenticated.authorizationExpiresAt);
+    const existing = await findRunForUpdate(tx, authenticated.authorizationId);
+    if (existing) {
+      assertExactActivationReplay(existing, {
+        authenticated,
+        runId,
+        runControlCapabilitySha256,
+      });
+      await assertRelationalState(tx, existing);
+      return { outcome: "replayed" as const, run: normalizeRun(existing) };
+    }
     const databaseNow = await readDatabaseNow(tx);
     if (
       decidedAt.getTime() > databaseNow.getTime() ||
@@ -345,38 +368,30 @@ async function activate(
     ) {
       expired();
     }
-    if (existing) {
-      assertExactActivationReplay(existing, {
-        verified,
-        runId,
-        runControlCapabilitySha256,
-      });
-      await assertRelationalState(tx, existing);
-      return { outcome: "replayed" as const, run: normalizeRun(existing) };
-    }
 
     const inserted = await tx
       .insert(runTable)
       .values({
         runId,
         contractVersion: PREVIEW_SHADOW_DURABLE_CONTROL_PLANE_VERSION,
-        authorizationContractVersion: verified.authorization.contract_version,
-        authorizationId: verified.authorizationId,
-        authorizationNonce: verified.authorization.authorization_nonce,
-        ownerDecisionArtifactSha256: verified.artifactSha256,
-        ownerDecisionReference: verified.ownerDecisionReference,
+        authorizationContractVersion:
+          authenticated.authorization.contract_version,
+        authorizationId: authenticated.authorizationId,
+        authorizationNonce: authenticated.authorization.authorization_nonce,
+        ownerDecisionArtifactSha256: authenticated.artifactSha256,
+        ownerDecisionReference: authenticated.ownerDecisionReference,
         ownerDecidedAt: decidedAt,
         authorizationExpiresAt: expiresAt,
-        ownerSigningKeyId: verified.ownerSigningKeyId,
-        candidateGitSha: verified.candidateGitSha,
+        ownerSigningKeyId: authenticated.ownerSigningKeyId,
+        candidateGitSha: authenticated.candidateGitSha,
         previewShadowConfigurationSha256:
-          verified.previewShadowConfigurationSha256,
+          authenticated.previewShadowConfigurationSha256,
         selectedCandidateConfigurationSha256:
-          verified.selectedCandidateConfigurationSha256,
-        targetStage: verified.targetStage,
-        targetEnvironment: verified.targetEnvironment,
-        targetCohort: verified.targetCohort,
-        exposure: verified.exposure,
+          authenticated.selectedCandidateConfigurationSha256,
+        targetStage: authenticated.targetStage,
+        targetEnvironment: authenticated.targetEnvironment,
+        targetCohort: authenticated.targetCohort,
+        exposure: authenticated.exposure,
         maximumSessions: MAXIMUM_SESSIONS,
         maximumSpendNanoUsd: MAXIMUM_SPEND_NANO_USD,
         maximumCumulativeSpendNanoUsd: MAXIMUM_CUMULATIVE_SPEND_NANO_USD,
@@ -393,17 +408,19 @@ async function activate(
       .onConflictDoNothing()
       .returning({ runId: runTable.runId });
 
-    const current = await findRunForUpdate(tx, verified.authorizationId);
+    const current = await findRunForUpdate(tx, authenticated.authorizationId);
     if (!current) conflict();
-    const postClaimDatabaseNow = await readDatabaseNow(tx);
-    if (
-      decidedAt.getTime() > postClaimDatabaseNow.getTime() ||
-      expiresAt.getTime() <= postClaimDatabaseNow.getTime()
-    ) {
-      expired();
+    if (inserted[0]) {
+      const postClaimDatabaseNow = await readDatabaseNow(tx);
+      if (
+        decidedAt.getTime() > postClaimDatabaseNow.getTime() ||
+        expiresAt.getTime() <= postClaimDatabaseNow.getTime()
+      ) {
+        expired();
+      }
     }
     assertExactActivationReplay(current, {
-      verified,
+      authenticated,
       runId,
       runControlCapabilitySha256,
     });
@@ -478,6 +495,7 @@ async function allocateSessionLease(
   return database.transaction(async (tx) => {
     const run = await lockRun(tx, request.runId as string);
     await assertRelationalState(tx, run);
+    const databaseNow = await readDatabaseNow(tx);
     if (
       timingSafeHexEqual(
         run.runControlCapabilitySha256,
@@ -518,6 +536,25 @@ async function allocateSessionLease(
       ) {
         conflict();
       }
+      if (
+        existing[0].state !== "open" ||
+        existing[0].expiresAt.getTime() <= databaseNow.getTime()
+      ) {
+        return {
+          outcome: "replayed_closed" as const,
+          run: normalizeRun(run),
+          lease_id: existing[0].leaseId,
+          lease_state:
+            existing[0].state === "open"
+              ? ("expired" as const)
+              : (existing[0].state as
+                  | "revoked"
+                  | "settled"
+                  | "stopped"
+                  | "stop_incomplete"
+                  | "termination_acknowledged"),
+        };
+      }
       return {
         outcome: "replayed" as const,
         run: normalizeRun(run),
@@ -545,7 +582,6 @@ async function allocateSessionLease(
       .limit(1);
     if (crossChannelReuse[0]) invalid();
     if (run.revision !== request.expectedRevision) stale();
-    const databaseNow = await readDatabaseNow(tx);
     if (
       run.stopped ||
       run.authorizationExpiresAt.getTime() <= databaseNow.getTime() ||
@@ -729,7 +765,7 @@ async function reconcileSessionReceipt(
     }
     if (run.revision !== request.expectedRevision) stale();
     if (
-      lease.state !== "open" ||
+      (lease.state !== "open" && lease.state !== "revoked") ||
       lease.sessionOrdinal !== receipt.session_ordinal ||
       lease.allocationLedgerRevision !== receipt.allocation_ledger_revision ||
       lease.previewShadowConfigurationSha256 !==
@@ -793,7 +829,10 @@ async function reconcileSessionReceipt(
         updatedAt: databaseNow,
       })
       .where(
-        and(eq(leaseTable.leaseId, lease.leaseId), eq(leaseTable.state, "open"))
+        and(
+          eq(leaseTable.leaseId, lease.leaseId),
+          eq(leaseTable.state, lease.state)
+        )
       );
     const updated = await tx
       .update(runTable)
@@ -876,7 +915,7 @@ async function recordStopIncompleteIncident(
     }
     if (run.revision !== request.expectedRevision) stale();
     if (
-      lease.state !== "open" ||
+      (lease.state !== "open" && lease.state !== "revoked") ||
       lease.sessionOrdinal !== incident.session_ordinal ||
       lease.allocationLedgerRevision !== incident.allocation_ledger_revision ||
       lease.previewShadowConfigurationSha256 !==
@@ -941,7 +980,10 @@ async function recordStopIncompleteIncident(
       .update(leaseTable)
       .set({ state: "stop_incomplete", updatedAt: databaseNow })
       .where(
-        and(eq(leaseTable.leaseId, lease.leaseId), eq(leaseTable.state, "open"))
+        and(
+          eq(leaseTable.leaseId, lease.leaseId),
+          eq(leaseTable.state, lease.state)
+        )
       );
     const updated = await tx
       .update(runTable)
@@ -1023,6 +1065,10 @@ async function recordCohortStopEvent(
     const databaseNow = await readDatabaseNow(tx);
     const nextRevision = run.revision + 1;
     await insertStopEvent(tx, event, nextRevision);
+    await tx
+      .update(leaseTable)
+      .set({ state: "revoked", updatedAt: databaseNow })
+      .where(and(eq(leaseTable.runId, run.runId), eq(leaseTable.state, "open")));
     const updated = await tx
       .update(runTable)
       .set({ stopped: true, revision: nextRevision, updatedAt: databaseNow })
@@ -1298,35 +1344,35 @@ async function readDatabaseNow(tx: PreviewShadowTransaction): Promise<Date> {
 function assertExactActivationReplay(
   run: RunRow,
   input: {
-    verified: VerifiedPreviewShadowOwnerDecision;
+    authenticated: AuthenticatedPreviewShadowOwnerDecision;
     runId: string;
     runControlCapabilitySha256: string;
   }
 ): void {
-  const { verified } = input;
+  const { authenticated } = input;
   if (
     run.runId !== input.runId ||
     run.contractVersion !== PREVIEW_SHADOW_DURABLE_CONTROL_PLANE_VERSION ||
     run.authorizationContractVersion !==
-      verified.authorization.contract_version ||
-    run.authorizationId !== verified.authorizationId ||
-    run.authorizationNonce !== verified.authorization.authorization_nonce ||
-    run.ownerDecisionArtifactSha256 !== verified.artifactSha256 ||
-    run.ownerDecisionReference !== verified.ownerDecisionReference ||
+      authenticated.authorization.contract_version ||
+    run.authorizationId !== authenticated.authorizationId ||
+    run.authorizationNonce !== authenticated.authorization.authorization_nonce ||
+    run.ownerDecisionArtifactSha256 !== authenticated.artifactSha256 ||
+    run.ownerDecisionReference !== authenticated.ownerDecisionReference ||
     run.ownerDecidedAt.getTime() !==
-      parseWholeSecond(verified.ownerDecidedAt).getTime() ||
+      parseWholeSecond(authenticated.ownerDecidedAt).getTime() ||
     run.authorizationExpiresAt.getTime() !==
-      parseWholeSecond(verified.authorizationExpiresAt).getTime() ||
-    run.ownerSigningKeyId !== verified.ownerSigningKeyId ||
-    run.candidateGitSha !== verified.candidateGitSha ||
+      parseWholeSecond(authenticated.authorizationExpiresAt).getTime() ||
+    run.ownerSigningKeyId !== authenticated.ownerSigningKeyId ||
+    run.candidateGitSha !== authenticated.candidateGitSha ||
     run.previewShadowConfigurationSha256 !==
-      verified.previewShadowConfigurationSha256 ||
+      authenticated.previewShadowConfigurationSha256 ||
     run.selectedCandidateConfigurationSha256 !==
-      verified.selectedCandidateConfigurationSha256 ||
-    run.targetStage !== verified.targetStage ||
-    run.targetEnvironment !== verified.targetEnvironment ||
-    run.targetCohort !== verified.targetCohort ||
-    run.exposure !== verified.exposure ||
+      authenticated.selectedCandidateConfigurationSha256 ||
+    run.targetStage !== authenticated.targetStage ||
+    run.targetEnvironment !== authenticated.targetEnvironment ||
+    run.targetCohort !== authenticated.targetCohort ||
+    run.exposure !== authenticated.exposure ||
     !timingSafeHexEqual(
       run.runControlCapabilitySha256,
       input.runControlCapabilitySha256
@@ -1387,7 +1433,7 @@ async function assertRelationalState(
     const receipt = receiptByLease.get(lease.leaseId);
     const incident = incidentByLease.get(lease.leaseId);
     const acknowledgement = acknowledgementByLease.get(lease.leaseId);
-    if (lease.state === "open") {
+    if (lease.state === "open" || lease.state === "revoked") {
       if (receipt || incident || acknowledgement) invariant();
       outstanding += SESSION_LEASE_RESERVATION_NANO_USD;
     } else if (lease.state === "settled" || lease.state === "stopped") {

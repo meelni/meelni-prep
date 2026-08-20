@@ -8610,7 +8610,7 @@
         },
         "adaptive_interviewer_preview_shadow_lease_state_check": {
           "name": "adaptive_interviewer_preview_shadow_lease_state_check",
-          "value": "\"adaptive_interviewer_preview_shadow_session_lease\".\"state\" IN ('open', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged')"
+          "value": "\"adaptive_interviewer_preview_shadow_session_lease\".\"state\" IN ('open', 'revoked', 'settled', 'stopped', 'stop_incomplete', 'termination_acknowledged')"
         }
       },
       "isRLSEnabled": false

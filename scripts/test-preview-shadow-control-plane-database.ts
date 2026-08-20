@@ -20,6 +20,7 @@ import {
   createDurablePreviewShadowControlPlaneStore,
   createDurablePreviewShadowSessionReceipt,
   createDurablePreviewShadowStopIncompleteIncident,
+  type DurablePreviewShadowControlPlaneStore,
   PreviewShadowControlPlaneError,
 } from "../lib/db/adaptive-interviewer-preview-shadow-control-plane";
 import * as schema from "../lib/db/schema";
@@ -30,7 +31,7 @@ import {
   PREVIEW_SHADOW_OWNER_KEY_REGISTRY_CONTRACT,
   PREVIEW_SHADOW_OWNER_ROLE,
   previewShadowOwnerDecisionSignatureMessage,
-  verifyPreviewShadowOwnerDecision,
+  authenticatePreviewShadowOwnerDecision,
   type PreviewShadowOwnerDecisionArtifact,
   type PreviewShadowOwnerDecisionPayload,
   type PreviewShadowOwnerKeyRegistry,
@@ -106,6 +107,8 @@ async function main(): Promise<void> {
     await verifyActivationCasAndRestart(databases);
     await verifyActivationDatabaseClockAtLock(databases, clients);
     await verifyConcurrentLeaseAndUpwardReconciliation(databases);
+    await verifyRevokedLeaseIncidentReconciliation(databases);
+    await verifyExpiredLeaseReplay(databases, clients[0]!);
     await verifyStopIncompleteRecovery(databases);
     await verifyDatabaseClockAtLock(databases, clients);
     await verifyTransactionRollback(databases[0]!, clients[0]!);
@@ -239,7 +242,7 @@ async function verifyActivationCasAndRestart(
   const results = await Promise.all(
     stores.slice(0, 2).map((store) =>
       store.activate({
-        verifiedOwnerDecision: verified,
+        authenticatedOwnerDecision: verified,
         runControlCapability: runCapability,
       })
     )
@@ -252,7 +255,7 @@ async function verifyActivationCasAndRestart(
   await assertCode(
     () =>
       stores[0]!.activate({
-        verifiedOwnerDecision: {
+        authenticatedOwnerDecision: {
           ...verified,
         } as typeof verified,
         runControlCapability: runCapability,
@@ -264,15 +267,52 @@ async function verifyActivationCasAndRestart(
     databases[2]!
   );
   const restarted = await restartedStore.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: runCapability,
   });
   assert.equal(restarted.outcome, "replayed");
   await assertCode(
     () =>
       restartedStore.activate({
-        verifiedOwnerDecision: verifyFixture(fixture),
+        authenticatedOwnerDecision: verifyFixture(fixture),
         runControlCapability: capability("divergent-run"),
+      }),
+    "preview_shadow_control_plane_conflict"
+  );
+
+  const postExpiry = await createFixture(
+    databases[0]!,
+    "post-expiry-replay",
+    -60,
+    3
+  );
+  const postExpiryCapability = capability("post-expiry-run");
+  await restartedStore.activate({
+    authenticatedOwnerDecision: verifyFixture(postExpiry),
+    runControlCapability: postExpiryCapability,
+  });
+  await databases[0]!.execute(
+    (await import("drizzle-orm")).sql`SELECT pg_sleep(3.1)`
+  );
+  const databaseAfterExpiry = await databaseNow(databases[0]!);
+  const postExpiryReplay = await createDurablePreviewShadowControlPlaneStore(
+    databases[3]!
+  ).activate({
+    authenticatedOwnerDecision: verifyFixture(
+      postExpiry,
+      databaseAfterExpiry
+    ),
+    runControlCapability: postExpiryCapability,
+  });
+  assert.equal(postExpiryReplay.outcome, "replayed");
+  await assertCode(
+    () =>
+      restartedStore.activate({
+        authenticatedOwnerDecision: verifyFixture(
+          postExpiry,
+          databaseAfterExpiry
+        ),
+        runControlCapability: capability("post-expiry-divergent-run"),
       }),
     "preview_shadow_control_plane_conflict"
   );
@@ -282,7 +322,7 @@ async function verifyActivationCasAndRestart(
   await assertCode(
     () =>
       restartedStore.activate({
-        verifiedOwnerDecision: verifiedBeforeExpiry,
+        authenticatedOwnerDecision: verifiedBeforeExpiry,
         runControlCapability: capability("expired-run"),
       }),
     "preview_shadow_control_plane_expired"
@@ -297,11 +337,11 @@ async function verifyActivationCasAndRestart(
   );
   await assertOneActivationConflict([
     stores[0]!.activate({
-      verifiedOwnerDecision: verifyFixture(nonceLeft),
+      authenticatedOwnerDecision: verifyFixture(nonceLeft),
       runControlCapability: capability("nonce-left-run"),
     }),
     stores[1]!.activate({
-      verifiedOwnerDecision: verifyFixture(nonceRight),
+      authenticatedOwnerDecision: verifyFixture(nonceRight),
       runControlCapability: capability("nonce-right-run"),
     }),
   ]);
@@ -316,11 +356,11 @@ async function verifyActivationCasAndRestart(
   );
   await assertOneActivationConflict([
     stores[2]!.activate({
-      verifiedOwnerDecision: verifyFixture(referenceLeft),
+      authenticatedOwnerDecision: verifyFixture(referenceLeft),
       runControlCapability: capability("reference-left-run"),
     }),
     stores[3]!.activate({
-      verifiedOwnerDecision: verifyFixture(referenceRight),
+      authenticatedOwnerDecision: verifyFixture(referenceRight),
       runControlCapability: capability("reference-right-run"),
     }),
   ]);
@@ -332,7 +372,7 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
   const fixture = await createFixture(databases[0]!, "reconcile");
   const stores = databases.map(createDurablePreviewShadowControlPlaneStore);
   const activated = await stores[0]!.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("reconcile-run"),
   });
   const runId = activated.run.run_id;
@@ -345,10 +385,10 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     workerEvidenceCapability: capability("same-worker"),
     terminationCapability: capability("same-termination"),
   };
-  const same = await Promise.all([
+  const same = (await Promise.all([
     stores[0]!.allocateSessionLease(sameRequest),
     stores[1]!.allocateSessionLease(sameRequest),
-  ]);
+  ])).map(executableAllocation);
   assert.deepEqual(same.map((result) => result.outcome).sort(), [
     "allocated",
     "replayed",
@@ -393,13 +433,13 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
       "preview_shadow_control_plane_invalid"
     );
   }
-  const second = await stores[2]!.allocateSessionLease({
+  const second = executableAllocation(await stores[2]!.allocateSessionLease({
     ...sameRequest,
     expectedRevision: 1,
     sessionBindingSha256: sha("second-session"),
     workerEvidenceCapability: capability("second-worker"),
     terminationCapability: capability("second-termination"),
-  });
+  }));
   assert.equal(second.lease.session_ordinal, 2);
 
   const stop = createDurablePreviewShadowCohortStopEvent({
@@ -434,6 +474,18 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     event: stop,
   });
   assert.equal(replayedStop.outcome, "replayed");
+  const revokedReplay = await stores[1]!.allocateSessionLease(sameRequest);
+  assert.deepEqual(
+    {
+      outcome: revokedReplay.outcome,
+      state:
+        revokedReplay.outcome === "replayed_closed"
+          ? revokedReplay.lease_state
+          : null,
+      hasLease: Object.hasOwn(revokedReplay, "lease"),
+    },
+    { outcome: "replayed_closed", state: "revoked", hasLease: false }
+  );
   await assertCode(
     () =>
       stores[1]!.recordCohortStopEvent({
@@ -497,6 +549,13 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
     "recorded",
     "replayed",
   ]);
+  const settledReplay = await stores[2]!.allocateSessionLease(sameRequest);
+  assert.deepEqual(
+    settledReplay.outcome === "replayed_closed"
+      ? [settledReplay.outcome, settledReplay.lease_state]
+      : [settledReplay.outcome, "unexpected"],
+    ["replayed_closed", "settled"]
+  );
   await assertCode(
     () =>
       stores[1]!.reconcileSessionReceipt({
@@ -547,17 +606,17 @@ async function verifyStopIncompleteRecovery(
   const fixture = await createFixture(databases[0]!, "recovery");
   const stores = databases.map(createDurablePreviewShadowControlPlaneStore);
   const activated = await stores[0]!.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("recovery-run"),
   });
-  const leaseResult = await stores[0]!.allocateSessionLease({
+  const leaseResult = executableAllocation(await stores[0]!.allocateSessionLease({
     runId: activated.run.run_id,
     expectedRevision: 0,
     sessionBindingSha256: sha("recovery-session"),
     expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
     workerEvidenceCapability: capability("recovery-worker"),
     terminationCapability: capability("recovery-termination"),
-  });
+  }));
   const incident = createDurablePreviewShadowStopIncompleteIncident({
     contract_version:
       "adaptive-interviewer-preview-shadow-stop-incomplete-incident.v1",
@@ -598,6 +657,20 @@ async function verifyStopIncompleteRecovery(
   );
   assert.equal(recorded.run.stop_incomplete_excess_spend_nano_usd, 500_000_000);
   assert.equal(recorded.run.stopped, true);
+  const incompleteReplay = await stores[1]!.allocateSessionLease({
+    runId: activated.run.run_id,
+    expectedRevision: 0,
+    sessionBindingSha256: sha("recovery-session"),
+    expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
+    workerEvidenceCapability: capability("recovery-worker"),
+    terminationCapability: capability("recovery-termination"),
+  });
+  assert.deepEqual(
+    incompleteReplay.outcome === "replayed_closed"
+      ? [incompleteReplay.outcome, incompleteReplay.lease_state]
+      : [incompleteReplay.outcome, "unexpected"],
+    ["replayed_closed", "stop_incomplete"]
+  );
   const replayedIncident = await stores[1]!.recordStopIncompleteIncident({
     runId: activated.run.run_id,
     expectedRevision: 1,
@@ -683,6 +756,20 @@ async function verifyStopIncompleteRecovery(
   assert.equal(acknowledged.run.outstanding_session_reservations_nano_usd, 0);
   assert.equal(acknowledged.run.stop_incomplete_excess_spend_nano_usd, 0);
   assert.equal(acknowledged.run.stopped, true);
+  const acknowledgedReplay = await stores[3]!.allocateSessionLease({
+    runId: activated.run.run_id,
+    expectedRevision: 0,
+    sessionBindingSha256: sha("recovery-session"),
+    expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
+    workerEvidenceCapability: capability("recovery-worker"),
+    terminationCapability: capability("recovery-termination"),
+  });
+  assert.deepEqual(
+    acknowledgedReplay.outcome === "replayed_closed"
+      ? [acknowledgedReplay.outcome, acknowledgedReplay.lease_state]
+      : [acknowledgedReplay.outcome, "unexpected"],
+    ["replayed_closed", "termination_acknowledged"]
+  );
   const replayed = await stores[3]!.acknowledgeTermination({
     runId: activated.run.run_id,
     leaseId: leaseResult.lease.lease_id,
@@ -728,6 +815,72 @@ async function verifyStopIncompleteRecovery(
   );
 }
 
+async function verifyRevokedLeaseIncidentReconciliation(
+  databases: Database[]
+): Promise<void> {
+  const fixture = await createFixture(databases[0]!, "revoked-incident");
+  const store = createDurablePreviewShadowControlPlaneStore(databases[0]!);
+  const activated = await store.activate({
+    authenticatedOwnerDecision: verifyFixture(fixture),
+    runControlCapability: capability("revoked-incident-run"),
+  });
+  const request = {
+    runId: activated.run.run_id,
+    expectedRevision: 0,
+    sessionBindingSha256: sha("revoked-incident-session"),
+    expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
+    workerEvidenceCapability: capability("revoked-incident-worker"),
+    terminationCapability: capability("revoked-incident-termination"),
+  };
+  const allocated = executableAllocation(
+    await store.allocateSessionLease(request)
+  );
+  const stop = createDurablePreviewShadowCohortStopEvent({
+    contract_version:
+      "adaptive-interviewer-preview-shadow-cohort-stop-event.v1",
+    run_id: activated.run.run_id,
+    reason: "kill_switch_failure",
+    evidence_sha256: sha("revoked-incident-stop"),
+    observed_at: fixture.now.toISOString(),
+  });
+  await store.recordCohortStopEvent({
+    runId: activated.run.run_id,
+    expectedRevision: 1,
+    runControlCapability: capability("revoked-incident-run"),
+    event: stop,
+  });
+  const replay = await store.allocateSessionLease(request);
+  assert.ok(
+    replay.outcome === "replayed_closed" && replay.lease_state === "revoked"
+  );
+  const incident = createDurablePreviewShadowStopIncompleteIncident({
+    contract_version:
+      "adaptive-interviewer-preview-shadow-stop-incomplete-incident.v1",
+    run_id: activated.run.run_id,
+    lease_id: allocated.lease.lease_id,
+    session_ordinal: allocated.lease.session_ordinal,
+    allocation_ledger_revision: allocated.lease.allocation_ledger_revision,
+    preview_shadow_configuration_sha256:
+      ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
+    reason: "cleanup_unconfirmed",
+    attempt_count: 1,
+    reconciled_spend_nano_usd: 100_000_000,
+    retained_session_reservation_nano_usd: 1_000_000_000,
+    attempt_receipts_sha256: sha("revoked-incident-attempts"),
+    observed_at: fixture.now.toISOString(),
+    requires_allocation_stop: true,
+    termination_acknowledgement_required: true,
+  });
+  const recorded = await store.recordStopIncompleteIncident({
+    runId: activated.run.run_id,
+    expectedRevision: 2,
+    workerEvidenceCapability: capability("revoked-incident-worker"),
+    incident,
+  });
+  assert.equal(recorded.outcome, "recorded");
+  assert.equal(recorded.run.outstanding_session_reservations_nano_usd, 1_000_000_000);
+}
+
 async function verifyActivationDatabaseClockAtLock(
   databases: Database[],
   clients: postgres.Sql[]
@@ -741,7 +894,7 @@ async function verifyActivationDatabaseClockAtLock(
   const store = createDurablePreviewShadowControlPlaneStore(databases[1]!);
   const runControlCapability = capability("activation-db-clock-run");
   const activated = await store.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability,
   });
   let releaseLock!: () => void;
@@ -764,7 +917,7 @@ async function verifyActivationDatabaseClockAtLock(
   });
   await locked;
   const replay = store.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability,
   });
   const waitMilliseconds = Math.max(
@@ -776,7 +929,39 @@ async function verifyActivationDatabaseClockAtLock(
   await new Promise((resolve) => setTimeout(resolve, waitMilliseconds));
   releaseLock();
   await holder;
-  await assertCode(() => replay, "preview_shadow_control_plane_expired");
+  assert.equal((await replay).outcome, "replayed");
+}
+
+async function verifyExpiredLeaseReplay(
+  databases: Database[],
+  client: postgres.Sql
+): Promise<void> {
+  const fixture = await createFixture(databases[0]!, "expired-lease");
+  const store = createDurablePreviewShadowControlPlaneStore(databases[0]!);
+  const activated = await store.activate({
+    authenticatedOwnerDecision: verifyFixture(fixture),
+    runControlCapability: capability("expired-lease-run"),
+  });
+  const expiresAt = new Date(fixture.now.getTime() + 2_000).toISOString();
+  const request = {
+    runId: activated.run.run_id,
+    expectedRevision: 0,
+    sessionBindingSha256: sha("expired-lease-session"),
+    expiresAt,
+    workerEvidenceCapability: capability("expired-lease-worker"),
+    terminationCapability: capability("expired-lease-termination"),
+  };
+  executableAllocation(await store.allocateSessionLease(request));
+  await client`SELECT pg_sleep(2.1)`;
+  const replay = await createDurablePreviewShadowControlPlaneStore(
+    databases[2]!
+  ).allocateSessionLease(request);
+  assert.deepEqual(
+    replay.outcome === "replayed_closed"
+      ? [replay.outcome, replay.lease_state, Object.hasOwn(replay, "lease")]
+      : [replay.outcome, "unexpected", true],
+    ["replayed_closed", "expired", false]
+  );
 }
 
 async function verifyDatabaseClockAtLock(
@@ -786,7 +971,7 @@ async function verifyDatabaseClockAtLock(
   const fixture = await createFixture(databases[0]!, "db-clock-lock", -60, 3);
   const store = createDurablePreviewShadowControlPlaneStore(databases[1]!);
   const activated = await store.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("db-clock-run"),
   });
   let releaseLock!: () => void;
@@ -835,17 +1020,17 @@ async function verifyTransactionRollback(
   const fixture = await createFixture(database, "rollback");
   const store = createDurablePreviewShadowControlPlaneStore(database);
   const activated = await store.activate({
-    verifiedOwnerDecision: verifyFixture(fixture),
+    authenticatedOwnerDecision: verifyFixture(fixture),
     runControlCapability: capability("rollback-run"),
   });
-  const allocated = await store.allocateSessionLease({
+  const allocated = executableAllocation(await store.allocateSessionLease({
     runId: activated.run.run_id,
     expectedRevision: 0,
     sessionBindingSha256: sha("rollback-session"),
     expiresAt: new Date(fixture.now.getTime() + 1_800_000).toISOString(),
     workerEvidenceCapability: capability("rollback-worker"),
     terminationCapability: capability("rollback-termination"),
-  });
+  }));
   const terminal = receipt(
     activated.run.run_id,
     allocated.lease,
@@ -914,27 +1099,35 @@ async function verifyGlobalReservationCap(database: Database): Promise<void> {
   const store = createDurablePreviewShadowControlPlaneStore(database);
   let run = (
     await store.activate({
-      verifiedOwnerDecision: verifyFixture(fixture),
+      authenticatedOwnerDecision: verifyFixture(fixture),
       runControlCapability: capability("caps-run"),
     })
   ).run;
   const expiresAt = new Date(fixture.now.getTime() + 1_800_000).toISOString();
+  let finalRequest: Parameters<
+    DurablePreviewShadowControlPlaneStore["allocateSessionLease"]
+  >[0] | null = null;
   for (let index = 1; index <= 10; index += 1) {
-    run = (
-      await store.allocateSessionLease({
+    finalRequest = {
         runId: run.run_id,
         expectedRevision: run.revision,
         sessionBindingSha256: sha(`cap-session-${index}`),
         expiresAt,
         workerEvidenceCapability: capability(`cap-worker-${index}`),
         terminationCapability: capability(`cap-termination-${index}`),
-      })
+    };
+    run = executableAllocation(
+      await store.allocateSessionLease(finalRequest)
     ).run;
   }
   assert.equal(run.allocated_session_count, 10);
   assert.equal(run.outstanding_session_reservations_nano_usd, 10_000_000_000);
   assert.equal(run.stopped, true);
   assert.equal(run.revision, 11);
+  assert.ok(finalRequest);
+  const replay = await store.allocateSessionLease(finalRequest);
+  assert.equal(replay.outcome, "replayed");
+  assert.ok(replay.outcome === "replayed" && replay.lease.session_ordinal === 10);
 }
 
 async function verifyPrivacy(client: postgres.Sql): Promise<void> {
@@ -1071,15 +1264,8 @@ async function createFixture(
   return { authorization, artifact, registry, now };
 }
 
-function verifyFixture(fixture: Fixture) {
-  const verifierNow =
-    new Date(fixture.authorization.authorization_expires_at).getTime() <=
-    fixture.now.getTime()
-      ? new Date(
-          new Date(fixture.authorization.owner_decided_at).getTime() + 1_000
-        )
-      : fixture.now;
-  return verifyPreviewShadowOwnerDecision({
+function verifyFixture(fixture: Fixture, verifierNow = fixture.now) {
+  return authenticatePreviewShadowOwnerDecision({
     artifact: fixture.artifact,
     authorization: fixture.authorization,
     context: {
@@ -1096,6 +1282,27 @@ function verifyFixture(fixture: Fixture) {
     keyRegistry: fixture.registry,
     now: verifierNow,
   });
+}
+
+async function databaseNow(database: Database): Promise<Date> {
+  const rows = await database.execute<{ databaseNow: Date | string }>(
+    (await import("drizzle-orm"))
+      .sql`SELECT date_trunc('second', clock_timestamp()) AS "databaseNow"`
+  );
+  return new Date(rows[0]!.databaseNow);
+}
+
+type AllocationResult = Awaited<
+  ReturnType<DurablePreviewShadowControlPlaneStore["allocateSessionLease"]>
+>;
+
+function executableAllocation(
+  result: AllocationResult
+): Extract<AllocationResult, { outcome: "allocated" | "replayed" }> {
+  if (result.outcome === "replayed_closed") {
+    throw new Error("expected_executable_preview_shadow_lease");
+  }
+  return result;
 }
 
 function resignFixture(
