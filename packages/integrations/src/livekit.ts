@@ -40,6 +40,7 @@ export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
 export interface StartInterviewRoomInput {
   agentName: string;
+  agentMetadata?: string;
   identity: string;
   participantName: string;
   roomName: string;
@@ -213,6 +214,7 @@ interface AgentDispatchClientLike {
 }
 
 type AgentDispatchLike = Pick<AgentDispatch, "id" | "agentName" | "room"> & {
+  metadata?: string;
   state?: {
     deletedAt?: bigint;
     jobs: AgentJobLike[];
@@ -356,6 +358,18 @@ export function createLiveKitInterviewProvider({
 }: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
+      if (
+        input.agentMetadata !== undefined &&
+        (typeof input.agentMetadata !== "string" ||
+          input.agentMetadata.length === 0 ||
+          Buffer.byteLength(input.agentMetadata, "utf8") > 16 * 1_024)
+      ) {
+        return providerFailure("livekit", {
+          code: "livekit_agent_dispatch_metadata_invalid",
+          message: "LiveKit agent dispatch metadata is invalid.",
+          retryable: false,
+        });
+      }
       let signedToken: string;
       try {
         const token = new accessTokenFactory(
@@ -408,6 +422,9 @@ export function createLiveKitInterviewProvider({
           agents: [
             new RoomAgentDispatch({
               agentName: input.agentName,
+              ...(input.agentMetadata === undefined
+                ? {}
+                : { metadata: input.agentMetadata }),
             }),
           ],
         });
@@ -502,7 +519,8 @@ export function createLiveKitInterviewProvider({
           typeof existingDispatches[0].id !== "string" ||
           !existingDispatches[0].id.trim() ||
           existingDispatches[0].agentName !== input.agentName ||
-          existingDispatches[0].room !== input.roomName
+          existingDispatches[0].room !== input.roomName ||
+          (existingDispatches[0].metadata ?? "") !== (input.agentMetadata ?? "")
         ) {
           reportProvisioningStage(
             input,

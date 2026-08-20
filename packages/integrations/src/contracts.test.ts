@@ -1232,6 +1232,113 @@ test("LiveKit provider creates and reconciles one atomically named interview dis
   assert.equal(roomInput.agents[0].agentName, fixture.input.agentName);
 });
 
+test("LiveKit provider keeps exact agent job metadata private from room metadata", async () => {
+  const fixture = createLiveKitStartFixture();
+  const agentMetadata = JSON.stringify({
+    contract_version: "private-job-metadata.v1",
+    worker_evidence_capability: "private-worker-capability",
+  });
+  const roomInputs: unknown[] = [];
+  const provider = createLiveKitInterviewProvider({
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("atomic dispatch must not create a second dispatch");
+      },
+      listDispatch: async () => [
+        {
+          id: "dispatch-1",
+          room: fixture.input.roomName,
+          agentName: fixture.input.agentName,
+          metadata: agentMetadata,
+        },
+      ],
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async (input) => {
+        roomInputs.push(input);
+      },
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
+    }),
+  });
+
+  const result = await provider.startInterviewRoom({
+    ...fixture.input,
+    agentMetadata,
+  });
+
+  assert.equal(result.ok, true);
+  const roomInput = roomInputs[0] as {
+    metadata: string;
+    agents: Array<{ agentName: string; metadata?: string }>;
+  };
+  assert.equal(roomInput.metadata, JSON.stringify(fixture.input.metadata));
+  assert.equal(roomInput.metadata.includes("private-worker-capability"), false);
+  assert.equal(roomInput.agents[0].metadata, agentMetadata);
+});
+
+test("LiveKit provider rejects invalid or conflicting agent job metadata", async () => {
+  const fixture = createLiveKitStartFixture();
+  let roomCalls = 0;
+  const invalidProvider = createLiveKitInterviewProvider({
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        roomCalls += 1;
+      },
+    }),
+  });
+  const invalid = await invalidProvider.startInterviewRoom({
+    ...fixture.input,
+    agentMetadata: "",
+  });
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) {
+    assert.equal(invalid.error.code, "livekit_agent_dispatch_metadata_invalid");
+    assert.equal(invalid.error.retryable, false);
+  }
+  assert.equal(roomCalls, 0);
+
+  const provider = createLiveKitInterviewProvider({
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("must-not-create");
+      },
+      listDispatch: async () => [
+        {
+          id: "dispatch-1",
+          room: fixture.input.roomName,
+          agentName: fixture.input.agentName,
+          metadata: "different-private-job",
+        },
+      ],
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        throw new Error("room already exists");
+      },
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
+    }),
+  });
+  const conflict = await provider.startInterviewRoom({
+    ...fixture.input,
+    agentMetadata: "expected-private-job",
+  });
+  assert.equal(conflict.ok, false);
+  if (!conflict.ok) {
+    assert.equal(conflict.error.code, "livekit_agent_dispatch_conflict");
+    assert.equal(conflict.error.retryable, false);
+  }
+});
+
 test("LiveKit provider reports separate room and dispatch stage timings", async () => {
   const fixture = createLiveKitStartFixture();
   const stages: Array<[string, string, number]> = [];
