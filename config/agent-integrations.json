@@ -380,14 +380,16 @@
         "env:pull:preview",
         "env:pull:production",
         "deploy:preflight:preview",
-        "deploy:preflight:production"
+        "deploy:preflight:production",
+        "production-action:vercel-shadow-canary"
       ],
       "cli": [],
       "env": [],
-      "writePolicy": "Use npx vercel@55.0.0 with --scope meelni. Production promotion and sensitive environment changes retain their existing owner authorization and deployment boundaries.",
+      "writePolicy": "Use npx vercel@55.0.0 with --scope meelni. The owner-only Production web Shadow canary uses its exact one-use configuration/redeployment action; every other Production promotion or sensitive environment change retains its existing owner authorization and deployment boundary.",
       "docs": [
         "docs/operations/tooling.md",
         "docs/operations/deployment-preflight.md",
+        "docs/operations/adaptive-interviewer-production-web-shadow-canary.md",
         ".agents/skills/meelni-ops-connections/references/connections.md"
       ]
     },

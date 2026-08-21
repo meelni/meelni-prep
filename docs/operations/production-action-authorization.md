@@ -8,7 +8,10 @@ policy accepts Vercel Preview builds and Production Git builds only from
 `main`; all other Production refs are ignored. A reviewed merge to `main` is
 the supported web Production path. Direct branch promotion, live schedule
 activation, and relaunch default-on remain unsupported rather than exposing an
-unguarded command. The already-declared scheduled route remains source-fenced
+unguarded command. The narrow owner-only Production web Shadow canary is the
+sole Vercel environment-write exception: its wrapper binds an exact merged
+candidate, source deployment, closed server-only values, one-hour expiry and
+enable/disable operation, then redeploys that signed source. The already-declared scheduled route remains source-fenced
 for any future owner-authorized first activation. Owner enrollment and artifact
 preparation tooling is available, and the active owner
 public key `meelni-owner-2026-07` is enrolled. Guarded Production paths still fail closed
@@ -350,6 +353,9 @@ agent/interview/deploy.sh production
 agent/demo/deploy.sh production
 MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:production
 MEELNI_ENV_FILE=.env.production.local npm run sync:questions
+npm run production-action:vercel-shadow-canary -- apply \
+  --config-file "$MEELNI_PRODUCTION_WEB_SHADOW_CONFIG" \
+  --artifact-path "$MEELNI_PRODUCTION_WEB_SHADOW_AUTHORIZATION"
 ```
 
 The demo worker remains dormant and de-scoped. Its guarded deploy command is
@@ -372,9 +378,9 @@ not permission to reintroduce the demo experience.
 SAV-254 follow-up remains for:
 
 1. adding controlled direct/non-main Vercel Production promotion, live
-   question-sync schedule activation, and relaunch default-on provider adapters;
-   reviewed `main` Git builds are already supported, while Production schedule
-   requests remain inert until those adapters exist;
+   question-sync schedule activation, and relaunch default-on provider
+   adapters; the SAV-487 canary wrapper is intentionally too narrow to serve
+   any of those actions;
 2. the human owner running the provider-free enrollment workflow and merging
    only the reviewed public key when ready;
 3. adding central protected compare-and-swap consumption before claiming

@@ -26,6 +26,7 @@ Current routes:
 - `/dashboard/analytics`: uses dashboard workspace through `AnalyticsSection` and `DashboardPage`.
 - `/dashboard/settings`: uses dashboard workspace through `SettingsSection` and `DashboardPage`.
 - `/dashboard/new-interview`: uses dashboard workspace through `SetupContent` inside the dashboard layout.
+- `/dashboard/internal/preview-shadow-canary`: owner-only Production canary setup uses the dashboard workspace and shared `AppSurface`; an admitted room uses the existing focused interview-room primitives in a full-screen overlay.
 
 Canonical launch rule:
 
@@ -120,38 +121,39 @@ Current route families:
 
 Every production `app/**/page.tsx` route is classified here so future agents can audit shell decisions by file, not only by visual memory. Internal visual test routes and the unsupported public docs route were removed in SAV-217 and are guarded from production builds.
 
-| Route File                                  | Route                           | Family                    | Required Shell/Primitive                                  |
-| ------------------------------------------- | ------------------------------- | ------------------------- | --------------------------------------------------------- |
-| `app/page.tsx`                              | `/`                             | Public/content            | Marketing and landing primitives                          |
-| `app/pricing/page.tsx`                      | `/pricing`                      | Public/content            | Pricing/marketing surfaces                                |
-| `app/pricing/success/page.tsx`              | `/pricing/success`              | Public/content            | Public-page status surface                                |
-| `app/pricing/canceled/page.tsx`             | `/pricing/canceled`             | Public/content            | Public-page status surface                                |
-| `app/explore/page.tsx`                      | `/explore`                      | Public/content            | Question-bank and shared form/action primitives           |
-| `app/questions/[questionId]/page.tsx`       | `/questions/[questionId]`       | Public/content            | Marketing article and question-practice primitives        |
-| `app/interview-types/[roundType]/page.tsx`  | `/interview-types/[roundType]`  | Public/content            | Marketing/content listing primitives                      |
-| `app/blog/page.tsx`                         | `/blog`                         | Public/content            | Marketing/content listing primitives                      |
-| `app/blog/[id]/page.tsx`                    | `/blog/[id]`                    | Public/content            | Marketing article primitives                              |
-| `app/companies/page.tsx`                    | `/companies`                    | Public/content            | Marketing/content listing primitives                      |
-| `app/companies/[slug]/page.tsx`             | `/companies/[slug]`             | Public/content            | Marketing article primitives                              |
-| `app/contact/page.tsx`                      | `/contact`                      | Public/content            | Marketing and shared form primitives                      |
-| `app/privacy/page.tsx`                      | `/privacy`                      | Public/content            | Marketing article primitives                              |
-| `app/terms/page.tsx`                        | `/terms`                        | Public/content            | Marketing article primitives                              |
-| `app/auth/signin/page.tsx`                  | `/auth/signin`                  | Auth flow                 | `AuthShell`                                               |
-| `app/auth/signup/page.tsx`                  | `/auth/signup`                  | Auth flow                 | `AuthShell`                                               |
-| `app/auth/forgot-password/page.tsx`         | `/auth/forgot-password`         | Auth flow                 | `AuthShell`                                               |
-| `app/auth/reset-password/page.tsx`          | `/auth/reset-password`          | Auth flow                 | `AuthShell`                                               |
-| `app/dashboard/page.tsx`                    | `/dashboard`                    | Dashboard workspace       | `DashboardPage` through `OverviewSection`                 |
-| `app/dashboard/questions/page.tsx`          | `/dashboard/questions`          | Dashboard workspace       | `DashboardPage` through `QuestionsSection`                |
-| `app/dashboard/history/page.tsx`            | `/dashboard/history`            | Dashboard workspace       | `DashboardPage` through `HistorySection`                  |
-| `app/dashboard/analytics/page.tsx`          | `/dashboard/analytics`          | Dashboard workspace       | `DashboardPage` through `AnalyticsSection`                |
-| `app/dashboard/settings/page.tsx`           | `/dashboard/settings`           | Dashboard workspace       | `DashboardPage` through `SettingsSection`                 |
-| `app/dashboard/new-interview/page.tsx`      | `/dashboard/new-interview`      | Dashboard workspace       | `SetupContent` inside dashboard layout                    |
-| `app/dashboard/new-rep/page.tsx`            | `/dashboard/new-rep`            | Compatibility redirect    | Preserve query and redirect to `/dashboard/new-interview` |
-| `app/feedback/[sessionId]/page.tsx`         | `/feedback/[sessionId]`         | Feedback review workspace | `FeedbackReviewShell`                                     |
-| `app/feedback/[sessionId]/compare/page.tsx` | `/feedback/[sessionId]/compare` | Feedback review workspace | `FeedbackReviewShell`                                     |
-| `app/feedback/[sessionId]/loading/page.tsx` | `/feedback/[sessionId]/loading` | Feedback review workspace | `FeedbackStatusPage` backed by `FeedbackReviewShell`      |
-| `app/interview/page.tsx`                    | `/interview`                    | Focused interview room    | Full-screen interview room chrome                         |
-| `app/setup/page.tsx`                        | `/setup`                        | Compatibility redirect    | Redirect to `/dashboard/new-interview`                    |
+| Route File                                              | Route                                       | Family                    | Required Shell/Primitive                                      |
+| ------------------------------------------------------- | ------------------------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `app/page.tsx`                                          | `/`                                         | Public/content            | Marketing and landing primitives                              |
+| `app/pricing/page.tsx`                                  | `/pricing`                                  | Public/content            | Pricing/marketing surfaces                                    |
+| `app/pricing/success/page.tsx`                          | `/pricing/success`                          | Public/content            | Public-page status surface                                    |
+| `app/pricing/canceled/page.tsx`                         | `/pricing/canceled`                         | Public/content            | Public-page status surface                                    |
+| `app/explore/page.tsx`                                  | `/explore`                                  | Public/content            | Question-bank and shared form/action primitives               |
+| `app/questions/[questionId]/page.tsx`                   | `/questions/[questionId]`                   | Public/content            | Marketing article and question-practice primitives            |
+| `app/interview-types/[roundType]/page.tsx`              | `/interview-types/[roundType]`              | Public/content            | Marketing/content listing primitives                          |
+| `app/blog/page.tsx`                                     | `/blog`                                     | Public/content            | Marketing/content listing primitives                          |
+| `app/blog/[id]/page.tsx`                                | `/blog/[id]`                                | Public/content            | Marketing article primitives                                  |
+| `app/companies/page.tsx`                                | `/companies`                                | Public/content            | Marketing/content listing primitives                          |
+| `app/companies/[slug]/page.tsx`                         | `/companies/[slug]`                         | Public/content            | Marketing article primitives                                  |
+| `app/contact/page.tsx`                                  | `/contact`                                  | Public/content            | Marketing and shared form primitives                          |
+| `app/privacy/page.tsx`                                  | `/privacy`                                  | Public/content            | Marketing article primitives                                  |
+| `app/terms/page.tsx`                                    | `/terms`                                    | Public/content            | Marketing article primitives                                  |
+| `app/auth/signin/page.tsx`                              | `/auth/signin`                              | Auth flow                 | `AuthShell`                                                   |
+| `app/auth/signup/page.tsx`                              | `/auth/signup`                              | Auth flow                 | `AuthShell`                                                   |
+| `app/auth/forgot-password/page.tsx`                     | `/auth/forgot-password`                     | Auth flow                 | `AuthShell`                                                   |
+| `app/auth/reset-password/page.tsx`                      | `/auth/reset-password`                      | Auth flow                 | `AuthShell`                                                   |
+| `app/dashboard/page.tsx`                                | `/dashboard`                                | Dashboard workspace       | `DashboardPage` through `OverviewSection`                     |
+| `app/dashboard/questions/page.tsx`                      | `/dashboard/questions`                      | Dashboard workspace       | `DashboardPage` through `QuestionsSection`                    |
+| `app/dashboard/history/page.tsx`                        | `/dashboard/history`                        | Dashboard workspace       | `DashboardPage` through `HistorySection`                      |
+| `app/dashboard/analytics/page.tsx`                      | `/dashboard/analytics`                      | Dashboard workspace       | `DashboardPage` through `AnalyticsSection`                    |
+| `app/dashboard/settings/page.tsx`                       | `/dashboard/settings`                       | Dashboard workspace       | `DashboardPage` through `SettingsSection`                     |
+| `app/dashboard/new-interview/page.tsx`                  | `/dashboard/new-interview`                  | Dashboard workspace       | `SetupContent` inside dashboard layout                        |
+| `app/dashboard/internal/preview-shadow-canary/page.tsx` | `/dashboard/internal/preview-shadow-canary` | Dashboard workspace       | Owner-only `AppSurface`; focused room overlay after admission |
+| `app/dashboard/new-rep/page.tsx`                        | `/dashboard/new-rep`                        | Compatibility redirect    | Preserve query and redirect to `/dashboard/new-interview`     |
+| `app/feedback/[sessionId]/page.tsx`                     | `/feedback/[sessionId]`                     | Feedback review workspace | `FeedbackReviewShell`                                         |
+| `app/feedback/[sessionId]/compare/page.tsx`             | `/feedback/[sessionId]/compare`             | Feedback review workspace | `FeedbackReviewShell`                                         |
+| `app/feedback/[sessionId]/loading/page.tsx`             | `/feedback/[sessionId]/loading`             | Feedback review workspace | `FeedbackStatusPage` backed by `FeedbackReviewShell`          |
+| `app/interview/page.tsx`                                | `/interview`                                | Focused interview room    | Full-screen interview room chrome                             |
+| `app/setup/page.tsx`                                    | `/setup`                                    | Compatibility redirect    | Redirect to `/dashboard/new-interview`                        |
 
 ## Audit Checklist
 

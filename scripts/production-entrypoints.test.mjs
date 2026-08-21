@@ -422,6 +422,14 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
       ["production-question-sync-manual", "authorizeProductionQuestionSync"],
     ],
     [
+      "scripts/vercel-production-web-shadow-canary.mjs",
+      [
+        "applyVercelProductionWebShadowCanaryConfig",
+        "loadVercelProductionWebShadowCanaryConfig",
+        "prepareUnsignedProductionAction",
+      ],
+    ],
+    [
       "agent/interview/deploy.sh",
       [
         "livekit-production-interview-deploy",
