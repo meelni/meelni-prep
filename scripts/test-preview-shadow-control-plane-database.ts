@@ -32,6 +32,7 @@ import {
   PREVIEW_SHADOW_OWNER_KEY_REGISTRY_CONTRACT,
   PREVIEW_SHADOW_OWNER_ROLE,
   previewShadowOwnerDecisionSignatureMessage,
+  previewShadowRunControlCapabilitySha256,
   authenticatePreviewShadowOwnerDecision,
   type PreviewShadowOwnerDecisionArtifact,
   type PreviewShadowOwnerDecisionPayload,
@@ -60,6 +61,7 @@ interface Fixture {
   authorization: AdaptiveInterviewerPreviewShadowAuthorization;
   artifact: PreviewShadowOwnerDecisionArtifact;
   registry: PreviewShadowOwnerKeyRegistry;
+  runControlCapability: string;
   now: Date;
 }
 
@@ -279,15 +281,10 @@ async function verifyActivationCasAndRestart(
         authenticatedOwnerDecision: verifyFixture(fixture),
         runControlCapability: capability("divergent-run"),
       }),
-    "preview_shadow_control_plane_conflict"
+    "preview_shadow_control_plane_unauthenticated"
   );
 
-  const postExpiry = await createFixture(
-    databases[0]!,
-    "post-expiry-replay",
-    -60,
-    3
-  );
+  const postExpiry = await createFixture(databases[0]!, "post-expiry", -60, 3);
   const postExpiryCapability = capability("post-expiry-run");
   await restartedStore.activate({
     authenticatedOwnerDecision: verifyFixture(postExpiry),
@@ -313,7 +310,7 @@ async function verifyActivationCasAndRestart(
         ),
         runControlCapability: capability("post-expiry-divergent-run"),
       }),
-    "preview_shadow_control_plane_conflict"
+    "preview_shadow_control_plane_unauthenticated"
   );
 
   const expired = await createFixture(databases[0]!, "expired", -7_200, -3_600);
@@ -1030,7 +1027,7 @@ async function verifyActivationDatabaseClockAtLock(
 ): Promise<void> {
   const fixture = await createFixture(
     databases[0]!,
-    "activation-db-clock-lock",
+    "activation-db-clock",
     -60,
     3
   );
@@ -1111,7 +1108,7 @@ async function verifyDatabaseClockAtLock(
   databases: Database[],
   clients: postgres.Sql[]
 ): Promise<void> {
-  const fixture = await createFixture(databases[0]!, "db-clock-lock", -60, 3);
+  const fixture = await createFixture(databases[0]!, "db-clock", -60, 3);
   const store = createDurablePreviewShadowControlPlaneStore(databases[1]!);
   const activated = await store.activate({
     authenticatedOwnerDecision: verifyFixture(fixture),
@@ -1160,12 +1157,7 @@ async function verifyDatabaseClockAtAllocationCompletion(
   database: Database,
   client: postgres.Sql
 ): Promise<void> {
-  const fixture = await createFixture(
-    database,
-    "db-clock-allocation-completion",
-    -60,
-    5
-  );
+  const fixture = await createFixture(database, "db-clock-completion", -60, 5);
   const store = createDurablePreviewShadowControlPlaneStore(database);
   const activated = await store.activate({
     authenticatedOwnerDecision: verifyFixture(fixture),
@@ -1388,6 +1380,7 @@ async function createFixture(
   );
   const databaseNow = new Date(rows[0]!.databaseNow);
   const now = new Date(databaseNow.getTime());
+  const runControlCapability = capability(`${tag}-run`);
   const authorization: AdaptiveInterviewerPreviewShadowAuthorization = {
     contract_version: ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_AUTHORIZATION_VERSION,
     requested_authority: "execute_bounded_preview_shadow_only",
@@ -1443,6 +1436,8 @@ async function createFixture(
     preview_shadow_configuration_sha256:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
     production_authorized: false,
+    run_control_capability_sha256:
+      previewShadowRunControlCapabilitySha256(runControlCapability),
     selected_candidate_configuration_sha256:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SELECTED_CANDIDATE_SHA256,
     signing_key_id: KEY_ID,
@@ -1483,7 +1478,7 @@ async function createFixture(
       },
     ],
   };
-  return { authorization, artifact, registry, now };
+  return { authorization, artifact, registry, runControlCapability, now };
 }
 
 function verifyFixture(fixture: Fixture, verifierNow = fixture.now) {
@@ -1503,6 +1498,7 @@ function verifyFixture(fixture: Fixture, verifierNow = fixture.now) {
     },
     keyRegistry: fixture.registry,
     now: verifierNow,
+    runControlCapability: fixture.runControlCapability,
   });
 }
 
@@ -1555,6 +1551,9 @@ function resignFixture(
     preview_shadow_configuration_sha256:
       authorization.preview_shadow_configuration_sha256,
     production_authorized: false,
+    run_control_capability_sha256: previewShadowRunControlCapabilitySha256(
+      fixture.runControlCapability
+    ),
     selected_candidate_configuration_sha256:
       authorization.selected_candidate_configuration_sha256,
     signing_key_id: KEY_ID,

@@ -16,6 +16,7 @@ export interface DurablePreviewShadowOwnerDecisionVerifier {
     context: PreviewShadowActivationContext;
     keyRegistry: PreviewShadowOwnerKeyRegistry;
     now: Date;
+    runControlCapability: string;
   }): AuthenticatedPreviewShadowOwnerDecision;
 }
 
@@ -84,6 +85,7 @@ export function createDurablePreviewShadowControlPlaneWorkflow(input: {
           context: request.context as PreviewShadowActivationContext,
           keyRegistry,
           now: clock(),
+          runControlCapability: request.runControlCapability as string,
         });
       } catch {
         throw new PreviewShadowControlPlaneError(

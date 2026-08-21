@@ -11,6 +11,7 @@ import {
 } from "../security/adaptive-interviewer-preview-shadow-owner-decision";
 import {
   preparePreviewShadowOwnerPacket,
+  PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE,
   signPreviewShadowOwnerPacket,
   verifyPreviewShadowOwnerPacket,
 } from "./adaptive-interviewer-preview-shadow-owner";
@@ -61,6 +62,24 @@ test("prepares, signs, and verifies one exact external Preview-shadow packet", a
   const privateKey = await readFile(fixture.privateKeyPath, "utf8");
   assert.doesNotMatch(artifact, /PRIVATE KEY/);
   assert.equal(artifact.includes(privateKey.trim()), false);
+
+  await writeFile(
+    join(fixture.packetDirectory, PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE),
+    `${Buffer.alloc(32, 9).toString("base64url")}\n`,
+    { mode: 0o600 }
+  );
+  await assert.rejects(
+    () =>
+      verifyPreviewShadowOwnerPacket({
+        packetDirectory: fixture.packetDirectory,
+        artifactPath: fixture.artifactPath,
+        keyRegistryPath: fixture.registryPath,
+        repoRoot: process.cwd(),
+        now: NOW,
+        resolveCandidate: () => CANDIDATE,
+      }),
+    /preview_shadow_owner_decision_binding_mismatch/
+  );
 });
 
 test("verification rejects a different repository candidate and create-only replay", async () => {
