@@ -55,6 +55,32 @@ test("Preview-shadow operator help is provider-free and content-free", async () 
   assert.doesNotMatch(output, /token|capability\.txt|DATABASE_URL/);
 });
 
+test("operator connection artifact is v2 and exact-bound before browser handoff", async () => {
+  const source = await readFile(
+    new URL("./run-adaptive-interviewer-preview-shadow.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    source,
+    /adaptive-interviewer-preview-shadow-operator-cell-connection\.v2/
+  );
+  for (const field of [
+    "topology",
+    "run_id",
+    "lease_id",
+    "candidate_git_sha",
+    "preview_shadow_configuration_sha256",
+    "selected_candidate_configuration_sha256",
+    "session_binding_sha256",
+    "round",
+    "voice_condition",
+    "expires_at",
+    "room",
+  ]) {
+    assert.match(source, new RegExp(`${field}:`));
+  }
+});
+
 test("Preview-shadow operator rejects unknown and incomplete authority options", async () => {
   await assert.rejects(
     () =>

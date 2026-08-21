@@ -17,6 +17,7 @@ The contract applies only to operator-controlled Production actions:
 - `production-question-sync-activate`
 - `production-question-sync-manual`
 - `vercel-production-promote`
+- `vercel-production-web-shadow-canary`
 - `relaunch-default-on`
 
 Normal authenticated or provider-signed runtime behavior remains outside this
