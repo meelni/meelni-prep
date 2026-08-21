@@ -64,6 +64,19 @@ describe("POST /api/session/start logging", () => {
     expect(startInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
+  it("refuses Shadow control-plane staging before auth, credits, configuration, or provider work", async () => {
+    stubControlPlaneOnlyStaging();
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(previewUnavailableBody());
+    expect(createClient).not.toHaveBeenCalled();
+    expect(getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(getLiveKitAgentName).not.toHaveBeenCalled();
+    expect(startInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
   it("does not log unrestricted workflow errors", async () => {
     const sentinel = "QUESTION-OR-PROVIDER-CONTENT-SENTINEL";
     const consoleError = vi
@@ -210,6 +223,18 @@ function stubGenericPreview() {
   vi.stubEnv("VERCEL", "1");
   vi.stubEnv("VERCEL_ENV", "preview");
   vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}
+
+function stubControlPlaneOnlyStaging() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "staging");
+  vi.stubEnv("VERCEL_PROJECT_ID", "prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4");
+  vi.stubEnv("VERCEL_GIT_REPO_OWNER", "meelni");
+  vi.stubEnv("VERCEL_GIT_REPO_SLUG", "meelni-prep");
+  vi.stubEnv("MEELNI_ENV_PULL_ENVIRONMENT", "preview");
+  vi.stubEnv("MEELNI_PREVIEW_SHADOW_REHEARSAL_SERVER", "enabled");
+  vi.stubEnv("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_ONLY", "enabled");
 }
 
 function previewUnavailableBody() {

@@ -36,6 +36,15 @@ The deploy action changes only the worker. The Shadow decision activates only
 the logical run. The room action creates at most one exact synthetic room and
 dispatch. Each verifier rejects the other domains.
 
+The Vercel staging deployment is control-plane-only for this topology. It may
+serve the durable internal Shadow endpoint only when the exact canonical
+project/repository and staging markers are present. Every ordinary web voice
+entrypoint and background LiveKit path remains intentionally disabled before
+configuration or provider work. Production LiveKit credentials are not a
+substitute for a Preview identity inside the staging web runtime; only the
+separately authorized external operator may combine staging database authority
+with Production-project transport.
+
 Only explicit private Shadow job metadata may construct the read-only Director
 path. Ordinary Production metadata never does. Durable lease allocation must
 commit before room creation or explicit dispatch. The first live step is one
@@ -48,6 +57,8 @@ customer sessions retain LiveKit's normal rolling drain behavior.
 ## Consequences
 
 - The paid project needs no third deployment and the demo worker is untouched.
+- The staging web deployment needs no separate LiveKit project and cannot issue
+  ordinary interview/demo tokens or create LiveKit work.
 - Updating the shared interview worker is a Production mutation even with
   exposure none, so repository merge or the Shadow signature alone is
   insufficient.
