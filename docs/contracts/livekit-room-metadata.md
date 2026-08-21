@@ -32,6 +32,22 @@ network read.
 The full negotiation, authority, and rollback rules are in
 [`stateful-interviewer-decisions.md`](./stateful-interviewer-decisions.md).
 
+## Optional Production adaptive admission
+
+Top-level room metadata also may include `adaptive_interviewer` contract
+`adaptive-interviewer-production-admission.v1`. This nested payload is emitted
+only by the authenticated durable start workflow after exact Production launch
+configuration resolves. It HMAC-binds the session, room, request fingerprint,
+deadline, candidate SHA, launch configuration, adapter identity and bounded
+attempt limits. It contains no credential, transcript, question, feedback or
+customer identity. The Python worker independently verifies it with the
+LiveKit shared secret before reading the Director provider credential or
+constructing a transport. Missing or rejected admission preserves the current
+deterministic interviewer.
+
+The complete authority and rollback rules are in
+[`adaptive-interviewer-production-launch.md`](./adaptive-interviewer-production-launch.md).
+
 ## Room Metadata
 
 Full interview rooms receive JSON metadata with this shape:

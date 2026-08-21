@@ -67,11 +67,12 @@ from shared.interviewer_tools import (
     create_session_scoped_interviewer_tools,
 )
 from shared.interview_director import (
+    DirectorShadowConfig,
     InterviewDirectorShadowSession,
     Sav469DirectorTraceSink,
-    resolve_director_shadow_config,
 )
 from shared.interview_director_influence import DirectorInfluenceGate
+from shared.production_director_runtime import create_production_director_runtime
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
     set_interview_contract_trace_attributes,
@@ -899,11 +900,25 @@ async def entrypoint(ctx: JobContext):
             None,
         )
 
-    # Ordinary interviews retain the literal no-adapter boundary.
+    production_director = create_production_director_runtime(
+        metadata.get("adaptive_interviewer"),
+        env=os.environ,
+        expected_session_id=session_id,
+        expected_room_name=room_name,
+        expected_deadline_at=metadata["deadline_at"] or "",
+    )
     director_shadow = InterviewDirectorShadowSession(
-        config=resolve_director_shadow_config(os.environ),
+        config=DirectorShadowConfig(
+            enabled=production_director.status == "ready",
+            adapter_version=(
+                production_director.adapter.version
+                if production_director.adapter is not None
+                else "interview-director-adapter.openai-responses.v1"
+            ),
+            limits=production_director.limits,
+        ),
         session_id=session_id,
-        adapter=None,
+        adapter=production_director.adapter,
         state_provider=read_director_authority,
         delivery_topic_provider=read_director_delivery_topic,
         trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
@@ -950,6 +965,8 @@ async def entrypoint(ctx: JobContext):
             "director_enabled": director_shadow.enabled,
             "director_status": director_shadow.failure_reason or "enabled",
             "director_influence_enabled": director_influence_gate.enabled,
+            "production_admission_status": production_director.status,
+            "production_admission_reason": production_director.reason,
         },
     )
 

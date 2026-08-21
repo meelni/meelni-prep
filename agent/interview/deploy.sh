@@ -9,6 +9,7 @@ candidate_sha=""
 shadow_candidate_sha=""
 preview_shadow_deploy="false"
 production_project_shadow="false"
+production_adaptive="false"
 case "$environment" in
   preview)
     config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}"
@@ -46,7 +47,17 @@ case "$environment" in
     preview_shadow_deploy="true"
     production_project_shadow="true"
     ;;
-  *) echo "Usage: ./deploy.sh preview|preview-shadow|production|production-project-shadow" >&2; exit 1 ;;
+  production-adaptive)
+    config_path="${MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG:-}"
+    secrets_path="${MEELNI_LIVEKIT_PRODUCTION_ADAPTIVE_SECRETS_FILE:-}"
+    expected_agent_id="${MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID:-}"
+    target_url="${MEELNI_PRODUCTION_LIVEKIT_URL:-}"
+    candidate_sha="${MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA:-}"
+    canonical_project_host="meelni-ek4vaisp.livekit.cloud"
+    canonical_agent_id="CA_yawKG67rCMG4"
+    production_adaptive="true"
+    ;;
+  *) echo "Usage: ./deploy.sh preview|preview-shadow|production|production-project-shadow|production-adaptive" >&2; exit 1 ;;
 esac
 
 if [[ -z "$config_path" ]] || \
@@ -63,7 +74,7 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 agent_dir="$(cd "$script_dir/.." && pwd)"
 repo_root="$(cd "$agent_dir/.." && pwd)"
 
-if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_adaptive" == "true" || "$preview_shadow_deploy" == "true" ]]; then
   if [[ -z "$secrets_path" ]] || \
     [[ -L "$secrets_path" ]] || \
     ! secrets_path="$(realpath "$secrets_path" 2>/dev/null)" || \
@@ -90,7 +101,7 @@ cp "$config_path" "$config_snapshot"
 chmod 600 "$config_snapshot"
 secrets_snapshot=""
 
-if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_adaptive" == "true" || "$preview_shadow_deploy" == "true" ]]; then
   secrets_snapshot="$snapshot_dir/interview-secrets.env"
   cp "$secrets_path" "$secrets_snapshot"
   chmod 600 "$secrets_snapshot"
@@ -106,9 +117,10 @@ if [[ "$production_project_shadow" == "true" ]]; then
   shadow_candidate_sha="$candidate_sha"
 fi
 
-if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_project_shadow" == "true" || "$production_adaptive" == "true" ]]; then
   if ! /usr/bin/awk \
     -v shadow_mode="$production_project_shadow" \
+    -v adaptive_mode="$production_adaptive" \
     -v candidate_sha="$candidate_sha" \
     -v control_plane_url="${preview_shadow_control_plane_url:-}" '
       function remember(name, value) {
@@ -176,9 +188,20 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
         sub(/^MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=/, "", value)
         remember("MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET", value); next
       }
+      adaptive_mode == "true" && $0 == "MEELNI_ADAPTIVE_INTERVIEWER_STAGE=candidate_default" { remember("MEELNI_ADAPTIVE_INTERVIEWER_STAGE", "candidate_default"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT=production" { remember("MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT", "production"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_ADAPTIVE_INTERVIEWER_COHORT=canary" { remember("MEELNI_ADAPTIVE_INTERVIEWER_COHORT", "canary"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_ADAPTIVE_INTERVIEWER_EXPOSURE=default" { remember("MEELNI_ADAPTIVE_INTERVIEWER_EXPOSURE", "default"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_ADAPTIVE_INTERVIEWER_CONFIG_SHA256=21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423" { remember("MEELNI_ADAPTIVE_INTERVIEWER_CONFIG_SHA256", "21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423"); next }
+      adaptive_mode == "true" && $0 ~ /^MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA=[a-f0-9]{40}$/ { value=$0; sub(/^MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA=/, "", value); remember("MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA", value); next }
+      adaptive_mode == "true" && $0 == "MEELNI_INTERVIEW_BRIEF_V2_ENABLED=true" { remember("MEELNI_INTERVIEW_BRIEF_V2_ENABLED", "true"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED=true" { remember("MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED", "true"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true" { remember("MEELNI_INTERVIEW_TOOLS_V1_ENABLED", "true"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED=true" { remember("MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED", "true"); next }
+      adaptive_mode == "true" && $0 == "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED=true" { remember("MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED", "true"); next }
       { invalid = 1 }
       END {
-        expected_lines = shadow_mode == "true" ? 14 : 8
+        expected_lines = shadow_mode == "true" ? 14 : (adaptive_mode == "true" ? 19 : 8)
         shadow_valid = shadow_mode != "true" ||
           (values["MEELNI_PREVIEW_SHADOW_EXECUTION"] == "enabled" &&
            values["MEELNI_PREVIEW_SHADOW_KILL_SWITCH"] == "open" &&
@@ -187,7 +210,19 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
            values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url &&
            length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) >= 16 &&
            length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) <= 512)
-        exit !(NR == expected_lines && invalid != 1 && shadow_valid &&
+        adaptive_valid = adaptive_mode != "true" ||
+          (values["MEELNI_ADAPTIVE_INTERVIEWER_STAGE"] == "candidate_default" &&
+           values["MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT"] == "production" &&
+           values["MEELNI_ADAPTIVE_INTERVIEWER_COHORT"] == "canary" &&
+           values["MEELNI_ADAPTIVE_INTERVIEWER_EXPOSURE"] == "default" &&
+           values["MEELNI_ADAPTIVE_INTERVIEWER_CONFIG_SHA256"] == "21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423" &&
+           values["MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA"] == candidate_sha &&
+           values["MEELNI_INTERVIEW_BRIEF_V2_ENABLED"] == "true" &&
+           values["MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED"] == "true" &&
+           values["MEELNI_INTERVIEW_TOOLS_V1_ENABLED"] == "true" &&
+           values["MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED"] == "true" &&
+           values["MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED"] == "true")
+        exit !(NR == expected_lines && invalid != 1 && shadow_valid && adaptive_valid &&
           length(values["MEELNI_TRANSCRIPT_INGEST_SECRET"]) >= 32 &&
           length(values["OPIK_API_KEY"]) >= 20 &&
           length(values["OPIK_API_KEY"]) <= 4096 &&
@@ -302,7 +337,7 @@ if [[ "$target_url" != "wss://$canonical_project_host" ]] || \
   exit 1
 fi
 
-if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_project_shadow" == "true" || "$production_adaptive" == "true" ]]; then
   readonly production_node="/usr/local/bin/node"
   node_mode=""
   node_owner_uid=""
@@ -318,7 +353,7 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
   fi
 fi
 
-if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_adaptive" == "true" || "$preview_shadow_deploy" == "true" ]]; then
   if ! lk_path="$(command -v lk 2>/dev/null)" || \
     ! lk_path="$(realpath "$lk_path" 2>/dev/null)" || \
     [[ ! -f "$lk_path" ]] || \
@@ -333,7 +368,7 @@ if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; t
     exit 1
   fi
   unset lk_deploy_help
-  if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]]; then
+  if [[ "$environment" == "production" || "$production_project_shadow" == "true" || "$production_adaptive" == "true" ]]; then
     if ! lk_update_secrets_help="$("$lk_path" agent update-secrets --help 2>&1)" || \
       [[ "$lk_update_secrets_help" != *"--overwrite"* ]] || \
       [[ "$lk_update_secrets_help" != *"--secrets-file"* ]]; then
@@ -367,7 +402,7 @@ sys.exit(0 if "OPENAI_API_KEY" in set(names(value)) else 1)
   unset existing_secrets
 fi
 
-if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_project_shadow" == "true" || "$production_adaptive" == "true" ]]; then
   authorization_receipt="$snapshot_dir/authorization-receipt.json"
   /usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
     "$production_node" "$repo_root/scripts/consume-production-action-authorization.mjs" \
@@ -389,6 +424,10 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
   fi
   if [[ "$production_project_shadow" == "true" && "$candidate_sha" != "$shadow_candidate_sha" ]]; then
     echo "Production-project Shadow authorized source does not match its bootstrap." >&2
+    exit 1
+  fi
+  if [[ "$production_adaptive" == "true" && "$candidate_sha" != "${MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA:-}" ]]; then
+    echo "Production adaptive authorized source does not match its bootstrap." >&2
     exit 1
   fi
   deploy_agent_dir="$source_snapshot_dir/agent"
@@ -416,9 +455,9 @@ fi
 
 config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$deploy_agent_dir")"
 cd "$deploy_agent_dir"
-if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
+if [[ "$environment" == "production" || "$production_adaptive" == "true" || "$preview_shadow_deploy" == "true" ]]; then
   secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$deploy_agent_dir")"
-  if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]]; then
+  if [[ "$environment" == "production" || "$production_project_shadow" == "true" || "$production_adaptive" == "true" ]]; then
     "$lk_path" --config "$config_argument" agent update-secrets \
       --overwrite \
       --secrets-file "$secrets_argument"

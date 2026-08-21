@@ -2066,7 +2066,8 @@ test("runtime and public package cannot construct or export the reference model"
     /process\.env|Deno\.env|Bun\.env|OpenAIResponsesDirectorAdapter|createPreviewShadowRuntime|createRoom|register(?:Factory|Adapter)|Statsig/
   );
   const appSource = readFileSync("agent/interview/agent.py", "utf8");
-  assert.match(appSource, /adapter=None,/);
+  assert.match(appSource, /create_production_director_runtime/);
+  assert.match(appSource, /adapter=production_director\.adapter/);
   assert.doesNotMatch(
     appSource,
     /interviewer-preview-shadow-control-plane|controlPlaneActivate/

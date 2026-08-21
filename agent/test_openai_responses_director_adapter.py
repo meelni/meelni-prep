@@ -313,12 +313,13 @@ class RequestContractTests(unittest.TestCase):
             f"probe:{hashlib.sha256(material).hexdigest()[:24]}",
         )
 
-    def test_application_entrypoint_keeps_literal_none_adapter(self):
+    def test_application_entrypoint_uses_only_the_admitted_production_factory(self):
         source = (
             Path(__file__).parent / "interview" / "agent.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("adapter=None,", source)
-        self.assertNotIn("OpenAIResponsesDirectorAdapter", source)
+        self.assertIn("create_production_director_runtime", source)
+        self.assertIn("adapter=production_director.adapter", source)
+        self.assertNotIn("OpenAIResponsesDirectorAdapter(", source)
 
 
 class AdapterBehaviorTests(unittest.IsolatedAsyncioTestCase):
