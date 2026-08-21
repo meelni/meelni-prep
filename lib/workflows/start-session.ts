@@ -543,7 +543,7 @@ export async function startInterviewSessionWorkflow(
         ? {
             adaptive_interviewer: createProductionAdaptiveAdmission({
               config: adaptiveProductionAdmission.config,
-              livekitApiSecret: input.env.apiSecret,
+              crossServiceSecret: input.env.apiSecret,
               sessionId: start.sessionId,
               roomName: start.roomName,
               requestFingerprint,

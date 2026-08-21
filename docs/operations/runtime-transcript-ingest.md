@@ -137,11 +137,15 @@ Loopback HTTP is accepted only for local development.
   4.5-second stage budget under the server's five-second wait. Room transcript
   and status projection are separately bounded best-effort notifications and
   never retain durable queue ownership.
-- If a shielded evidence transport remains hung after quiescence, the queue
-  retains that single in-flight attempt but prioritizes its reserved
-  metadata-only settlement item. This permits a durable degraded acknowledgement
-  inside the control deadline without a duplicate evidence POST; later flushes
-  may finish the retained request.
+- The cutoff fence invokes one force interruption. Speech settlement awaits that
+  exact Future and must not issue a second interrupt.
+- The reserved metadata-only settlement item is a terminal barrier, not a
+  priority lane. Transcript turns, integrity markers, and runtime events drain
+  first. Settlement is not submitted while any such item remains pending or
+  persisted. A permanent evidence failure may be followed by degraded
+  settlement. A shielded transport that remains hung after the bounded drain
+  instead leaves settlement missing; the finalizer may freeze only the already
+  committed gap-free prefix under the accepted partial-evidence authority.
 - Shutdown first pulls durable settlement work, then fences new dispatch, gives
   active settlement tasks a 20-second join, serializes through the same lock,
   and performs the final queue drain. A hard process crash can still lose

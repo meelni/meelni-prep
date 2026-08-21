@@ -9,9 +9,11 @@ Date: 2026-08-21
 The product owner authorizes the adaptive interviewer for ordinary authenticated
 Production interviews. We will not create another customer environment. The
 existing durable interview start is the pre-room admission boundary: the web
-server signs a closed, session-specific `candidate_default` admission with the
-LiveKit shared secret, and the Production worker verifies it before constructing
-the reviewed OpenAI Responses Director.
+server signs a closed, session-specific `candidate_default` admission with an
+admission-only key derived from the synchronized cross-service root, and the
+Production worker verifies it before constructing the reviewed OpenAI Responses
+Director. The worker-injected LiveKit project credential is not admission
+authority.
 
 The Director remains advisory. Its recommendation can affect an interview only
 through the existing synchronous influence gate, request assessor, deterministic
