@@ -22,7 +22,9 @@ Status: repository design; commands remain non-executable until SAV-483 merges
 
 1. Prepare, inspect, sign and verify the fresh logical Preview-shadow owner
    packet for the exact merged candidate. This makes no provider call.
-2. Activate the staging durable run. Do not allocate a room yet.
+2. Activate the staging durable run from an owner-only environment containing
+   the canonical staging database/environment identity. Activation requires no
+   LiveKit credential and makes no LiveKit call. Do not allocate a room yet.
 3. Prepare, inspect, sign and verify the separate Production interview-worker
    deploy action bound to the complete run-specific runtime snapshot.
 4. Deploy only through the guarded `production-project-shadow` wrapper.
@@ -36,7 +38,8 @@ Status: repository design; commands remain non-executable until SAV-483 merges
 8. Record sanitized spend/lifecycle/source evidence. Stop on any hard gate.
 9. Rehearse stop and replace secrets with the ordinary seven-key runtime before
    redeploying the all-off worker through a fresh Production action. Prove the
-   rollback source and health.
+   rollback source and health. The durable stop event uses only staging
+   database/environment identity and requires no LiveKit credential.
 
 ## Guarded command surfaces
 
