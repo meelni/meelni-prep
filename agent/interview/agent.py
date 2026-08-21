@@ -77,6 +77,14 @@ from shared.opik_tracing import (
     set_interview_contract_trace_attributes,
     setup_opik_tracing,
 )
+from shared.preview_shadow_control_plane_client import (
+    submit_preview_shadow_terminal_evidence,
+)
+from shared.preview_shadow_entrypoint import (
+    create_preview_shadow_entrypoint_runtime,
+    is_preview_shadow_job_metadata,
+)
+from shared.preview_shadow_job import create_preview_shadow_director_session
 from shared.runtime_config import (
     get_model_config,
     get_tts_config,
@@ -519,6 +527,27 @@ async def entrypoint(ctx: JobContext):
     """Entrypoint - reads configuration and starts agent with dynamic prompts"""
     logger.info(f"Starting agent for room: {ctx.room.name}")
 
+    preview_shadow_admission = None
+    preview_shadow_endpoint: str | None = None
+    job_metadata = getattr(getattr(ctx, "job", None), "metadata", "") or ""
+    if is_preview_shadow_job_metadata(job_metadata):
+        preview_shadow_construction = create_preview_shadow_entrypoint_runtime(
+            job_metadata=job_metadata,
+            room_name=ctx.room.name,
+            env=os.environ,
+        )
+        if preview_shadow_construction.admission is None:
+            logger.error(
+                "Preview-shadow job rejected before room connection",
+                extra={"reason": preview_shadow_construction.reason},
+            )
+            ctx.shutdown("preview shadow unavailable")
+            return
+        preview_shadow_admission = preview_shadow_construction.admission
+        preview_shadow_endpoint = os.environ.get(
+            "MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"
+        )
+
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Parse room metadata to get round type, question, and config
@@ -843,21 +872,47 @@ async def entrypoint(ctx: JobContext):
             None,
         )
 
-    # This repository slice intentionally injects no Director adapter. The
-    # observer and influence gate remain default-off and cannot execute model
-    # work even if their flags are set.
-    director_shadow = InterviewDirectorShadowSession(
-        config=resolve_director_shadow_config(os.environ),
-        session_id=session_id,
-        adapter=None,
-        state_provider=read_director_authority,
-        delivery_topic_provider=read_director_delivery_topic,
-        trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
-    )
+    if preview_shadow_admission is not None:
+        director_shadow = create_preview_shadow_director_session(
+            preview_shadow_admission,
+            session_id=session_id,
+            state_provider=read_director_authority,
+            delivery_topic_provider=read_director_delivery_topic,
+            trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
+        )
+    else:
+        # Ordinary interviews retain the literal no-adapter boundary.
+        director_shadow = InterviewDirectorShadowSession(
+            config=resolve_director_shadow_config(os.environ),
+            session_id=session_id,
+            adapter=None,
+            state_provider=read_director_authority,
+            delivery_topic_provider=read_director_delivery_topic,
+            trace_sink=Sav469DirectorTraceSink(semantic_observability.record),
+        )
     director_shadow.start()
-    director_shutdown_drain = director_shadow.shutdown
+    if preview_shadow_admission is None:
+        director_shutdown_drain = director_shadow.shutdown
+    else:
+        async def drain_preview_shadow() -> None:
+            await preview_shadow_admission.runtime.settle_shadow(director_shadow)
+            if preview_shadow_endpoint is None:
+                raise RuntimeError("preview_shadow_endpoint_unavailable")
+            submission = preview_shadow_admission.create_terminal_submission()
+            await submit_preview_shadow_terminal_evidence(
+                endpoint=preview_shadow_endpoint,
+                submission=submission,
+            )
+
+        director_shutdown_drain = drain_preview_shadow
+    influence_env = os.environ
+    if preview_shadow_admission is not None:
+        influence_env = {
+            **os.environ,
+            "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED": "false",
+        }
     director_influence_gate = DirectorInfluenceGate(
-        env=os.environ,
+        env=influence_env,
         session_id=session_id,
         recommendation_store=director_shadow.store,
         observability=semantic_observability,

@@ -95,7 +95,7 @@ authorization, accepting a boolean, or trusting TypeScript shape is invalid.
 The repository reference model validates this protocol but supplies neither
 the trusted owner verifier nor durable authority.
 
-The future activated run owns one durable authoritative cohort ledger. Before any
+The activated run owns one durable authoritative cohort ledger. Before any
 room or worker construction, that ledger atomically allocates a closed session
 lease. The lease binds the run, candidate/config/adapter, environment/stage/
 cohort, one session ordinal, a sanitized session-binding SHA-256, issue/expiry,
@@ -103,33 +103,34 @@ the 1,000,000,000 nano-USD session budget, ten-attempt limit, and 100,000,000
 nano-USD per-attempt reservation. Its domain-separated self-digest proves
 deterministic integrity only; it is not a signature and provides no
 authenticity. Runtime admission additionally requires an injected trusted
-durable-control-plane verifier to attest that the exact unexpired lease was
+durable-control-plane verifier to attest that the exact open, unexpired lease was
 actually allocated. Allocation counts outstanding leases against both overall
 and stop caps. The runtime cannot mint or activate a lease.
 
-This repository slice defines pure reference transition models, protocols, and
-validators, not a durable database/provider adapter. Two independent in-memory
-reference stores can each accept the same authorization; that demonstrates why
-they are not live enforcement. Therefore live runtime construction remains
-impossible until a follow-up authenticated control-plane implementation
-provides one durable activation CAS, atomic lease allocation, and idempotent
-central reconciliation. A process-local test store is never sufficient.
+The repository contains a service-role-only PostgreSQL adapter with one durable
+activation CAS, atomic lease allocation, capability-bound admission,
+idempotent central reconciliation, stop events, and termination
+acknowledgements. The package-level transition module remains an unexported
+reference model; a process-local store is never live enforcement. The dedicated
+internal endpoint is available only under the exact staging Preview tuple and
+explicit rehearsal-server guard.
 
 ## Construction and isolation
 
 No ambient configuration is accepted by the runtime construction seam. Its
 inputs bind the exact config digest, an unexpired session lease, an injected
-trusted admission verifier backed by the future durable control plane, and an
+trusted admission verifier backed by the durable control plane, and an
 explicit injected provider transport factory. Default-off returns a typed
 `disabled` result. Missing/incomplete durable admission returns typed
 `unavailable` with `adapter=None`; it does not throw into a fallback, discover
 credentials, construct the OpenAI adapter, or begin shadow work.
 
-The application remains default-off and passes literal `adapter=None`. The
-constructed adapter, if a later authorized entrypoint injects it, is read-only
-shadow. It cannot call speech/session APIs, modify controller state, publish or
-persist transcripts, invoke feedback, emit customer output, or block any of
-those paths. Provider-specific behavior remains behind `DirectorAdapter`.
+Ordinary application/session-start paths remain default-off and pass literal
+`adapter=None`. Only the exact private Preview job envelope may inject the
+read-only Shadow adapter before `ctx.connect()`. It cannot call speech/session
+APIs, modify controller state, publish or persist transcripts, invoke feedback,
+emit customer output, or block any of those paths. Provider-specific behavior
+remains behind `DirectorAdapter`.
 
 ## Attempt spend
 
@@ -173,22 +174,21 @@ losing billing evidence.
 
 Session receipt and stop-incomplete incident IDs are also unkeyed canonical
 self-digests. They provide deterministic integrity/idempotency, not
-authenticity. A future durable adapter MUST authenticate worker provenance and
-the reconciliation channel before accepting either record; the reference
-model parser does not turn them into authenticated evidence.
+authenticity. The durable endpoint MUST authenticate worker provenance through
+the per-lease capability before accepting either record; the self-digest alone
+does not authenticate the sender.
 
 A terminal session receipt is valid only after local shutdown and adapter close
 are confirmed. If bounded cleanup cannot be confirmed, the runtime emits one
 separate immutable `stop-incomplete` incident rather than a terminal receipt.
 The incident binds run, lease, session ordinal, allocation revision, config,
 attempt digest/count, conservative spend, and the full retained session
-reservation. Central handling MUST keep the lease open, retain its full
+reservation. Central handling MUST retain its full
 reservation, and stop new allocation until an authenticated durable worker or
-process termination acknowledgement is recorded. This repository ships no
-termination-ack transition, so its pure reference model cannot release that
-reservation or reopen allocation. If incident spend exceeds the retained
+process termination acknowledgement is recorded. The durable acknowledgement
+may reconcile the reservation but MUST NOT reopen allocation. If incident spend exceeds the retained
 1,000,000,000 nano-USD lease, the reference model records the excess
-immediately while also retaining the full lease. A future termination
+immediately while also retaining the full lease. A termination
 acknowledgement MUST replace or reconcile that open reservation/excess
 atomically and MUST NOT count the already-recorded excess twice.
 

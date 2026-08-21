@@ -313,6 +313,75 @@ export function createDurablePreviewShadowControlPlaneStore(
   return Object.freeze(store);
 }
 
+/**
+ * Worker admission is a read-only, capability-authenticated durable check.
+ * It locks the run so a concurrent manual stop either completes first and
+ * revokes the lease, or observes this admission before it revokes new work.
+ */
+export async function verifyDurablePreviewShadowSessionLeaseAdmission(
+  database: PreviewShadowControlPlaneDatabase,
+  input: { lease: unknown; workerEvidenceCapability: string }
+): Promise<DurablePreviewShadowSessionLease> {
+  return sanitized(async () => {
+    const request = exactRecord(input, [
+      "lease",
+      "workerEvidenceCapability",
+    ]);
+    const leaseCandidate = request.lease;
+    if (
+      leaseCandidate === null ||
+      typeof leaseCandidate !== "object" ||
+      Array.isArray(leaseCandidate)
+    ) {
+      invalid();
+    }
+    const idDescriptor = Object.getOwnPropertyDescriptor(
+      leaseCandidate,
+      "lease_id"
+    );
+    if (
+      !idDescriptor ||
+      !("value" in idDescriptor) ||
+      !isSha256(idDescriptor.value)
+    ) {
+      invalid();
+    }
+    const capabilitySha256 = capabilityHash(
+      WORKER_EVIDENCE_CAPABILITY_DOMAIN,
+      request.workerEvidenceCapability
+    );
+    return database.transaction(async (tx) => {
+      const discoveredRows = await tx
+        .select()
+        .from(leaseTable)
+        .where(eq(leaseTable.leaseId, idDescriptor.value as string))
+        .limit(1);
+      const discovered = discoveredRows[0];
+      if (!discovered) denied();
+      const run = await lockRun(tx, discovered.runId);
+      const lease = await lockLease(tx, idDescriptor.value as string);
+      if (lease.runId !== run.runId) invariant();
+      await assertRelationalState(tx, run);
+      const databaseNow = await readDatabaseNow(tx);
+      assertCapability(lease.workerEvidenceCapabilitySha256, capabilitySha256);
+      if (
+        lease.state !== "open" ||
+        lease.expiresAt.getTime() <= databaseNow.getTime() ||
+        run.authorizationExpiresAt.getTime() <= databaseNow.getTime()
+      ) {
+        denied();
+      }
+      const normalized = normalizeLease(lease);
+      const candidate = exactRecord(
+        leaseCandidate,
+        Object.keys(normalized) as Array<keyof typeof normalized>
+      );
+      if (JSON.stringify(candidate) !== JSON.stringify(normalized)) denied();
+      return normalized;
+    });
+  });
+}
+
 async function activate(
   database: PreviewShadowControlPlaneDatabase,
   input: {

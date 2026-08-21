@@ -37,6 +37,10 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     '[project]\nsubdomain = "meelni-ek4vaisp"\n[agent]\nid = "CA_yawKG67rCMG4"\n'
   );
   const productionSecretsPath = join(directory, "production-secrets.env");
+  const previewShadowSecretsPath = join(
+    directory,
+    "preview-shadow-secrets.env"
+  );
   const productionDemoSecretsPath = join(
     directory,
     "production-demo-secrets.env"
@@ -55,8 +59,28 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     { mode: 0o600 }
   );
   await writeFile(productionDemoSecretsPath, opikSecrets, { mode: 0o600 });
+  const candidateSha = spawnSync(
+    "/usr/bin/git",
+    ["-C", repoRoot, "rev-parse", "HEAD"],
+    { encoding: "utf8" }
+  ).stdout.trim();
+  const previewShadowControlPlaneUrl =
+    "https://meelni-candidate-meelni.vercel.app/api/internal/preview-shadow";
+  await writeFile(
+    previewShadowSecretsPath,
+    [
+      "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
+      "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open",
+      `MEELNI_PREVIEW_SHADOW_RUN_ID=${"b".repeat(64)}`,
+      `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateSha}`,
+      `MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=${previewShadowControlPlaneUrl}`,
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
   await chmod(productionSecretsPath, 0o600);
   await chmod(productionDemoSecretsPath, 0o600);
+  await chmod(previewShadowSecretsPath, 0o600);
   const commentConfusedInterviewConfigPath = join(
     directory,
     "comment-confused-interview.toml"
@@ -74,7 +98,24 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     '[project]\nsubdomain = "wrong" # = "meelni-ek4vaisp"\n[agent]\nid = "wrong" # = "CA_t3sKQEihMQ7x"\n'
   );
   const fakeLk = join(fakeBin, "lk");
-  await writeFile(fakeLk, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LK_LOG"\n');
+  await writeFile(
+    fakeLk,
+    [
+      "#!/bin/sh",
+      'if [ "$*" = "agent deploy --help" ]; then',
+      '  printf "%s\\n" "--no-default-attributes --attribute"',
+      "  exit 0",
+      "fi",
+      'case "$*" in',
+      '  *"agent secrets --json"*)',
+      '    printf "%s\\n" \'{"secrets":[{"name":"OPENAI_API_KEY"}]}\'',
+      "    exit 0",
+      "    ;;",
+      "esac",
+      'printf "%s\\n" "$*" >> "$LK_LOG"',
+      "",
+    ].join("\n")
+  );
   await chmod(fakeLk, 0o755);
 
   const baseEnv = {
@@ -271,6 +312,33 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       (await readFile(logPath, "utf8")).trim().split("\n").length,
       callsAfterProduction.length
     );
+
+    const previewShadow = spawnSync(
+      join(repoRoot, "agent/interview/deploy.sh"),
+      ["preview-shadow"],
+      {
+        cwd: join(repoRoot, "agent/interview"),
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          MEELNI_LIVEKIT_PREVIEW_SHADOW_SECRETS_FILE: previewShadowSecretsPath,
+          MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA: candidateSha,
+          MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL: previewShadowControlPlaneUrl,
+        },
+      }
+    );
+    assert.equal(previewShadow.status, 0, previewShadow.stderr);
+    const previewShadowCall = (await readFile(logPath, "utf8"))
+      .trim()
+      .split("\n")
+      .at(-1);
+    assert.match(previewShadowCall, /--no-default-attributes/);
+    assert.match(
+      previewShadowCall,
+      new RegExp(`--attribute meelni\\.source_sha=${candidateSha}`)
+    );
+    assert.match(previewShadowCall, /--secrets-file/);
+    assert.doesNotMatch(previewShadowCall, /MEELNI_PREVIEW_SHADOW_RUN_ID/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
