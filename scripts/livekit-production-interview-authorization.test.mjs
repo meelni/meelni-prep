@@ -39,6 +39,7 @@ async function fixture() {
     "OPIK_WORKSPACE=savi-singh",
     "OPIK_PROJECT_NAME=meelni",
     "OPIK_CAPTURE_CONTENT=true",
+    `OPENAI_API_KEY=${"o".repeat(25)}`,
     "",
   ].join("\n");
   await writeFile(configFile, configuration, { mode: 0o600 });
@@ -68,6 +69,8 @@ test("resolves the exact guarded Production interview fingerprints", async () =>
           LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID,
           "runtime-secrets-sha256",
           secretSha256,
+          "secrets-mode",
+          "overwrite",
         ].join(":")
       ),
     });
@@ -94,8 +97,9 @@ test("uses the same canonical identity and target-material shape as deploy", asy
   );
   assert.match(
     deploySource,
-    /livekit:production:interview:\$target_url:\$expected_agent_id:runtime-secrets-sha256:/
+    /livekit:production:interview:\$target_url:\$expected_agent_id:runtime-secrets-sha256:[^\n]+:secrets-mode:overwrite/
   );
+  assert.match(deploySource, /agent update-secrets[\s\S]+?--overwrite/);
 });
 
 test("rejects target skew, symlinked config, and malformed secrets", async () => {
@@ -133,6 +137,64 @@ test("rejects target skew, symlinked config, and malformed secrets", async () =>
       resolveLiveKitProductionInterviewAuthorizationInput({
         configFile: value.configFile,
         secretsFile: value.secretsFile,
+        repoRoot: process.cwd(),
+      }),
+      { message: "livekit_runtime_secrets_invalid" }
+    );
+  } finally {
+    await rm(value.directory, { recursive: true, force: true });
+  }
+});
+
+test("binds the Production-project Shadow deploy to the closed combined runtime", async () => {
+  const value = await fixture();
+  const candidateSha = "d".repeat(40);
+  const shadowSecrets = [
+    value.secrets.trimEnd(),
+    "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
+    "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open",
+    `MEELNI_PREVIEW_SHADOW_RUN_ID=${"e".repeat(64)}`,
+    `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateSha}`,
+    "MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow",
+    "",
+  ].join("\n");
+  try {
+    await writeFile(value.secretsFile, shadowSecrets, { mode: 0o600 });
+    const result = await resolveLiveKitProductionInterviewAuthorizationInput({
+      configFile: value.configFile,
+      secretsFile: value.secretsFile,
+      mode: "production-project-shadow",
+      expectedCandidateSha: candidateSha,
+      repoRoot: process.cwd(),
+    });
+    assert.equal(result.action, LIVEKIT_PRODUCTION_INTERVIEW_ACTION);
+    assert.equal(
+      result.configurationSha256,
+      sha256(Buffer.from(value.configuration))
+    );
+    assert.equal(
+      result.targetFingerprint,
+      sha256(
+        [
+          "livekit",
+          "production",
+          "interview",
+          LIVEKIT_PRODUCTION_INTERVIEW_URL,
+          LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID,
+          "runtime-secrets-sha256",
+          sha256(Buffer.from(shadowSecrets)),
+          "secrets-mode",
+          "overwrite",
+        ].join(":")
+      )
+    );
+
+    await assert.rejects(
+      resolveLiveKitProductionInterviewAuthorizationInput({
+        configFile: value.configFile,
+        secretsFile: value.secretsFile,
+        mode: "production-project-shadow",
+        expectedCandidateSha: "f".repeat(40),
         repoRoot: process.cwd(),
       }),
       { message: "livekit_runtime_secrets_invalid" }
