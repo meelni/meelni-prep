@@ -28,6 +28,7 @@ async function fixture() {
     "OPIK_WORKSPACE=savi-singh",
     "OPIK_PROJECT_NAME=meelni",
     "OPIK_CAPTURE_CONTENT=true",
+    "LIVEKIT_DEMO_AGENT_NAME=CA_t3sKQEihMQ7x",
     "",
   ].join("\n");
   await writeFile(configFile, configuration, { mode: 0o600 });

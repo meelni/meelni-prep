@@ -31,6 +31,7 @@ const ORDINARY_SECRETS = [
   "OPIK_PROJECT_NAME=meelni",
   "OPIK_CAPTURE_CONTENT=true",
   `OPENAI_API_KEY=${"o".repeat(25)}`,
+  "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
   "",
 ].join("\n");
 
@@ -199,7 +200,11 @@ test("builds an exact complete Shadow secret replacement without exposing values
     candidateGitSha: BASE.candidateGitSha,
     controlPlaneUrl: BASE.controlPlaneUrl,
   });
-  assert.equal(combined.trimEnd().split("\n").length, 12);
+  assert.equal(combined.trimEnd().split("\n").length, 13);
+  assert.match(
+    combined,
+    /LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4/
+  );
   assert.match(combined, /MEELNI_PREVIEW_SHADOW_EXECUTION=enabled/);
   assert.match(
     combined,
@@ -209,6 +214,19 @@ test("builds an exact complete Shadow secret replacement without exposing values
     () =>
       buildProductionProjectShadowRuntimeSecrets({
         ordinarySecrets: ORDINARY_SECRETS.replace("OPENAI_API_KEY", "EXTRA"),
+        runId: BASE.runId,
+        candidateGitSha: BASE.candidateGitSha,
+        controlPlaneUrl: BASE.controlPlaneUrl,
+      }),
+    /livekit_runtime_secrets_invalid/
+  );
+  assert.throws(
+    () =>
+      buildProductionProjectShadowRuntimeSecrets({
+        ordinarySecrets: ORDINARY_SECRETS.replace(
+          "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
+          "LIVEKIT_INTERVIEW_AGENT_NAME=wrong-agent"
+        ),
         runId: BASE.runId,
         candidateGitSha: BASE.candidateGitSha,
         controlPlaneUrl: BASE.controlPlaneUrl,
