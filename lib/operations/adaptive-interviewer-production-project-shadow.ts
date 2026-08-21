@@ -137,6 +137,8 @@ export function buildProductionProjectShadowRuntimeSecrets({
   assertLiveKitProductionRuntimeSecrets(ordinarySecrets, {
     includeTranscriptSecret: true,
     includeProviderSecret: true,
+    dispatchVariableName: "LIVEKIT_INTERVIEW_AGENT_NAME",
+    expectedDispatchName: PRODUCTION_PROJECT_SHADOW_AGENT_ID,
     expectedCandidateSha: undefined,
     expectedControlPlaneUrl: undefined,
   });
@@ -152,6 +154,8 @@ export function buildProductionProjectShadowRuntimeSecrets({
   assertLiveKitProductionRuntimeSecrets(combined, {
     includeTranscriptSecret: true,
     includeProviderSecret: true,
+    dispatchVariableName: "LIVEKIT_INTERVIEW_AGENT_NAME",
+    expectedDispatchName: PRODUCTION_PROJECT_SHADOW_AGENT_ID,
     includeShadowBootstrap: true,
     expectedCandidateSha: candidateGitSha,
     expectedControlPlaneUrl: controlPlaneUrl,

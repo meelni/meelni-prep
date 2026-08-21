@@ -251,7 +251,7 @@ or group/world-readable file.
 
 Run this provider-free preparation only after the reviewed change is merged and
 the authorized workstation is on that exact clean `main` commit. The helper
-validates the canonical Production config and owner-only seven-variable secrets
+validates the canonical Production config and owner-only eight-variable secrets
 file, computes the same configuration and target fingerprints as the guarded
 deploy wrapper, and writes only the external unsigned payload:
 
@@ -302,6 +302,7 @@ OPIK_WORKSPACE=savi-singh
 OPIK_PROJECT_NAME=meelni
 OPIK_CAPTURE_CONTENT=true
 OPENAI_API_KEY=<existing-production-provider-secret>
+LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4
 ```
 
 ### Prepare a demo-agent deployment

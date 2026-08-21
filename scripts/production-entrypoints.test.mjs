@@ -59,10 +59,14 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
   ].join("\n");
   await writeFile(
     productionSecretsPath,
-    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n${opikSecrets.trimEnd()}\nOPENAI_API_KEY=${"o".repeat(25)}\n`,
+    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n${opikSecrets.trimEnd()}\nOPENAI_API_KEY=${"o".repeat(25)}\nLIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4\n`,
     { mode: 0o600 }
   );
-  await writeFile(productionDemoSecretsPath, opikSecrets, { mode: 0o600 });
+  await writeFile(
+    productionDemoSecretsPath,
+    `${opikSecrets.trimEnd()}\nLIVEKIT_DEMO_AGENT_NAME=CA_t3sKQEihMQ7x\n`,
+    { mode: 0o600 }
+  );
   const candidateSha = spawnSync(
     "/usr/bin/git",
     ["-C", repoRoot, "rev-parse", "HEAD"],
@@ -88,6 +92,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}`,
       opikSecrets.trimEnd(),
       `OPENAI_API_KEY=${"o".repeat(25)}`,
+      "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
       "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
       "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open",
       `MEELNI_PREVIEW_SHADOW_RUN_ID=${"b".repeat(64)}`,

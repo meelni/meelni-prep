@@ -40,6 +40,7 @@ async function fixture() {
     "OPIK_PROJECT_NAME=meelni",
     "OPIK_CAPTURE_CONTENT=true",
     `OPENAI_API_KEY=${"o".repeat(25)}`,
+    "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
     "",
   ].join("\n");
   await writeFile(configFile, configuration, { mode: 0o600 });
@@ -137,6 +138,40 @@ test("rejects target skew, symlinked config, and malformed secrets", async () =>
     await writeFile(value.secretsFile, `${value.secrets}EXTRA=value\n`, {
       mode: 0o600,
     });
+    await assert.rejects(
+      resolveLiveKitProductionInterviewAuthorizationInput({
+        configFile: value.configFile,
+        secretsFile: value.secretsFile,
+        repoRoot: process.cwd(),
+      }),
+      { message: "livekit_runtime_secrets_invalid" }
+    );
+
+    await writeFile(
+      value.secretsFile,
+      value.secrets.replace(
+        "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4\n",
+        ""
+      ),
+      { mode: 0o600 }
+    );
+    await assert.rejects(
+      resolveLiveKitProductionInterviewAuthorizationInput({
+        configFile: value.configFile,
+        secretsFile: value.secretsFile,
+        repoRoot: process.cwd(),
+      }),
+      { message: "livekit_runtime_secrets_invalid" }
+    );
+
+    await writeFile(
+      value.secretsFile,
+      value.secrets.replace(
+        "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
+        "LIVEKIT_INTERVIEW_AGENT_NAME=wrong-agent"
+      ),
+      { mode: 0o600 }
+    );
     await assert.rejects(
       resolveLiveKitProductionInterviewAuthorizationInput({
         configFile: value.configFile,
