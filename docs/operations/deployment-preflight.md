@@ -10,6 +10,14 @@ The deployment preflight validates launch-critical configuration without printin
 
 - Generic PR Preview has `VERCEL_ENV=preview` and `VERCEL_TARGET_ENV=preview`. LiveKit is intentionally disabled, its configuration/reachability check prints an explicit `SKIP`, and voice entrypoints return `voice_unavailable_in_preview` without touching auth, credits, durable session state, LiveKit configuration, or providers. Non-voice surfaces remain deployable and reviewable.
 - Trusted staging has `VERCEL_ENV=preview` and `VERCEL_TARGET_ENV=staging`. It remains the only provider-backed Preview rehearsal lane and must pass the exact isolated LiveKit identity and read-only project-access check.
+- When no separate Preview LiveKit project is available, staging may instead
+  serve only the Shadow control plane. Set both
+  `MEELNI_PREVIEW_SHADOW_REHEARSAL_SERVER=enabled` and
+  `MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_ONLY=enabled` only on the canonical
+  staging target. The build emits the distinct control-plane skip; ordinary web
+  voice routes and background LiveKit jobs stay unavailable. Do not put
+  Production LiveKit credentials into this web lane. The owner-authorized
+  external Production-project Shadow operator remains the only transport path.
 - Production remains enabled and strict. Never put Production LiveKit credentials into generic Preview or staging.
 
 Do not interpret an unreadable LiveKit project as intentional disablement. Only the exact Vercel-owned generic Preview identity skips; local explicit Preview, missing `VERCEL_TARGET_ENV`, and unknown targets remain strict.
@@ -54,7 +62,7 @@ The commands load only their matching private env file. Never source both files,
    gate unchanged. Preview uses `MEELNI_RELAUNCH_PHASE=rehearsal`,
    `NEXT_PUBLIC_STATSIG_ENVIRONMENT=preview`, and
    `MEELNI_REACTIVATION_DEFAULT=false`.
-2. Confirm the canonical Vercel target is team `meelni`, project `meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), linked to `meelni/meelni-prep`, and custom target `staging`. The build preflight verifies the project ID and Git owner/slug from Vercel system variables and requires `VERCEL_TARGET_ENV=staging` for provider rehearsal.
+2. Confirm the canonical Vercel target is team `meelni`, project `meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), linked to `meelni/meelni-prep`, and custom target `staging`. The build preflight verifies the project ID and Git owner/slug from Vercel system variables and requires `VERCEL_TARGET_ENV=staging`. Voice-capable staging requires the isolated Preview LiveKit identity; control-plane-only staging requires the two exact Shadow markers and never constructs LiveKit.
 3. For an authorized rehearsal only, add `MEELNI_REHEARSAL_COMMIT_SHA` to the Vercel Preview environment scoped to the reviewed PR branch, enter the exact 40-character head SHA, and redeploy that exact commit. Do not define this variable for all Preview branches. Every new commit requires a new value and redeployment. Vercel preflight rejects an anchor that differs from `VERCEL_GIT_COMMIT_SHA` or lacks `VERCEL_GIT_COMMIT_REF`.
 4. Pull Preview and run the target preflight. Preview Supabase must resolve exactly to `kxpvidtxznllfosfemdl`; Production must resolve exactly to `rarrrwkjuhfyfatcmrkw`.
 5. Use only LiveKit project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. Its interview deployment `CA_ZbGxFjfEYwsD` dispatches as `meelni-preview-interview`; its demo deployment `CA_M5XTD4CMyXk3` dispatches as `meelni-preview-demo`. Set those matching Preview-only Vercel values without borrowing a Production identity.

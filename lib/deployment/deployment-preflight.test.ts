@@ -11,6 +11,7 @@ import {
 } from "./deployment-preflight";
 import { OpenAiModelAccessError } from "./openai-model-access";
 import { PREVIEW_LIVEKIT_IDENTITY } from "./provider-identities";
+import { CANONICAL_VERCEL_DEPLOYMENT_IDENTITY } from "@meelni/integrations";
 
 const testPreviewLiveKitIdentity = {
   projectHost: "fixture-preview.livekit.cloud",
@@ -118,6 +119,70 @@ test("generic Vercel Preview intentionally skips LiveKit without constructing a 
     result.failures.some((failure) => failure.area === "livekit"),
     false
   );
+});
+
+test("exact Shadow control-plane staging skips LiveKit without constructing a provider reader", async () => {
+  const env: Record<string, string | undefined> = {
+    ...validEnvironment("preview"),
+    ...controlPlaneOnlyStaging(),
+  };
+  let liveKitProviderCalls = 0;
+
+  const result = await runDeploymentPreflight({
+    env,
+    liveKitProjectReader: {
+      async verifyProjectAccess() {
+        liveKitProviderCalls += 1;
+      },
+    },
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(false),
+    target: "preview",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(liveKitProviderCalls, 0);
+  assert.deepEqual(result.liveKitCapability, {
+    mode: "disabled",
+    lane: "preview_shadow_control_plane",
+    reason: "intentional_preview_shadow_control_plane_disablement",
+  });
+  assert.deepEqual(result.skippedChecks, [
+    {
+      area: "livekit",
+      check: "livekit.configuration_and_project_access",
+      reason: "intentionally_disabled_for_preview_shadow_control_plane",
+    },
+  ]);
+  assert.equal(
+    result.failures.some((failure) => failure.area === "livekit"),
+    false
+  );
+});
+
+test("staging remains strict when any control-plane-only identity field is missing", async () => {
+  const complete = controlPlaneOnlyStaging();
+  for (const key of Object.keys(complete)) {
+    const env: Record<string, string | undefined> = {
+      ...validEnvironment("preview"),
+      ...complete,
+      [key]: undefined,
+    };
+    delete env.LIVEKIT_API_KEY;
+    const result = await runDeploymentPreflight({
+      env,
+      openAiModelReader: validOpenAiReader(),
+      stripeCatalogReader: validStripeReader(false),
+      target: "preview",
+    });
+    assert.equal(result.ok, false, key);
+    assert.equal(result.liveKitCapability.mode, "enabled", key);
+    assert.equal(
+      result.failures.some((failure) => failure.area === "livekit"),
+      true,
+      key
+    );
+  }
 });
 
 test("trusted staging still fails closed when LiveKit is missing", async () => {
@@ -1230,6 +1295,22 @@ function validEnvironment(
     STRIPE_WEBHOOK_SECRET: "whsec_validtoken",
     SUPABASE_SERVICE_ROLE_KEY: supabaseJwt(projectRef, "service_role"),
   };
+}
+
+function controlPlaneOnlyStaging() {
+  return {
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+    VERCEL_TARGET_ENV: "staging",
+    VERCEL_PROJECT_ID: CANONICAL_VERCEL_DEPLOYMENT_IDENTITY.projectId,
+    VERCEL_GIT_REPO_OWNER:
+      CANONICAL_VERCEL_DEPLOYMENT_IDENTITY.repositoryOwner,
+    VERCEL_GIT_REPO_SLUG:
+      CANONICAL_VERCEL_DEPLOYMENT_IDENTITY.repositorySlug,
+    MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+    MEELNI_PREVIEW_SHADOW_REHEARSAL_SERVER: "enabled",
+    MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_ONLY: "enabled",
+  } as const;
 }
 
 function supabaseJwt(
