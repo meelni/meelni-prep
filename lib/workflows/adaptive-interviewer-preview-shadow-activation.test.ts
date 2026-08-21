@@ -5,10 +5,32 @@ import type { DurablePreviewShadowControlPlaneWorkflow } from "./adaptive-interv
 import {
   createPreviewShadowActivationContext,
   createPreviewShadowActivationRequestWorkflow,
+  currentPreviewShadowActivationTime,
   isPreviewShadowActivationRequest,
   PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION,
   PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION,
 } from "./adaptive-interviewer-preview-shadow-activation";
+
+test("staging activation snapshots current time to an exact whole second", () => {
+  const snapshot = currentPreviewShadowActivationTime(1_787_296_928_987);
+
+  assert.equal(snapshot.getTime(), 1_787_296_928_000);
+  assert.equal(snapshot.getUTCMilliseconds(), 0);
+  assert.equal(Object.getPrototypeOf(snapshot), Date.prototype);
+  assert.deepEqual(Reflect.ownKeys(snapshot), []);
+  assert.throws(
+    () => currentPreviewShadowActivationTime(Number.NaN),
+    /preview_shadow_activation_request_invalid/
+  );
+  assert.throws(
+    () => currentPreviewShadowActivationTime(1.5),
+    /preview_shadow_activation_request_invalid/
+  );
+  assert.throws(
+    () => currentPreviewShadowActivationTime(-1),
+    /preview_shadow_activation_request_invalid/
+  );
+});
 
 test("staging activation delegates exact owner material and returns the private receipt", async () => {
   const calls: unknown[] = [];
