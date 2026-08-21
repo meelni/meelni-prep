@@ -9,7 +9,7 @@ const WORKFLOW =
 const VERIFIER =
   "lib/security/adaptive-interviewer-preview-shadow-owner-decision";
 
-test("durable Preview-shadow authority remains server-owned and unwired", () => {
+test("durable Preview-shadow authority is reachable only through the dedicated internal worker route", () => {
   const forbiddenConsumers = [
     "app",
     "components",
@@ -20,14 +20,10 @@ test("durable Preview-shadow authority remains server-owned and unwired", () => 
     "lib/interview",
     "lib/livekit",
   ];
-  for (const moduleName of [STORE, WORKFLOW]) {
-    const matches = grep(moduleName, forbiddenConsumers);
-    assert.deepEqual(
-      matches,
-      [],
-      `${moduleName} must not be imported by app/session/runtime/provider surfaces`
-    );
-  }
+  assert.deepEqual(grep(STORE, forbiddenConsumers), [
+    "app/api/internal/preview-shadow/route.ts",
+  ]);
+  assert.deepEqual(grep(WORKFLOW, forbiddenConsumers), []);
 
   const publicIndexes = grep(
     "adaptive-interviewer-preview-shadow-control-plane",
@@ -44,6 +40,30 @@ test("durable Preview-shadow authority remains server-owned and unwired", () => 
     ]),
     []
   );
+});
+
+test("Preview worker wiring cannot enter ordinary session-start or public package surfaces", () => {
+  const runtimeConsumers = grep("preview_shadow_entrypoint", [
+    "app",
+    "components",
+    "lib",
+    "packages",
+    "agent",
+  ]);
+  assert.deepEqual(runtimeConsumers, [
+    "agent/interview/agent.py",
+    "agent/shared/preview_shadow_entrypoint.py",
+    "agent/test_preview_shadow_entrypoint.py",
+  ]);
+  for (const path of [
+    "app/api/session/start/route.ts",
+    "lib/workflows/start-session.ts",
+    "packages/agent/src/index.ts",
+    "packages/integrations/src/index.ts",
+  ]) {
+    const source = readFileSync(path, "utf8");
+    assert.doesNotMatch(source, /preview.shadow.(operator|entrypoint|worker)/i);
+  }
 });
 
 test("durable authority has no ambient secret, provider, room, flag, or log seam", () => {
@@ -103,9 +123,13 @@ test("durable schema persists digests and closed evidence, never raw trust mater
 });
 
 function grep(pattern, roots, globs = []) {
-  return execFileSync("git", ["ls-files", "--", ...roots], {
+  return execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...roots],
+    {
     encoding: "utf8",
-  })
+    }
+  )
     .trim()
     .split("\n")
     .filter(Boolean)

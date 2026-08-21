@@ -5,6 +5,8 @@ umask 077
 environment="${1:-}"
 secrets_path=""
 lk_path=""
+candidate_sha=""
+preview_shadow_deploy="false"
 case "$environment" in
   preview)
     config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}"
@@ -12,6 +14,16 @@ case "$environment" in
     target_url="${MEELNI_PREVIEW_LIVEKIT_URL:-}"
     canonical_project_host="meelni-preview-dk7443ua.livekit.cloud"
     canonical_agent_id="CA_ZbGxFjfEYwsD"
+    ;;
+  preview-shadow)
+    config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}"
+    secrets_path="${MEELNI_LIVEKIT_PREVIEW_SHADOW_SECRETS_FILE:-}"
+    expected_agent_id="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID:-}"
+    target_url="${MEELNI_PREVIEW_LIVEKIT_URL:-}"
+    candidate_sha="${MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA:-}"
+    canonical_project_host="meelni-preview-dk7443ua.livekit.cloud"
+    canonical_agent_id="CA_ZbGxFjfEYwsD"
+    preview_shadow_deploy="true"
     ;;
   production)
     config_path="${MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG:-}"
@@ -21,7 +33,7 @@ case "$environment" in
     canonical_project_host="meelni-ek4vaisp.livekit.cloud"
     canonical_agent_id="CA_yawKG67rCMG4"
     ;;
-  *) echo "Usage: ./deploy.sh preview|production" >&2; exit 1 ;;
+  *) echo "Usage: ./deploy.sh preview|preview-shadow|production" >&2; exit 1 ;;
 esac
 
 if [[ -z "$config_path" ]] || \
@@ -38,14 +50,14 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 agent_dir="$(cd "$script_dir/.." && pwd)"
 repo_root="$(cd "$agent_dir/.." && pwd)"
 
-if [[ "$environment" == "production" ]]; then
+if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
   if [[ -z "$secrets_path" ]] || \
     [[ -L "$secrets_path" ]] || \
     ! secrets_path="$(realpath "$secrets_path" 2>/dev/null)" || \
     [[ ! -f "$secrets_path" ]] || \
     [[ "$secrets_path" == "$repo_root" ]] || \
     [[ "$secrets_path" == "$repo_root/"* ]]; then
-    echo "Production LiveKit deploy requires an external runtime secrets file." >&2
+    echo "$environment LiveKit deploy requires an external runtime secrets file." >&2
     exit 1
   fi
   secrets_mode=""
@@ -53,7 +65,7 @@ if [[ "$environment" == "production" ]]; then
   read -r secrets_mode _ secrets_owner_uid _ < <(/bin/ls -dn "$secrets_path" 2>/dev/null || true)
   if [[ "$secrets_owner_uid" != "$(/usr/bin/id -u)" ]] || \
     [[ "${secrets_mode:4:6}" != "------" ]]; then
-    echo "Production LiveKit runtime secrets must be owner-only." >&2
+    echo "$environment LiveKit runtime secrets must be owner-only." >&2
     exit 1
   fi
 fi
@@ -65,10 +77,13 @@ cp "$config_path" "$config_snapshot"
 chmod 600 "$config_snapshot"
 secrets_snapshot=""
 
-if [[ "$environment" == "production" ]]; then
+if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
   secrets_snapshot="$snapshot_dir/interview-secrets.env"
   cp "$secrets_path" "$secrets_snapshot"
   chmod 600 "$secrets_snapshot"
+fi
+
+if [[ "$environment" == "production" ]]; then
   if ! /usr/bin/awk '
       function remember(name, value) {
         if (seen[name]++) invalid = 1
@@ -103,6 +118,60 @@ if [[ "$environment" == "production" ]]; then
       }
     ' "$secrets_snapshot"; then
     echo "Production LiveKit runtime secrets file is invalid." >&2
+    exit 1
+  fi
+fi
+
+if [[ "$preview_shadow_deploy" == "true" ]]; then
+  if [[ ! "$candidate_sha" =~ ^[a-f0-9]{40}$ ]] || \
+    [[ "$(/usr/bin/git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)" != "$candidate_sha" ]]; then
+    echo "Preview-shadow LiveKit source identity is invalid." >&2
+    exit 1
+  fi
+  preview_shadow_control_plane_url="${MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL:-}"
+  if [[ ! "$preview_shadow_control_plane_url" =~ ^https://meelni-[a-z0-9]+-meelni\.vercel\.app/api/internal/preview-shadow$ ]]; then
+    echo "Preview-shadow control-plane identity is invalid." >&2
+    exit 1
+  fi
+  if ! /usr/bin/awk \
+    -v candidate_sha="$candidate_sha" \
+    -v control_plane_url="$preview_shadow_control_plane_url" '
+      function remember(name, value) {
+        if (seen[name]++) invalid = 1
+        values[name] = value
+      }
+      $0 == "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled" {
+        remember("MEELNI_PREVIEW_SHADOW_EXECUTION", "enabled"); next
+      }
+      $0 == "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open" {
+        remember("MEELNI_PREVIEW_SHADOW_KILL_SWITCH", "open"); next
+      }
+      $0 ~ /^MEELNI_PREVIEW_SHADOW_RUN_ID=[a-f0-9]{64}$/ {
+        value = $0
+        sub(/^MEELNI_PREVIEW_SHADOW_RUN_ID=/, "", value)
+        remember("MEELNI_PREVIEW_SHADOW_RUN_ID", value); next
+      }
+      $0 ~ /^MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=[a-f0-9]{40}$/ {
+        value = $0
+        sub(/^MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=/, "", value)
+        remember("MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA", value); next
+      }
+      $0 ~ /^MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=https:\/\/[A-Za-z0-9.-]+\/api\/internal\/preview-shadow$/ {
+        value = $0
+        sub(/^MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=/, "", value)
+        remember("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL", value); next
+      }
+      { invalid = 1 }
+      END {
+        exit !(NR == 5 && invalid != 1 &&
+          values["MEELNI_PREVIEW_SHADOW_EXECUTION"] == "enabled" &&
+          values["MEELNI_PREVIEW_SHADOW_KILL_SWITCH"] == "open" &&
+          length(values["MEELNI_PREVIEW_SHADOW_RUN_ID"]) == 64 &&
+          values["MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA"] == candidate_sha &&
+          values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url)
+      }
+    ' "$secrets_snapshot"; then
+    echo "Preview-shadow LiveKit runtime secrets file is invalid." >&2
     exit 1
   fi
 fi
@@ -157,20 +226,26 @@ if [[ "$environment" == "production" ]]; then
     echo "Production authorization requires the fixed system Node runtime at /usr/local/bin/node." >&2
     exit 1
   fi
+fi
+
+if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
   if ! lk_path="$(command -v lk 2>/dev/null)" || \
     ! lk_path="$(realpath "$lk_path" 2>/dev/null)" || \
     [[ ! -f "$lk_path" ]] || \
     [[ ! -x "$lk_path" ]]; then
-    echo "Production LiveKit deploy requires an installed LiveKit CLI." >&2
+    echo "$environment LiveKit deploy requires an installed LiveKit CLI." >&2
     exit 1
   fi
   if ! lk_deploy_help="$("$lk_path" agent deploy --help 2>&1)" || \
     [[ "$lk_deploy_help" != *"--no-default-attributes"* ]] || \
     [[ "$lk_deploy_help" != *"--attribute"* ]]; then
-    echo "Production LiveKit CLI must support explicit source attributes." >&2
+    echo "$environment LiveKit CLI must support explicit source attributes." >&2
     exit 1
   fi
   unset lk_deploy_help
+fi
+
+if [[ "$environment" == "production" ]]; then
   authorization_receipt="$snapshot_dir/authorization-receipt.json"
   /usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
     "$production_node" "$repo_root/scripts/consume-production-action-authorization.mjs" \
@@ -191,13 +266,51 @@ if [[ "$environment" == "production" ]]; then
     exit 1
   fi
   deploy_agent_dir="$source_snapshot_dir/agent"
+elif [[ "$preview_shadow_deploy" == "true" ]]; then
+  if ! existing_secrets="$($lk_path --config "$config_snapshot" agent secrets --json 2>/dev/null)" || \
+    ! /usr/bin/python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+def names(candidate):
+    if isinstance(candidate, dict):
+        for key, item in candidate.items():
+            if key.lower() == "name" and isinstance(item, str):
+                yield item
+            yield from names(item)
+    elif isinstance(candidate, list):
+        for item in candidate:
+            yield from names(item)
+sys.exit(0 if "OPENAI_API_KEY" in set(names(value)) else 1)
+' <<<"$existing_secrets"; then
+    unset existing_secrets
+    echo "Preview-shadow LiveKit deploy requires the existing OpenAI secret." >&2
+    exit 1
+  fi
+  unset existing_secrets
+  source_snapshot_dir="$snapshot_dir/source"
+  mkdir -m 700 "$source_snapshot_dir"
+  archive_path="$snapshot_dir/agent-source.tar"
+  /usr/bin/git -C "$repo_root" archive \
+    --format=tar \
+    --output="$archive_path" \
+    "$candidate_sha" \
+    agent
+  /usr/bin/tar -xf "$archive_path" -C "$source_snapshot_dir"
+  deploy_agent_dir="$source_snapshot_dir/agent"
+  if [[ ! -f "$deploy_agent_dir/Dockerfile" ]] || \
+    [[ -L "$deploy_agent_dir/Dockerfile" ]] || \
+    [[ ! -f "$deploy_agent_dir/interview/agent.py" ]] || \
+    [[ -L "$deploy_agent_dir/interview/agent.py" ]]; then
+    echo "Preview-shadow LiveKit source snapshot is invalid." >&2
+    exit 1
+  fi
 else
   deploy_agent_dir="$agent_dir"
 fi
 
 config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$deploy_agent_dir")"
 cd "$deploy_agent_dir"
-if [[ "$environment" == "production" ]]; then
+if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; then
   secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$deploy_agent_dir")"
   "$lk_path" --config "$config_argument" agent deploy \
     --no-default-attributes \
