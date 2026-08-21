@@ -247,7 +247,10 @@ async function activate(input: {
   const authorization = JSON.parse(authorizationText) as unknown;
   const artifact = JSON.parse(artifactText) as unknown;
   const now = wholeSecond(new Date());
-  const environment = await loadPreviewEnvironment(input.envFile, repoRoot);
+  const environment = await loadPreviewControlPlaneEnvironment(
+    input.envFile,
+    repoRoot
+  );
   const { client, database } = connect(environment.DATABASE_URL);
   try {
     const store = createDurablePreviewShadowControlPlaneStore(database);
@@ -688,7 +691,10 @@ async function stopRun(input: {
     join(packetDirectory, PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE),
     repoRoot
   );
-  const environment = await loadPreviewEnvironment(input.envFile, repoRoot);
+  const environment = await loadPreviewControlPlaneEnvironment(
+    input.envFile,
+    repoRoot
+  );
   const { client, database } = connect(environment.DATABASE_URL);
   try {
     const store = createDurablePreviewShadowControlPlaneStore(database);
@@ -714,6 +720,18 @@ async function stopRun(input: {
 
 async function loadPreviewEnvironment(path: string, repoRoot: string) {
   const contents = await readPreviewShadowPrivateFile(path, repoRoot);
+  return parsePreviewShadowLiveKitEnvironment(contents);
+}
+
+async function loadPreviewControlPlaneEnvironment(
+  path: string,
+  repoRoot: string
+) {
+  const contents = await readPreviewShadowPrivateFile(path, repoRoot);
+  return parsePreviewShadowControlPlaneEnvironment(contents);
+}
+
+export function parsePreviewShadowControlPlaneEnvironment(contents: string) {
   if (Buffer.byteLength(contents, "utf8") > 64 * 1_024) {
     throw new Error("preview_shadow_operator_environment_invalid");
   }
@@ -730,7 +748,17 @@ async function loadPreviewEnvironment(path: string, repoRoot: string) {
     !policy.allowed ||
     policy.environmentIdentity !== "preview" ||
     env.VERCEL_ENV !== "preview" ||
-    env.VERCEL_TARGET_ENV !== "staging" ||
+    env.VERCEL_TARGET_ENV !== "staging"
+  ) {
+    throw new Error("preview_shadow_operator_environment_invalid");
+  }
+  return { DATABASE_URL: databaseUrl as string };
+}
+
+export function parsePreviewShadowLiveKitEnvironment(contents: string) {
+  const controlPlane = parsePreviewShadowControlPlaneEnvironment(contents);
+  const env = parseEnv(contents);
+  if (
     env.LIVEKIT_URL !== PREVIEW_LIVEKIT_URL ||
     env.NEXT_PUBLIC_LIVEKIT_URL !== PREVIEW_LIVEKIT_URL ||
     env.LIVEKIT_INTERVIEW_AGENT_NAME !== PREVIEW_AGENT_NAME ||
@@ -740,7 +768,7 @@ async function loadPreviewEnvironment(path: string, repoRoot: string) {
     throw new Error("preview_shadow_operator_environment_invalid");
   }
   return {
-    DATABASE_URL: databaseUrl as string,
+    ...controlPlane,
     LIVEKIT_URL: env.LIVEKIT_URL,
     LIVEKIT_API_KEY: env.LIVEKIT_API_KEY,
     LIVEKIT_API_SECRET: env.LIVEKIT_API_SECRET,
