@@ -99,6 +99,10 @@ test("uses the same canonical identity and target-material shape as deploy", asy
     deploySource,
     /livekit:production:interview:\$target_url:\$expected_agent_id:runtime-secrets-sha256:[^\n]+:secrets-mode:overwrite/
   );
+  assert.match(
+    deploySource,
+    /--config "\$config_snapshot" agent secrets --id "\$expected_agent_id" --json/
+  );
   assert.match(deploySource, /agent update-secrets[\s\S]+?--overwrite/);
 });
 
