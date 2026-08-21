@@ -7,7 +7,8 @@
       independent one-hour expiry.
 - [x] Prove no token persistence/upload/logging and no ordinary-session wiring.
 - [x] Run focused, broad, build/public and provider-free regression gates.
-- [ ] Seal exact-head security scans and obtain independent acceptance.
+- [x] Seal exact-head security scan with complete changed-artifact coverage and
+      zero findings; close the approved LiveKit room-token binding remediation.
 - [ ] Publish a ready PR and obtain terminal hosted checks.
 - [ ] Merge through protection, then consume fresh Production configuration
       and one-room actions for the owner test.
