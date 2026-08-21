@@ -317,7 +317,7 @@ if [[ "$environment" == "production" || "$preview_shadow_deploy" == "true" ]]; t
 fi
 
 if [[ "$preview_shadow_deploy" == "true" ]]; then
-  if ! existing_secrets="$("$lk_path" --config "$config_snapshot" agent secrets --json 2>/dev/null)" || \
+  if ! existing_secrets="$("$lk_path" --config "$config_snapshot" agent secrets --id "$expected_agent_id" --json 2>/dev/null)" || \
     ! /usr/bin/python3 -c '
 import json, sys
 value = json.load(sys.stdin)
