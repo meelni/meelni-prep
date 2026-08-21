@@ -20,6 +20,15 @@ import {
   type DurablePreviewShadowRun,
   type PreviewShadowCohortStopReason,
 } from "../lib/db/adaptive-interviewer-preview-shadow-control-plane";
+import {
+  PRODUCTION_PROJECT_SHADOW_AGENT_ID,
+  PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL,
+  PRODUCTION_PROJECT_SHADOW_LIVEKIT_URL,
+  assertCurrentProductionProjectShadowDeployment,
+  buildProductionProjectShadowRuntimeSecrets,
+  consumeProductionProjectShadowCellAuthorization,
+  productionProjectShadowCellAuthorizationInput,
+} from "../lib/operations/adaptive-interviewer-production-project-shadow";
 import * as schema from "../lib/db/schema";
 import {
   PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE,
@@ -103,6 +112,79 @@ export async function runPreviewShadowOperatorCli(
       envFile: required(options, "env-file"),
       expectedRevision: Number(required(options, "expected-revision")),
       expiresAt: required(options, "expires-at"),
+      roomMetadataPath: required(options, "room-metadata-path"),
+      round: required(options, "round"),
+      voiceCondition: required(options, "voice-condition"),
+    });
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (command === "prepare-production-project-runtime") {
+    assertOnly(options, [
+      "activation-path",
+      "control-plane-url",
+      "ordinary-secrets-path",
+      "output-path",
+    ]);
+    const result = await prepareProductionProjectRuntime({
+      activationPath: required(options, "activation-path"),
+      controlPlaneUrl: required(options, "control-plane-url"),
+      ordinarySecretsPath: required(options, "ordinary-secrets-path"),
+      outputPath: required(options, "output-path"),
+    });
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (command === "prepare-production-project-cell") {
+    assertOnly(options, [
+      "activation-path",
+      "cell-directory",
+      "control-plane-url",
+      "deployment-version",
+      "expected-revision",
+      "expires-at",
+      "round",
+      "voice-condition",
+    ]);
+    const result = await prepareProductionProjectCell({
+      activationPath: required(options, "activation-path"),
+      cellDirectory: required(options, "cell-directory"),
+      controlPlaneUrl: required(options, "control-plane-url"),
+      deploymentVersion: required(options, "deployment-version"),
+      expectedRevision: Number(required(options, "expected-revision")),
+      expiresAt: required(options, "expires-at"),
+      round: required(options, "round"),
+      voiceCondition: required(options, "voice-condition"),
+    });
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (command === "start-production-project-cell") {
+    assertOnly(options, [
+      "activation-path",
+      "cell-directory",
+      "control-plane-url",
+      "deployment-version",
+      "env-file",
+      "expected-revision",
+      "expires-at",
+      "production-authorization-path",
+      "room-metadata-path",
+      "round",
+      "voice-condition",
+    ]);
+    const result = await startProductionProjectCell({
+      activationPath: required(options, "activation-path"),
+      cellDirectory: required(options, "cell-directory"),
+      controlPlaneUrl: required(options, "control-plane-url"),
+      deploymentVersion: required(options, "deployment-version"),
+      envFile: required(options, "env-file"),
+      expectedRevision: Number(required(options, "expected-revision")),
+      expiresAt: required(options, "expires-at"),
+      productionAuthorizationPath: required(
+        options,
+        "production-authorization-path"
+      ),
       roomMetadataPath: required(options, "room-metadata-path"),
       round: required(options, "round"),
       voiceCondition: required(options, "voice-condition"),
@@ -215,6 +297,281 @@ async function startCell(input: {
   round: string;
   voiceCondition: string;
 }) {
+  const cell = await prepareCell(input);
+  const { repoRoot, cellDirectory, run, binding, intent } = cell;
+  const metadata = parseJson(
+    await readPreviewShadowPrivateFile(input.roomMetadataPath, repoRoot),
+    "preview_shadow_operator_room_metadata_invalid"
+  );
+  const environment = await loadPreviewEnvironment(input.envFile, repoRoot);
+  const { client, database } = connect(environment.DATABASE_URL);
+  try {
+    const store = createDurablePreviewShadowControlPlaneStore(database);
+    const workflow = createPreviewShadowRehearsalWorkflow({
+      store,
+      livekitProvider: createLiveKitInterviewProvider(),
+    });
+    const result = await workflow.start({
+      allocation: {
+        runId: run.run_id,
+        expectedRevision: input.expectedRevision,
+        sessionBindingSha256: binding,
+        expiresAt: canonicalTimestamp(input.expiresAt),
+        workerEvidenceCapability: intent.worker_evidence_capability,
+        terminationCapability: intent.termination_capability,
+      },
+      room: {
+        agentName: PREVIEW_AGENT_NAME,
+        identity: "preview-shadow-owner",
+        participantName: "Preview Shadow Owner",
+        roomName: `preview-shadow-${binding}`,
+        metadata,
+        env: previewLiveKitEnvironment(environment),
+      },
+    });
+    if (result.outcome === "started") {
+      const connectionPath = await assertPreviewShadowExternalCreateTarget(
+        join(cellDirectory, "connection.json"),
+        repoRoot
+      );
+      await writePrivateFileCreateOnly(
+        connectionPath,
+        `${JSON.stringify(
+          {
+            contract_version: CELL_CONNECTION_VERSION,
+            run_id: result.run.run_id,
+            lease_id: result.lease_id,
+            round: input.round,
+            voice_condition: input.voiceCondition,
+            room: result.room,
+          },
+          null,
+          2
+        )}\n`
+      );
+    }
+    return {
+      result: `preview_shadow_cell_${result.outcome}`,
+      run_id: result.run.run_id,
+      revision: result.run.revision,
+      stopped: result.run.stopped,
+      round: input.round,
+      voice_condition: input.voiceCondition,
+      ...(result.outcome === "provider_failed"
+        ? {
+            provider_error_code: result.provider_error_code,
+            retryable: result.retryable,
+          }
+        : {}),
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+async function prepareProductionProjectCell(input: {
+  activationPath: string;
+  cellDirectory: string;
+  controlPlaneUrl: string;
+  deploymentVersion: string;
+  expectedRevision: number;
+  expiresAt: string;
+  round: string;
+  voiceCondition: string;
+}) {
+  const cell = await prepareCell(input);
+  const authorization = productionProjectShadowCellAuthorizationInput({
+    runId: cell.run.run_id,
+    candidateGitSha: cell.run.candidate_git_sha,
+    expectedRevision: input.expectedRevision,
+    sessionBindingSha256: cell.binding,
+    expiresAt: canonicalTimestamp(input.expiresAt),
+    round: input.round,
+    voiceCondition: input.voiceCondition,
+    controlPlaneUrl: input.controlPlaneUrl,
+    deploymentVersion: input.deploymentVersion,
+  });
+  return {
+    result: "production_project_shadow_cell_prepared",
+    action: authorization.action,
+    provider: authorization.provider,
+    candidate_git_sha: cell.run.candidate_git_sha,
+    configuration_sha256: authorization.configurationSha256,
+    target_fingerprint: authorization.targetFingerprint,
+    run_id: cell.run.run_id,
+    expected_revision: input.expectedRevision,
+    round: input.round,
+    voice_condition: input.voiceCondition,
+    expires_at: input.expiresAt,
+    livekit_deployment_version: input.deploymentVersion,
+  };
+}
+
+async function prepareProductionProjectRuntime(input: {
+  activationPath: string;
+  controlPlaneUrl: string;
+  ordinarySecretsPath: string;
+  outputPath: string;
+}) {
+  if (input.controlPlaneUrl !== PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL) {
+    throw new Error("production_project_shadow_runtime_invalid");
+  }
+  const repoRoot = await realpath(process.cwd());
+  const activation = parseJson(
+    await readPreviewShadowPrivateFile(input.activationPath, repoRoot),
+    "preview_shadow_operator_activation_invalid"
+  ) as { contract_version?: string; run?: DurablePreviewShadowRun };
+  if (
+    activation.contract_version !== ACTIVATION_RECEIPT_VERSION ||
+    !activation.run ||
+    activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot)
+  ) {
+    throw new Error("preview_shadow_operator_activation_invalid");
+  }
+  const ordinarySecrets = await readPreviewShadowPrivateFile(
+    input.ordinarySecretsPath,
+    repoRoot
+  );
+  const combined = buildProductionProjectShadowRuntimeSecrets({
+    ordinarySecrets,
+    runId: activation.run.run_id,
+    candidateGitSha: activation.run.candidate_git_sha,
+    controlPlaneUrl: input.controlPlaneUrl,
+  });
+  const output = await assertPreviewShadowExternalCreateTarget(
+    input.outputPath,
+    repoRoot
+  );
+  await writePrivateFileCreateOnly(output, combined);
+  return {
+    result: "production_project_shadow_runtime_written",
+    run_id: activation.run.run_id,
+    candidate_git_sha: activation.run.candidate_git_sha,
+  };
+}
+
+async function startProductionProjectCell(input: {
+  activationPath: string;
+  cellDirectory: string;
+  controlPlaneUrl: string;
+  deploymentVersion: string;
+  envFile: string;
+  expectedRevision: number;
+  expiresAt: string;
+  productionAuthorizationPath: string;
+  roomMetadataPath: string;
+  round: string;
+  voiceCondition: string;
+}) {
+  const cell = await prepareCell(input);
+  const { repoRoot, run, binding, intent } = cell;
+  const authorization = productionProjectShadowCellAuthorizationInput({
+    runId: run.run_id,
+    candidateGitSha: run.candidate_git_sha,
+    expectedRevision: input.expectedRevision,
+    sessionBindingSha256: binding,
+    expiresAt: canonicalTimestamp(input.expiresAt),
+    round: input.round,
+    voiceCondition: input.voiceCondition,
+    controlPlaneUrl: input.controlPlaneUrl,
+    deploymentVersion: input.deploymentVersion,
+  });
+  const metadata = parseJson(
+    await readPreviewShadowPrivateFile(input.roomMetadataPath, repoRoot),
+    "preview_shadow_operator_room_metadata_invalid"
+  );
+  const environment = await loadProductionProjectShadowEnvironment(
+    input.envFile,
+    repoRoot
+  );
+  assertCurrentProductionProjectShadowDeployment({
+    credentials: {
+      url: environment.LIVEKIT_URL,
+      apiKey: environment.LIVEKIT_API_KEY,
+      apiSecret: environment.LIVEKIT_API_SECRET,
+    },
+    expectedCandidateSha: run.candidate_git_sha,
+    expectedVersion: input.deploymentVersion,
+  });
+  await consumeProductionProjectShadowCellAuthorization({
+    authorizationPath: input.productionAuthorizationPath,
+    expected: authorization,
+    repoRoot,
+  });
+  const { client, database } = connect(environment.DATABASE_URL);
+  try {
+    const store = createDurablePreviewShadowControlPlaneStore(database);
+    const workflow = createPreviewShadowRehearsalWorkflow({
+      store,
+      livekitProvider: createLiveKitInterviewProvider(),
+    });
+    const result = await workflow.start({
+      allocation: {
+        runId: run.run_id,
+        expectedRevision: input.expectedRevision,
+        sessionBindingSha256: binding,
+        expiresAt: canonicalTimestamp(input.expiresAt),
+        workerEvidenceCapability: intent.worker_evidence_capability,
+        terminationCapability: intent.termination_capability,
+      },
+      room: {
+        agentName: PRODUCTION_PROJECT_SHADOW_AGENT_ID,
+        identity: "production-project-shadow-owner",
+        participantName: "Production Project Shadow Owner",
+        roomName: `preview-shadow-${binding}`,
+        metadata,
+        env: productionProjectLiveKitEnvironment(environment),
+      },
+    });
+    if (result.outcome === "started") {
+      const connectionPath = await assertPreviewShadowExternalCreateTarget(
+        join(cell.cellDirectory, "connection.json"),
+        repoRoot
+      );
+      await writePrivateFileCreateOnly(
+        connectionPath,
+        `${JSON.stringify(
+          {
+            contract_version: CELL_CONNECTION_VERSION,
+            topology: "production_project_shadow",
+            run_id: result.run.run_id,
+            lease_id: result.lease_id,
+            round: input.round,
+            voice_condition: input.voiceCondition,
+            room: result.room,
+          },
+          null,
+          2
+        )}\n`
+      );
+    }
+    return {
+      result: `production_project_shadow_cell_${result.outcome}`,
+      run_id: result.run.run_id,
+      revision: result.run.revision,
+      stopped: result.run.stopped,
+      round: input.round,
+      voice_condition: input.voiceCondition,
+      ...(result.outcome === "provider_failed"
+        ? {
+            provider_error_code: result.provider_error_code,
+            retryable: result.retryable,
+          }
+        : {}),
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+async function prepareCell(input: {
+  activationPath: string;
+  cellDirectory: string;
+  expectedRevision: number;
+  expiresAt: string;
+  round: string;
+  voiceCondition: string;
+}) {
   if (
     !ROUNDS.has(input.round as never) ||
     !CONDITIONS.has(input.voiceCondition as never) ||
@@ -223,6 +580,7 @@ async function startCell(input: {
   ) {
     throw new Error("preview_shadow_operator_cell_invalid");
   }
+  canonicalTimestamp(input.expiresAt);
   const repoRoot = await realpath(process.cwd());
   const cellDirectory = await assertPreviewShadowExternalDirectory(
     input.cellDirectory,
@@ -297,74 +655,7 @@ async function startCell(input: {
   ) {
     throw new Error("preview_shadow_operator_cell_conflict");
   }
-  const metadata = parseJson(
-    await readPreviewShadowPrivateFile(input.roomMetadataPath, repoRoot),
-    "preview_shadow_operator_room_metadata_invalid"
-  );
-  const environment = await loadPreviewEnvironment(input.envFile, repoRoot);
-  const { client, database } = connect(environment.DATABASE_URL);
-  try {
-    const store = createDurablePreviewShadowControlPlaneStore(database);
-    const workflow = createPreviewShadowRehearsalWorkflow({
-      store,
-      livekitProvider: createLiveKitInterviewProvider(),
-    });
-    const result = await workflow.start({
-      allocation: {
-        runId: run.run_id,
-        expectedRevision: input.expectedRevision,
-        sessionBindingSha256: binding,
-        expiresAt: canonicalTimestamp(input.expiresAt),
-        workerEvidenceCapability: intent.worker_evidence_capability,
-        terminationCapability: intent.termination_capability,
-      },
-      room: {
-        agentName: PREVIEW_AGENT_NAME,
-        identity: "preview-shadow-owner",
-        participantName: "Preview Shadow Owner",
-        roomName: `preview-shadow-${binding}`,
-        metadata,
-        env: previewLiveKitEnvironment(environment),
-      },
-    });
-    if (result.outcome === "started") {
-      const connectionPath = await assertPreviewShadowExternalCreateTarget(
-        join(cellDirectory, "connection.json"),
-        repoRoot
-      );
-      await writePrivateFileCreateOnly(
-        connectionPath,
-        `${JSON.stringify(
-          {
-            contract_version: CELL_CONNECTION_VERSION,
-            run_id: result.run.run_id,
-            lease_id: result.lease_id,
-            round: input.round,
-            voice_condition: input.voiceCondition,
-            room: result.room,
-          },
-          null,
-          2
-        )}\n`
-      );
-    }
-    return {
-      result: `preview_shadow_cell_${result.outcome}`,
-      run_id: result.run.run_id,
-      revision: result.run.revision,
-      stopped: result.run.stopped,
-      round: input.round,
-      voice_condition: input.voiceCondition,
-      ...(result.outcome === "provider_failed"
-        ? {
-            provider_error_code: result.provider_error_code,
-            retryable: result.retryable,
-          }
-        : {}),
-    };
-  } finally {
-    await client.end();
-  }
+  return { repoRoot, cellDirectory, run, binding, intent };
 }
 
 async function stopRun(input: {
@@ -457,6 +748,44 @@ async function loadPreviewEnvironment(path: string, repoRoot: string) {
   };
 }
 
+async function loadProductionProjectShadowEnvironment(
+  path: string,
+  repoRoot: string
+) {
+  const contents = await readPreviewShadowPrivateFile(path, repoRoot);
+  if (Buffer.byteLength(contents, "utf8") > 64 * 1_024) {
+    throw new Error("production_project_shadow_operator_environment_invalid");
+  }
+  const env = parseEnv(contents);
+  const databaseUrl = env.DATABASE_URL;
+  const policy = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl,
+    environment: env.MEELNI_ENV_PULL_ENVIRONMENT,
+    expectedEnvironment: "preview",
+    productionProjectRef: env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+    vercelEnvironment: env.VERCEL_ENV,
+  });
+  if (
+    !policy.allowed ||
+    policy.environmentIdentity !== "preview" ||
+    env.VERCEL_ENV !== "preview" ||
+    env.VERCEL_TARGET_ENV !== "staging" ||
+    env.LIVEKIT_URL !== PRODUCTION_PROJECT_SHADOW_LIVEKIT_URL ||
+    env.LIVEKIT_INTERVIEW_AGENT_NAME !== PRODUCTION_PROJECT_SHADOW_AGENT_ID ||
+    !env.LIVEKIT_API_KEY ||
+    !env.LIVEKIT_API_SECRET
+  ) {
+    throw new Error("production_project_shadow_operator_environment_invalid");
+  }
+  return {
+    DATABASE_URL: databaseUrl as string,
+    LIVEKIT_URL: env.LIVEKIT_URL,
+    LIVEKIT_API_KEY: env.LIVEKIT_API_KEY,
+    LIVEKIT_API_SECRET: env.LIVEKIT_API_SECRET,
+    LIVEKIT_INTERVIEW_AGENT_NAME: env.LIVEKIT_INTERVIEW_AGENT_NAME,
+  };
+}
+
 function connect(databaseUrl: string) {
   const client = postgres(databaseUrl, {
     prepare: false,
@@ -475,6 +804,17 @@ function previewLiveKitEnvironment(
     apiKey: env.LIVEKIT_API_KEY,
     apiSecret: env.LIVEKIT_API_SECRET,
     interviewAgentName: PREVIEW_AGENT_NAME,
+  };
+}
+
+function productionProjectLiveKitEnvironment(
+  env: Awaited<ReturnType<typeof loadProductionProjectShadowEnvironment>>
+): LiveKitEnvironment {
+  return {
+    url: env.LIVEKIT_URL,
+    apiKey: env.LIVEKIT_API_KEY,
+    apiSecret: env.LIVEKIT_API_SECRET,
+    interviewAgentName: PRODUCTION_PROJECT_SHADOW_AGENT_ID,
   };
 }
 
@@ -571,6 +911,9 @@ function usage() {
     "",
     "activate --packet-directory PATH --artifact-path PATH --env-file PATH --output-path PATH",
     "start-cell --activation-path PATH --cell-directory PATH --env-file PATH --expected-revision N --expires-at ISO --room-metadata-path PATH --round ROUND --voice-condition CONDITION",
+    "prepare-production-project-runtime --activation-path PATH --control-plane-url URL --ordinary-secrets-path PATH --output-path PATH",
+    "prepare-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --expected-revision N --expires-at ISO --round ROUND --voice-condition CONDITION",
+    "start-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --env-file PATH --expected-revision N --expires-at ISO --production-authorization-path PATH --room-metadata-path PATH --round ROUND --voice-condition CONDITION",
     "stop --activation-path PATH --packet-directory PATH --env-file PATH --expected-revision N --reason REASON --evidence-sha256 HASH",
     "",
   ].join("\n");

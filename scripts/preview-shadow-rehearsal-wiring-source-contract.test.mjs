@@ -65,6 +65,24 @@ test("raw worker capability is isolated from room metadata and durable schema", 
   assert.doesNotMatch(roomMetadata, /worker_evidence_capability/);
 });
 
+test("Production-project Shadow topology has no customer or package consumer", () => {
+  assert.deepEqual(
+    grep("adaptive-interviewer-production-project-shadow", [
+      "app",
+      "components",
+      "lib/workflows/start-session.ts",
+      "lib/internal",
+      "packages",
+      "agent",
+    ]),
+    []
+  );
+  const packageIndex = readFileSync("packages/agent/src/index.ts", "utf8");
+  assert.doesNotMatch(packageIndex, /production.project.shadow/i);
+  const startWorkflow = readFileSync("lib/workflows/start-session.ts", "utf8");
+  assert.doesNotMatch(startWorkflow, /production.project.shadow/i);
+});
+
 function grep(pattern, roots) {
   const tracked = execFileSync("git", ["ls-files", "--", ...roots], {
     encoding: "utf8",

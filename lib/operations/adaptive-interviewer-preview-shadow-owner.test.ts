@@ -60,7 +60,7 @@ test("prepares, signs, and verifies one exact external Preview-shadow packet", a
   const artifact = await readFile(fixture.artifactPath, "utf8");
   const privateKey = await readFile(fixture.privateKeyPath, "utf8");
   assert.doesNotMatch(artifact, /PRIVATE KEY/);
-  assert.doesNotMatch(artifact, new RegExp(privateKey.trim()));
+  assert.equal(artifact.includes(privateKey.trim()), false);
 });
 
 test("verification rejects a different repository candidate and create-only replay", async () => {
@@ -103,7 +103,9 @@ async function ownerFixture() {
   const directory = await mkdtemp(join(tmpdir(), "meelni-sav-482-owner-"));
   await chmod(directory, 0o700);
   const packetDirectory = join(directory, "packet");
-  await (await import("node:fs/promises")).mkdir(packetDirectory, {
+  await (
+    await import("node:fs/promises")
+  ).mkdir(packetDirectory, {
     mode: 0o700,
   });
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
