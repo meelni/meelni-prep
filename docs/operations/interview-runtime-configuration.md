@@ -45,8 +45,9 @@ absence, blanks, mixed case, and every other value retain the existing
 `InterviewAgent` path. Construction also requires an exact durable lifecycle
 snapshot from the authenticated current-writer-bound lifecycle reader. Missing,
 non-active, stale, or unavailable authority fails safely to `InterviewAgent`.
-Do not add a `NEXT_PUBLIC_*` equivalent, configure the flag in Preview or
-Production, or infer launch permission from its presence in the repository. See
+Do not add a `NEXT_PUBLIC_*` equivalent or infer launch permission from its
+presence in the repository. Production configuration is allowed only through
+the guarded SAV-495 launch action and exact signed room admission. See
 [Deterministic Interview Controller](./interview-controller.md) for evidence
 boundaries and provider-free verification.
 
@@ -55,19 +56,19 @@ The exact value `true` exposes the five local tools only when the controller is
 enabled and a current-writer-bound lifecycle reader has produced a fresh active
 lease. Missing/invalid values, a non-active state, writer replacement, reader
 failure, or lease expiry preserve the prompt-led fallback. Do not add a
-`NEXT_PUBLIC_*` equivalent or configure either gate in any environment as part
-of this repository slice.
+`NEXT_PUBLIC_*` equivalent. Production configuration is allowed only as the
+exact all-five SAV-495 launch set.
 
 ## Read-only Interview Director shadow
 
 `MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED` is a separate server-only exact
 flag and defaults off. Its runtime construction and observability cohort both
 accept only lowercase `true`; trimming or case folding is forbidden so a
-malformed value cannot label a disabled Director as shadow. SAV-474 deliberately
-injects no application adapter, so even the exact value `true` resolves
-`adapter_unavailable` and starts no Director task. Do not configure the flag in
-Preview or Production, add a `NEXT_PUBLIC_*` equivalent, or reuse the live
-interview model configuration as a Director selection. See
+malformed value cannot label a disabled Director as shadow. Without a verified
+SAV-495 Production admission the application injects no adapter, so even exact
+`true` starts no Director provider work. Do not add a `NEXT_PUBLIC_*`
+equivalent or reuse the live interview model configuration as a Director
+selection. See
 [Interview Director Shadow](./interview-director-shadow.md).
 
 ## Interview Director influence gate
@@ -75,22 +76,21 @@ interview model configuration as a Director selection. See
 `MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED` is a separate server-only
 exact flag and defaults off. The synchronous influence policy reads the value
 on every interviewer-tool admission rather than caching it when the session is
-constructed. Removing it or setting any value other than exact lowercase
-`true` prevents even an already-ready recommendation from influencing the next
-admission, providing no-deploy rollback semantics.
+constructed. A mutable injected policy mapping can revoke influence at the
+next admission. The Production app supplies process environment, which is not
+mutable in-place; Production rollback therefore replaces/drains the worker.
 
-SAV-475 adds no provider adapter and does not authorize configuring this flag
-in Preview or Production. The existing five tools remain the only trigger, and
-the controller remains the sole admission authority. See
+SAV-495 configures this flag only together with the signed admission and other
+four exact gates. The existing five tools remain the only trigger, and the
+controller remains the sole admission authority. See
 [Interview Director Influence](./interview-director-influence.md).
 
 ## Adaptive interviewer rollout
 
-The staged rollout remains at `synthetic`, with all flags off and
-`adapter=None`. Director influence is the only flag read live for every active-
-session admission. Brief, controller, tools, and shadow enablement are resolved
-when session components are constructed; removing those values protects new
-sessions but does not itself prove an in-flight shadow task has stopped. Follow
-[Adaptive Interviewer Rollout](./adaptive-interviewer-rollout.md) for exact
-owner gates, evidence pins, stage-specific rollback, and the required reviewed
-settle/shutdown rehearsal.
+The owner accepted `candidate_default` for ordinary Production interviews in
+SAV-495. The exact launch requires all five gates, the signed room admission,
+the reviewed adapter and the Production configuration digest. Brief,
+controller, tools and shadow enablement are resolved when session components
+are constructed. Follow
+[Adaptive Interviewer Production Launch](./adaptive-interviewer-production-launch.md)
+for the release and rollback sequence.

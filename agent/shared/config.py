@@ -123,6 +123,14 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             )
             else None
         )
+        adaptive_interviewer = data.get("adaptive_interviewer")
+        if adaptive_interviewer is not None:
+            if (
+                not isinstance(adaptive_interviewer, _ParsedJsonObject)
+                or adaptive_interviewer.duplicate_keys
+            ):
+                raise ValueError("Invalid adaptive interviewer admission")
+            adaptive_interviewer = _plain_json_value(adaptive_interviewer)
 
         logger.info(
             "Parsed interview room metadata",
@@ -149,6 +157,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
                 if interview_brief is not None
                 else brief_resolution.get("reason", "invalid_payload")
             ),
+            "adaptive_interviewer": adaptive_interviewer,
         }
 
     except (json.JSONDecodeError, ValueError, TypeError) as error:
@@ -190,6 +199,16 @@ def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None
 
 def _string_or_default(value: Any) -> str:
     return value if isinstance(value, str) and value.strip() else ""
+
+
+def _plain_json_value(value: Any) -> Any:
+    if isinstance(value, _ParsedJsonObject):
+        if value.duplicate_keys:
+            raise ValueError("Duplicate adaptive interviewer field")
+        return {key: _plain_json_value(entry) for key, entry in value.items()}
+    if isinstance(value, list):
+        return [_plain_json_value(entry) for entry in value]
+    return value
 
 
 def _is_brief_compatible_with_room(

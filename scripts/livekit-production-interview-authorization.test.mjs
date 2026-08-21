@@ -247,6 +247,73 @@ test("binds the Production-project Shadow deploy to the closed combined runtime"
   }
 });
 
+test("binds the adaptive Production deploy to the exact candidate and all five flags", async () => {
+  const value = await fixture();
+  const candidateSha = "c".repeat(40);
+  const adaptiveSecrets = [
+    value.secrets.trimEnd(),
+    "MEELNI_ADAPTIVE_INTERVIEWER_STAGE=candidate_default",
+    "MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT=production",
+    "MEELNI_ADAPTIVE_INTERVIEWER_COHORT=canary",
+    "MEELNI_ADAPTIVE_INTERVIEWER_EXPOSURE=default",
+    "MEELNI_ADAPTIVE_INTERVIEWER_CONFIG_SHA256=21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423",
+    `MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA=${candidateSha}`,
+    "MEELNI_INTERVIEW_BRIEF_V2_ENABLED=true",
+    "MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED=true",
+    "MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true",
+    "MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED=true",
+    "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED=true",
+    "",
+  ].join("\n");
+  try {
+    await writeFile(value.secretsFile, adaptiveSecrets, { mode: 0o600 });
+    const result = await resolveLiveKitProductionInterviewAuthorizationInput({
+      configFile: value.configFile,
+      secretsFile: value.secretsFile,
+      mode: "production-adaptive",
+      expectedCandidateSha: candidateSha,
+      repoRoot: process.cwd(),
+    });
+    assert.equal(result.action, LIVEKIT_PRODUCTION_INTERVIEW_ACTION);
+    assert.equal(
+      result.targetFingerprint,
+      sha256(
+        [
+          "livekit",
+          "production",
+          "interview",
+          LIVEKIT_PRODUCTION_INTERVIEW_URL,
+          LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID,
+          "runtime-secrets-sha256",
+          sha256(Buffer.from(adaptiveSecrets)),
+          "secrets-mode",
+          "overwrite",
+        ].join(":")
+      )
+    );
+    await writeFile(
+      value.secretsFile,
+      adaptiveSecrets.replace(
+        "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED=true",
+        "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED=false"
+      ),
+      { mode: 0o600 }
+    );
+    await assert.rejects(
+      resolveLiveKitProductionInterviewAuthorizationInput({
+        configFile: value.configFile,
+        secretsFile: value.secretsFile,
+        mode: "production-adaptive",
+        expectedCandidateSha: candidateSha,
+        repoRoot: process.cwd(),
+      }),
+      { message: "livekit_runtime_secrets_invalid" }
+    );
+  } finally {
+    await rm(value.directory, { recursive: true, force: true });
+  }
+});
+
 test("prepares and verifies without printing fingerprints or secret material", async () => {
   const value = await fixture();
   const stdout = [];

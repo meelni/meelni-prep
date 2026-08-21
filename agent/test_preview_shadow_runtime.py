@@ -442,7 +442,8 @@ class PreviewShadowLeaseTests(unittest.TestCase):
 
         app_source = Path("agent/interview/agent.py").read_text()
         runtime_source = Path("agent/shared/preview_shadow_runtime.py").read_text()
-        self.assertIn("adapter=None,", app_source)
+        self.assertIn("create_production_director_runtime", app_source)
+        self.assertIn("adapter=production_director.adapter", app_source)
         self.assertNotIn("create_preview_shadow_runtime", app_source)
         self.assertNotIn("os.environ", runtime_source)
         self.assertNotIn("os.getenv", runtime_source)
