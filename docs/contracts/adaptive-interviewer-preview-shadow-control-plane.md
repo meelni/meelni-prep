@@ -5,7 +5,7 @@ Status: design-frozen server contract; implementation remains unwired
 ## Domains
 
 - Owner decision artifact/key registry:
-  `meelni.adaptive-interviewer-preview-shadow-owner-decision.v1` /
+  `meelni.adaptive-interviewer-preview-shadow-owner-decision.v2` /
   `meelni.adaptive-interviewer-preview-shadow-owner-key-registry.v1`.
 - Durable control plane: `adaptive-interviewer-preview-shadow-durable-control-plane.v1`.
 - Capability hash domains: run control, worker evidence, and termination
@@ -24,7 +24,8 @@ The payload is a closed canonical projection binding:
 - owner ID/role, `APPROVE_BOUNDED_PREVIEW_SHADOW`, key ID, authorization ID,
   nonce, owner direction/decision references, decision time, and expiry;
 - exact candidate Git SHA, Preview configuration digest, selected-candidate
-  digest, `preview_shadow`, `preview_staging`, `shadow`, and `none`; and
+  digest, the domain-separated SHA-256 of the exact 32-byte run-control
+  capability, `preview_shadow`, `preview_staging`, `shadow`, and `none`; and
 - fixed false Production, default-on, influence, later-stage, and GO/NO-GO
   authorities.
 
@@ -42,12 +43,15 @@ artifact contract, one NUL byte, then canonical payload JSON. No private key,
 authorization file, registry file, environment value, or credential is read by
 the authenticator. Its module-branded result proves authenticity and bindings;
 it is not consume authority and may represent an expired historical decision.
+The authenticator accepts the raw run-control capability only to recompute its
+signed digest; v1 artifacts and payloads without that digest fail closed.
 
 ## Durable activation and run
 
-Activation requires the parsed SAV-479 authorization, signed decision artifact,
-independent context, expected database-clock window, and a caller-stable random
-run-control capability. The transaction verifies one unique authorization ID,
+Activation requires the parsed SAV-479 authorization, signed v2 decision artifact,
+independent context, expected database-clock window, and the exact caller-stable
+random run-control capability bound by that signature. The transaction
+recomputes the same domain-separated digest before CAS and verifies one unique authorization ID,
 authorization nonce, owner decision reference, and signed-artifact digest and
 creates exactly one run. It stores no raw authorization or signature. An exact
 authenticated replay of an existing run remains readable after authorization

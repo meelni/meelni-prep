@@ -35,13 +35,14 @@ import {
   PREVIEW_SHADOW_OWNER_ID,
   PREVIEW_SHADOW_OWNER_ROLE,
   previewShadowOwnerDecisionSignatureMessage,
+  previewShadowRunControlCapabilitySha256,
   type PreviewShadowOwnerDecisionArtifact,
   type PreviewShadowOwnerDecisionPayload,
   type PreviewShadowOwnerKeyRegistry,
 } from "../security/adaptive-interviewer-preview-shadow-owner-decision";
 
 export const PREVIEW_SHADOW_OWNER_PACKET_CONTRACT =
-  "meelni.adaptive-interviewer-preview-shadow-owner-packet.v1" as const;
+  "meelni.adaptive-interviewer-preview-shadow-owner-packet.v2" as const;
 export const DEFAULT_PREVIEW_SHADOW_OWNER_KEY_ID =
   "meelni-owner-2026-07" as const;
 
@@ -155,6 +156,7 @@ export async function preparePreviewShadowOwnerPacket(input: {
   );
   const authorizationId =
     adaptiveInterviewerPreviewShadowAuthorizationId(authorization);
+  const runControlCapability = randomBytes(32).toString("base64url");
   const payload: PreviewShadowOwnerDecisionPayload = {
     authorization_expires_at: authorizationExpiresAt,
     authorization_id: authorizationId,
@@ -175,6 +177,8 @@ export async function preparePreviewShadowOwnerPacket(input: {
     preview_shadow_configuration_sha256:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256,
     production_authorized: false,
+    run_control_capability_sha256:
+      previewShadowRunControlCapabilitySha256(runControlCapability),
     selected_candidate_configuration_sha256:
       ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_SELECTED_CANDIDATE_SHA256,
     signing_key_id: keyId,
@@ -182,7 +186,6 @@ export async function preparePreviewShadowOwnerPacket(input: {
     target_environment: "preview_staging",
     target_stage: "preview_shadow",
   };
-  const runControlCapability = randomBytes(32).toString("base64url");
   previewShadowOwnerDecisionSignatureMessage(payload);
   await Promise.all([
     writePrivateFileCreateOnly(
@@ -214,22 +217,31 @@ export async function signPreviewShadowOwnerPacket(input: {
     input.packetDirectory,
     repoRoot
   );
-  const [authorizationText, payloadText, registryText, privateKeyText] =
-    await Promise.all([
-      readPreviewShadowPrivateFile(
-        join(packetDirectory, AUTHORIZATION_FILE),
-        repoRoot
-      ),
-      readPreviewShadowPrivateFile(
-        join(packetDirectory, UNSIGNED_FILE),
-        repoRoot
-      ),
-      readFile(input.keyRegistryPath, "utf8"),
-      readPreviewShadowPrivateFile(
-        input.privateKeyPath ?? DEFAULT_OWNER_PRIVATE_KEY_PATH,
-        repoRoot
-      ),
-    ]);
+  const [
+    authorizationText,
+    payloadText,
+    runControlCapabilityText,
+    registryText,
+    privateKeyText,
+  ] = await Promise.all([
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, AUTHORIZATION_FILE),
+      repoRoot
+    ),
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, UNSIGNED_FILE),
+      repoRoot
+    ),
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE),
+      repoRoot
+    ),
+    readFile(input.keyRegistryPath, "utf8"),
+    readPreviewShadowPrivateFile(
+      input.privateKeyPath ?? DEFAULT_OWNER_PRIVATE_KEY_PATH,
+      repoRoot
+    ),
+  ]);
   const now = wholeSecond(input.now ?? new Date());
   const authorization = parseAdaptiveInterviewerPreviewShadowAuthorization(
     parseJson(authorizationText),
@@ -262,6 +274,7 @@ export async function signPreviewShadowOwnerPacket(input: {
     context: context(authorization.candidate_git_sha),
     keyRegistry: registry,
     now,
+    runControlCapability: runControlCapabilityText.trim(),
   });
   const artifactTarget = await assertPreviewShadowExternalCreateTarget(
     input.artifactPath,
@@ -290,12 +303,21 @@ export async function verifyPreviewShadowOwnerPacket(input: {
   const candidateGitSha = await (
     input.resolveCandidate ?? resolveCleanGitCandidate
   )(repoRoot);
-  const [authorizationText, artifactText, registryText] = await Promise.all([
+  const [
+    authorizationText,
+    artifactText,
+    runControlCapabilityText,
+    registryText,
+  ] = await Promise.all([
     readPreviewShadowPrivateFile(
       join(packetDirectory, AUTHORIZATION_FILE),
       repoRoot
     ),
     readPreviewShadowPrivateFile(input.artifactPath, repoRoot),
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE),
+      repoRoot
+    ),
     readFile(input.keyRegistryPath, "utf8"),
   ]);
   const now = wholeSecond(input.now ?? new Date());
@@ -310,6 +332,7 @@ export async function verifyPreviewShadowOwnerPacket(input: {
     context: context(candidateGitSha),
     keyRegistry: parseJson(registryText),
     now,
+    runControlCapability: runControlCapabilityText.trim(),
   });
   return summary(authorization, authenticated.authorizationId);
 }

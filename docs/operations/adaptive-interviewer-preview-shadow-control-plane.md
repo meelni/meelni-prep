@@ -33,9 +33,12 @@ and a new exact-merged-SHA owner artifact is issued outside the repository:
    candidate SHA, Preview config digest, selected-candidate digest, target, and
    current time.
 2. Parse the SAV-479 authorization and the signed owner-decision artifact with
-   the explicit reviewed public-key registry. Keep raw inputs outside evidence.
-3. Submit the authenticated values and stable run-control capability to the durable
-   activation transaction. Retry only the exact request after ambiguity.
+   the explicit reviewed public-key registry. Require the v2 payload's
+   domain-separated digest to match the exact run-control capability. Keep raw
+   inputs outside evidence; reject all v1 packets.
+3. Submit the authenticated values and that exact stable run-control capability
+   to the durable activation transaction. The CAS recomputes the binding before
+   consuming authority. Retry only the exact request after ambiguity.
 4. Before each `LiveKitInterviewProvider.startInterviewRoom` call, submit the
    sanitized session binding, revision, TTL, and stable per-lease worker and
    termination capabilities. Proceed only when the result is `allocated` or
