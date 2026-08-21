@@ -61,6 +61,61 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
   );
 });
 
+test("exact Production launch emits one signed session-bound room admission", async () => {
+  const fixture = createFixture();
+  fixture.deps.adaptiveProductionAdmission = {
+    status: "enabled",
+    config: {
+      candidateGitSha: "a".repeat(40),
+      configurationSha256:
+        "21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423",
+    },
+  };
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, true);
+  const admission = fixture.metadata?.adaptive_interviewer as Record<
+    string,
+    unknown
+  >;
+  assert.equal(admission.session_id, START_ATTEMPT_ID);
+  assert.equal(
+    admission.room_name,
+    buildInterviewRoomNameForAttempt(START_ATTEMPT_ID)
+  );
+  assert.equal(admission.deadline_at, "2026-07-10T12:30:00.000Z");
+  assert.equal(admission.stage, "candidate_default");
+  assert.equal(admission.maximum_attempts, 10);
+  assert.match(
+    (admission.signature as { value: string }).value,
+    /^[a-f0-9]{64}$/u
+  );
+  assert.doesNotMatch(JSON.stringify(admission), /"secret"/u);
+});
+
+test("partial Production launch config fails before credit or provider work", async () => {
+  const fixture = createFixture();
+  fixture.deps.adaptiveProductionAdmission = {
+    status: "invalid",
+    reason: "partial_or_invalid_configuration",
+  };
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: {
+      error: "adaptive_interviewer_configuration_invalid",
+      message: "The interview runtime configuration is unavailable.",
+      retryable: false,
+    },
+  });
+  assert.deepEqual(fixture.calls, []);
+  assert.deepEqual(fixture.reservations, []);
+});
+
 test("brief v2 reaches LiveKit with exact selected-question authority and minimized context", async () => {
   const fixture = createFixture();
   fixture.deps.interviewBriefV2Enabled = true;

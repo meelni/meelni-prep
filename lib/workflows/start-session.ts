@@ -90,6 +90,11 @@ import {
   type InterviewStartSlo,
   type InterviewStartStageOutcome,
 } from "@/lib/operations/interview-start-slo";
+import {
+  createProductionAdaptiveAdmission,
+  resolveProductionAdaptiveAdmissionConfig,
+  type ProductionAdaptiveAdmissionResolution,
+} from "@/lib/operations/adaptive-interviewer-production-admission";
 
 const INTERVIEW_START_BUSY_RETRY_MS = 1_000;
 
@@ -190,6 +195,7 @@ export interface StartInterviewSessionDeps {
     preferences: InterviewClientPreferences
   ): InterviewRuntimeConfig;
   interviewBriefV2Enabled?: boolean;
+  adaptiveProductionAdmission?: ProductionAdaptiveAdmissionResolution;
   now(): Date;
   createLeaseId(): string;
   monotonicNow?(): number;
@@ -242,6 +248,20 @@ export async function startInterviewSessionWorkflow(
     parsed;
   const preferences = normalizeInterviewClientPreferences(config);
   const runtimeConfig = deps.resolveRuntimeConfig(preferences);
+  const adaptiveProductionAdmission = deps.adaptiveProductionAdmission ?? {
+    status: "disabled" as const,
+  };
+  if (adaptiveProductionAdmission.status === "invalid") {
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: "adaptive_interviewer_configuration_invalid",
+        message: "The interview runtime configuration is unavailable.",
+        retryable: false,
+      },
+    };
+  }
   const requestFingerprint = fingerprintStartRequest({
     roundType,
     mode,
@@ -518,6 +538,18 @@ export async function startInterviewSessionWorkflow(
       question: toRoomQuestion(start.question),
       ...(deps.interviewBriefV2Enabled && interviewBrief
         ? { interview_brief: interviewBrief }
+        : {}),
+      ...(adaptiveProductionAdmission.status === "enabled"
+        ? {
+            adaptive_interviewer: createProductionAdaptiveAdmission({
+              config: adaptiveProductionAdmission.config,
+              livekitApiSecret: input.env.apiSecret,
+              sessionId: start.sessionId,
+              roomName: start.roomName,
+              requestFingerprint,
+              deadlineAt: serializeInterviewDeadlineAt(deadlineAt),
+            }),
+          }
         : {}),
     });
     let livekitResult;
@@ -911,6 +943,9 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
         interviewRuntimeSettingsFromEnv(process.env)
       ),
     interviewBriefV2Enabled: isInterviewBriefV2EmissionEnabled(process.env),
+    adaptiveProductionAdmission: resolveProductionAdaptiveAdmissionConfig(
+      process.env
+    ),
     now: () => new Date(),
     createLeaseId: randomUUID,
     monotonicNow: () => performance.now(),
