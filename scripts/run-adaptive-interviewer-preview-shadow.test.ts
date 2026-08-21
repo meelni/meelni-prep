@@ -112,6 +112,78 @@ test("Preview-shadow operator rejects unknown and incomplete authority options",
   );
 });
 
+test("Preview-shadow operator admits revision zero and rejects negative revisions", async () => {
+  const missingActivation = `/private/tmp/meelni-preview-shadow-missing-activation-${process.pid}.json`;
+  const base = [
+    "prepare-production-project-cell",
+    "--activation-path",
+    missingActivation,
+    "--cell-directory",
+    `/private/tmp/meelni-preview-shadow-missing-cell-${process.pid}`,
+    "--control-plane-url",
+    "https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow",
+    "--deployment-version",
+    "revision-zero-test",
+    "--expected-revision",
+    "0",
+    "--expires-at",
+    "2026-08-21T08:30:00.000Z",
+    "--round",
+    "product_sense",
+    "--voice-condition",
+    "baseline_final_turn",
+  ];
+
+  await assert.rejects(
+    () => runPreviewShadowOperatorCli(base),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+  await assert.rejects(
+    () =>
+      runPreviewShadowOperatorCli(
+        base.map((value, index) =>
+          base[index - 1] === "--expected-revision" ? "-1" : value
+        )
+      ),
+    /preview_shadow_operator_cell_invalid/
+  );
+
+  const stop = [
+    "stop",
+    "--activation-path",
+    missingActivation,
+    "--env-file",
+    "/private/tmp/meelni-preview-shadow-missing.env",
+    "--expected-revision",
+    "0",
+    "--packet-directory",
+    "/private/tmp/meelni-preview-shadow-missing-packet",
+    "--reason",
+    "owner_stop",
+    "--evidence-sha256",
+    "a".repeat(64),
+  ];
+  await assert.rejects(
+    () => runPreviewShadowOperatorCli(stop),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+  await assert.rejects(
+    () =>
+      runPreviewShadowOperatorCli(
+        stop.map((value, index) =>
+          stop[index - 1] === "--expected-revision" ? "-1" : value
+        )
+      ),
+    /preview_shadow_operator_activation_invalid/
+  );
+});
+
 test("durable activation accepts exact staging identity without LiveKit credentials", () => {
   assert.deepEqual(parsePreviewShadowControlPlaneEnvironment(environment()), {
     DATABASE_URL: PREVIEW_DATABASE_URL,
