@@ -43,7 +43,24 @@ const RUN = "1".repeat(64);
 const LEASE = "2".repeat(64);
 const BINDING = "3".repeat(64);
 const CANDIDATE = "4".repeat(40);
-const TOKEN = "header.private-payload.signature";
+const EXPIRY = new Date(Date.now() + 30 * 60 * 1_000)
+  .toISOString()
+  .replace(/\.\d{3}Z$/, ".000Z");
+const TOKEN = jwt({
+  name: "Production Project Shadow Owner",
+  video: {
+    room: `preview-shadow-${BINDING}`,
+    roomJoin: true,
+    canPublish: true,
+    canPublishData: false,
+    canPublishSources: ["microphone"],
+    canSubscribe: true,
+  },
+  iss: "test-api-key",
+  exp: Date.parse(EXPIRY) / 1_000,
+  nbf: Math.floor(Date.now() / 1_000) - 60,
+  sub: "production-project-shadow-owner",
+});
 
 describe("Production web Shadow canary browser handoff", () => {
   afterEach(() => {
@@ -112,15 +129,22 @@ function connection() {
     session_binding_sha256: BINDING,
     round: "product_sense",
     voice_condition: "baseline_final_turn",
-    expires_at: new Date(Date.now() + 30 * 60 * 1_000)
-      .toISOString()
-      .replace(/\.\d{3}Z$/, ".000Z"),
+    expires_at: EXPIRY,
     room: {
       roomName: `preview-shadow-${BINDING}`,
       token: TOKEN,
       url: PRODUCTION_WEB_SHADOW_LIVEKIT_URL,
     },
   };
+}
+
+function jwt(payload: Record<string, unknown>): string {
+  const encode = (value: unknown) =>
+    btoa(JSON.stringify(value))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/, "");
+  return `${encode({ alg: "HS256" })}.${encode(payload)}.${"s".repeat(43)}`;
 }
 
 function privateFile(contents: string): File {

@@ -21,6 +21,10 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const ROOM_NAME = /^preview-shadow-([0-9a-f]{64})$/;
 const TOKEN = /^[\x21-\x7e]+$/;
+const JWT_SEGMENT = /^[A-Za-z0-9_-]+$/;
+const LIVEKIT_ISSUER = /^[A-Za-z0-9_-]{1,256}$/;
+const LIVEKIT_PARTICIPANT_IDENTITY = "production-project-shadow-owner";
+const LIVEKIT_PARTICIPANT_NAME = "Production Project Shadow Owner";
 const ROUNDS = new Set<string>(
   ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_RUNTIME_CONFIG.rehearsal_matrix.rounds
 );
@@ -44,6 +48,16 @@ const CONNECTION_KEYS = [
 ] as const;
 
 const ROOM_KEYS = ["roomName", "token", "url"] as const;
+const JWT_HEADER_KEYS = ["alg"] as const;
+const JWT_PAYLOAD_KEYS = ["name", "video", "iss", "exp", "nbf", "sub"] as const;
+const JWT_VIDEO_GRANT_KEYS = [
+  "room",
+  "roomJoin",
+  "canPublish",
+  "canPublishData",
+  "canPublishSources",
+  "canSubscribe",
+] as const;
 
 export interface ProductionWebShadowConnection {
   readonly contract_version: typeof PRODUCTION_WEB_SHADOW_CONNECTION_VERSION;
@@ -123,6 +137,12 @@ export function parseProductionWebShadowConnectionJson(
   ) {
     invalid();
   }
+  const token = exactLiveKitRoomToken({
+    expiresAt,
+    now,
+    roomName: room.roomName as string,
+    token: room.token as string,
+  });
 
   return Object.freeze({
     contract_version: PRODUCTION_WEB_SHADOW_CONNECTION_VERSION,
@@ -140,10 +160,117 @@ export function parseProductionWebShadowConnectionJson(
     expires_at: expiresAt.toISOString(),
     room: Object.freeze({
       roomName: room.roomName as string,
-      token: room.token,
+      token,
       url: PRODUCTION_WEB_SHADOW_LIVEKIT_URL,
     }),
   });
+}
+
+function exactLiveKitRoomToken({
+  expiresAt,
+  now,
+  roomName,
+  token,
+}: {
+  readonly expiresAt: Date;
+  readonly now: Date;
+  readonly roomName: string;
+  readonly token: string;
+}): string {
+  const segments = token.split(".");
+  if (
+    segments.length !== 3 ||
+    segments.some((segment) => !JWT_SEGMENT.test(segment)) ||
+    segments[2]?.length !== 43
+  ) {
+    invalid();
+  }
+  const header = exactRecord(decodeJwtJson(segments[0], 512), JWT_HEADER_KEYS);
+  const payload = exactRecord(
+    decodeJwtJson(segments[1], 8 * 1_024),
+    JWT_PAYLOAD_KEYS
+  );
+  const video = exactRecord(payload.video, JWT_VIDEO_GRANT_KEYS);
+  const publishSources = video.canPublishSources;
+  const nowSeconds = Math.floor(now.getTime() / 1_000);
+  if (
+    header.alg !== "HS256" ||
+    payload.name !== LIVEKIT_PARTICIPANT_NAME ||
+    payload.sub !== LIVEKIT_PARTICIPANT_IDENTITY ||
+    typeof payload.iss !== "string" ||
+    !LIVEKIT_ISSUER.test(payload.iss) ||
+    typeof payload.exp !== "number" ||
+    !Number.isSafeInteger(payload.exp) ||
+    typeof payload.nbf !== "number" ||
+    !Number.isSafeInteger(payload.nbf) ||
+    payload.nbf > nowSeconds ||
+    payload.exp <= nowSeconds ||
+    payload.exp <= payload.nbf ||
+    payload.exp - payload.nbf > MAXIMUM_LEASE_TTL_MS / 1_000 ||
+    payload.exp * 1_000 > expiresAt.getTime() ||
+    video.room !== roomName ||
+    video.roomJoin !== true ||
+    video.canPublish !== true ||
+    video.canPublishData !== false ||
+    video.canSubscribe !== true ||
+    !Array.isArray(publishSources) ||
+    publishSources.length !== 1 ||
+    publishSources[0] !== "microphone"
+  ) {
+    invalid();
+  }
+  return token;
+}
+
+function decodeJwtJson(
+  segment: string | undefined,
+  maximumBytes: number
+): unknown {
+  if (
+    typeof segment !== "string" ||
+    segment.length === 0 ||
+    segment.length > maximumBytes * 2 ||
+    segment.length % 4 === 1
+  ) {
+    invalid();
+  }
+  let bytes: Uint8Array;
+  try {
+    const padding = "=".repeat((4 - (segment.length % 4)) % 4);
+    const binary = atob(
+      segment.replaceAll("-", "+").replaceAll("_", "/") + padding
+    );
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    invalid();
+  }
+  if (
+    bytes.byteLength === 0 ||
+    bytes.byteLength > maximumBytes ||
+    encodeBase64Url(bytes) !== segment
+  ) {
+    invalid();
+  }
+  let contents: string;
+  try {
+    contents = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    invalid();
+  }
+  try {
+    return parseJsonRejectingDuplicateKeys(contents);
+  } catch {
+    invalid();
+  }
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
 }
 
 function exactRecord<const TKeys extends readonly string[]>(

@@ -54,12 +54,16 @@ or extra keys. The exact closed record contains:
 - room name `preview-shadow-<session binding>`;
 - exact Production LiveKit URL
   `wss://meelni-ek4vaisp.livekit.cloud`; and
-- a bounded non-empty participant token.
+- a bounded canonical three-segment LiveKit participant JWT whose decoded
+  claims bind the same room, exact owner identity, current lease deadline and
+  microphone-only publish grant.
 
 V1, Preview-project, expired, cross-room, cross-config, malformed or hostile
 files fail closed before `LiveKitRoom` construction. The file's run and
 candidate MUST equal the independent server-configured bindings; the immutable
-configuration digests MUST equal the checked-in reviewed values.
+configuration digests MUST equal the checked-in reviewed values. Claim parsing
+does not replace signature authentication: the LiveKit service still verifies
+the HS256 signature before admitting the browser to the room.
 
 ## Privacy and lifecycle
 
