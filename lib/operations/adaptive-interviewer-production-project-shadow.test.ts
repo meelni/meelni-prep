@@ -45,6 +45,28 @@ test("binds one Production-project Shadow cell to closed independent hashes", ()
   assert.notEqual(result.configurationSha256, result.targetFingerprint);
 });
 
+test("binds the first durable cell at activation revision zero", () => {
+  const firstCell = productionProjectShadowCellAuthorizationInput({
+    ...BASE,
+    expectedRevision: 0,
+  });
+
+  assert.match(firstCell.configurationSha256, /^[a-f0-9]{64}$/);
+  assert.match(firstCell.targetFingerprint, /^[a-f0-9]{64}$/);
+  assert.notEqual(
+    firstCell.targetFingerprint,
+    productionProjectShadowCellAuthorizationInput(BASE).targetFingerprint
+  );
+  assert.throws(
+    () =>
+      productionProjectShadowCellAuthorizationInput({
+        ...BASE,
+        expectedRevision: -1,
+      }),
+    /production_project_shadow_cell_invalid/
+  );
+});
+
 test("every room intent value changes the target binding", () => {
   const baseline = productionProjectShadowCellAuthorizationInput(BASE);
   const mutations = [
