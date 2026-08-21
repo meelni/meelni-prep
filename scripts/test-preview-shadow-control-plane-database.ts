@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     await verifyMigrationBoundaries(clients[0]!);
     await verifyActivationCasAndRestart(databases);
     await verifyActivationDatabaseClockAtLock(databases, clients);
-    await verifyConcurrentLeaseAndUpwardReconciliation(databases);
+    await verifyConcurrentLeaseAndUpwardReconciliation(databases, clients);
     await verifyRevokedLeaseIncidentReconciliation(databases);
     await verifyExpiredLeaseReplay(databases, clients[0]!);
     await verifyStopIncompleteRecovery(databases);
@@ -366,7 +366,8 @@ async function verifyActivationCasAndRestart(
 }
 
 async function verifyConcurrentLeaseAndUpwardReconciliation(
-  databases: Database[]
+  databases: Database[],
+  clients: postgres.Sql[]
 ): Promise<void> {
   const fixture = await createFixture(databases[0]!, "reconcile");
   const stores = databases.map(createDurablePreviewShadowControlPlaneStore);
@@ -413,6 +414,13 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
       workerEvidenceCapability: capability("same-worker"),
     }),
     same[0]!.lease
+  );
+  await verifyAdmissionUsesRunThenLeaseLockOrder(
+    databases[1]!,
+    clients,
+    runId,
+    same[0]!.lease,
+    capability("same-worker")
   );
   await assertCode(
     () =>
@@ -647,6 +655,87 @@ async function verifyConcurrentLeaseAndUpwardReconciliation(
   assert.equal(final.run.reconciled_spend_nano_usd, 500_000_000_000);
   assert.equal(final.run.outstanding_session_reservations_nano_usd, 0);
   assert.equal(final.run.stopped, true);
+}
+
+async function verifyAdmissionUsesRunThenLeaseLockOrder(
+  database: Database,
+  clients: postgres.Sql[],
+  runId: string,
+  lease: Parameters<
+    typeof verifyDurablePreviewShadowSessionLeaseAdmission
+  >[1]["lease"],
+  workerEvidenceCapability: string
+): Promise<void> {
+  const applicationName = `preview_shadow_admission_${process.pid}`;
+  let releaseRunLock!: () => void;
+  let markRunLocked!: () => void;
+  const runLockReleased = new Promise<void>((resolve) => {
+    releaseRunLock = resolve;
+  });
+  const runLocked = new Promise<void>((resolve) => {
+    markRunLocked = resolve;
+  });
+  const blocker = clients[0]!.begin(async (tx) => {
+    await tx`
+      SELECT run_id
+      FROM adaptive_interviewer_preview_shadow_run
+      WHERE run_id = ${runId}
+      FOR UPDATE
+    `;
+    markRunLocked();
+    await runLockReleased;
+  });
+  await runLocked;
+  await clients[1]!`SELECT set_config('application_name', ${applicationName}, false)`;
+  const admission = verifyDurablePreviewShadowSessionLeaseAdmission(database, {
+    lease,
+    workerEvidenceCapability,
+  });
+  let probeError: unknown;
+  try {
+    await waitForDatabaseLock(clients[3]!, applicationName);
+    await clients[2]!.begin(async (tx) => {
+      await tx`
+        SELECT lease_id
+        FROM adaptive_interviewer_preview_shadow_session_lease
+        WHERE lease_id = ${(lease as { lease_id: string }).lease_id}
+        FOR UPDATE NOWAIT
+      `;
+    });
+  } catch (error) {
+    probeError = error;
+  } finally {
+    releaseRunLock();
+  }
+  try {
+    await Promise.all([blocker, admission]);
+    assert.equal(
+      probeError,
+      undefined,
+      "admission must wait on the run row before locking the lease row"
+    );
+  } finally {
+    await clients[1]!`SELECT set_config('application_name', '', false)`;
+  }
+}
+
+async function waitForDatabaseLock(
+  client: postgres.Sql,
+  applicationName: string
+): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const rows = await client<{ waiting: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity
+        WHERE application_name = ${applicationName}
+          AND wait_event_type = 'Lock'
+      ) AS waiting
+    `;
+    if (rows[0]?.waiting) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("preview_shadow_admission_lock_wait_not_observed");
 }
 
 async function verifyStopIncompleteRecovery(

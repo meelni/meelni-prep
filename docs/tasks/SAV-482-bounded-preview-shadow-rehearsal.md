@@ -73,6 +73,12 @@
 - `npm run check`, `db:check`, the disposable PostgreSQL durable matrix,
   full database migration verification and `npm run verify:agent` passed.
   The final build verified 30 public pages, 982 source files and 90 routes.
+- Exact-head security validation rejected the redirect/capability candidate:
+  Python 3.12 refused POST redirects for 301, 302, 303, 307 and 308 without
+  forwarding the body. A separate PostgreSQL PoC reproduced an admission/stop
+  lock-order deadlock; admission now follows the canonical run-then-lease
+  order, and the disposable database test proves it waits on the run without
+  holding the lease.
 - Provider execution, environment mutation, deployment, room creation and live
   matrix work were not performed during this repository validation boundary.
 
