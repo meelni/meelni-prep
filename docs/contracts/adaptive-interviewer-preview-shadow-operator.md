@@ -18,7 +18,12 @@ file. `verify` performs no database, LiveKit, OpenAI, Statsig, or Vercel call.
 
 `activate` requires explicit database configuration, signed artifact,
 authorization, key registry, and run-control capability. The durable CAS is
-the only consumer of the one-use authority.
+the only consumer of the one-use authority. Activation validates only the
+canonical staging database/environment identity; it neither requires nor
+reads a LiveKit URL, worker name, API key or API secret. Preview and
+Production-project room commands retain their separate complete LiveKit
+identity checks. Durable stop uses the same staging-only environment boundary
+and therefore cannot be blocked on an unrelated LiveKit credential.
 
 `start-cell` requires one closed round/voice-condition pair from the fixed
 4x7 matrix, exact run revision, session binding, lease expiry, worker and
