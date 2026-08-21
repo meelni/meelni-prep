@@ -351,15 +351,16 @@ export async function verifyDurablePreviewShadowSessionLeaseAdmission(
       request.workerEvidenceCapability
     );
     return database.transaction(async (tx) => {
-      const rows = await tx
+      const discoveredRows = await tx
         .select()
         .from(leaseTable)
         .where(eq(leaseTable.leaseId, idDescriptor.value as string))
-        .limit(1)
-        .for("update");
-      const lease = rows[0];
-      if (!lease) denied();
-      const run = await lockRun(tx, lease.runId);
+        .limit(1);
+      const discovered = discoveredRows[0];
+      if (!discovered) denied();
+      const run = await lockRun(tx, discovered.runId);
+      const lease = await lockLease(tx, idDescriptor.value as string);
+      if (lease.runId !== run.runId) invariant();
       await assertRelationalState(tx, run);
       const databaseNow = await readDatabaseNow(tx);
       assertCapability(lease.workerEvidenceCapabilitySha256, capabilitySha256);
