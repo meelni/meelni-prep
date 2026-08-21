@@ -185,6 +185,7 @@ async def settle_session_speech(
     session: object,
     *,
     timeout_seconds: float,
+    interruption: asyncio.Future[None] | None = None,
 ) -> SpeechSettlementResult:
     """Stop new input and commit the measured in-flight turn before transcript drain."""
     if (
@@ -202,10 +203,12 @@ async def settle_session_speech(
         session_output = getattr(session, "output")
         session_output.set_audio_enabled(False)
 
-        interruption = getattr(session, "interrupt")(force=True)
-        if not isinstance(interruption, asyncio.Future):
+        active_interruption = interruption
+        if active_interruption is None:
+            active_interruption = getattr(session, "interrupt")(force=True)
+        if not isinstance(active_interruption, asyncio.Future):
             raise TypeError("runtime interruption must return an asyncio Future")
-        settlement_tasks.append(interruption)
+        settlement_tasks.append(active_interruption)
 
         current_speech = getattr(session, "current_speech")
         if current_speech is not None and not current_speech.done():

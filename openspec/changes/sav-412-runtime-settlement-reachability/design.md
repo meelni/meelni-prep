@@ -38,12 +38,17 @@ the settlement degraded through the existing post-cutoff fact.
 
 ## Bounded control acknowledgement
 
+SAV-496 supersedes the original priority-lane behavior below after Production
+proved it could close ingest ahead of usable pre-cutoff evidence. The reserved
+slot remains, but settlement is now a terminal barrier behind unresolved
+transcript, marker, and runtime-event items. A hung request leaves settlement
+missing so the durable finalizer can freeze only the committed partial prefix.
+
 The queue still reserves its final identity slot for runtime settlement.
 Foreground settlement cancels and awaits the live flush while shielding its
-single in-flight transport task. If that evidence request remains hung, pending
-delivery prioritizes the metadata-only settlement item, allowing a durable
-degraded acknowledgement within the outer deadline without duplicating or
-discarding the evidence request.
+single in-flight transport task. If that evidence request remains hung, the
+reserved settlement stays pending rather than duplicating, discarding, or
+overtaking the evidence request.
 
 ## Provider assumptions
 

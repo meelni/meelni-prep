@@ -13,11 +13,15 @@ flag and launch binding is present. The HMAC-SHA-256 payload binds:
 - ten attempts, 100,000,000 nano-USD attempt reserve,
   1,000,000,000 nano-USD session ceiling and 750 ms deadline.
 
-The web signs with the existing LiveKit API secret. The worker verifies with the
-same secret using constant-time comparison. The secret and signature input are
-never logged. Missing admission means current deterministic behavior. Present
-but malformed, tampered, stale, cross-session or configuration-drifted admission
-fails closed to deterministic behavior with no Director provider construction.
+The web derives an admission-only key from its LiveKit project secret under the
+fixed cross-service admission context. The worker derives the same key from the
+explicit `MEELNI_TRANSCRIPT_INGEST_SECRET` copy already required to match the
+web secret. It never uses LiveKit Cloud's worker-injected `LIVEKIT_API_SECRET`
+for admission. Verification uses constant-time comparison. Secret and signature
+input are never logged. Missing admission means current deterministic behavior.
+Present but malformed, tampered, stale, cross-session or configuration-drifted
+admission fails closed to deterministic behavior with no Director provider
+construction. Operational telemetry exposes only a closed reason taxonomy.
 
 ## Runtime
 

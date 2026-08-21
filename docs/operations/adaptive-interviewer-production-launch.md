@@ -6,7 +6,8 @@
    PR review and terminal hosted CI.
 2. Human owner records Production/default-on GO for the exact merged candidate.
 3. Production web and ordinary interview worker use the same launch
-   configuration SHA-256.
+   configuration SHA-256, and the worker's explicit
+   `MEELNI_TRANSCRIPT_INGEST_SECRET` matches the web `LIVEKIT_API_SECRET`.
 4. Ordinary eight-key worker snapshot is held as the rollback target.
 
 ## Release order
@@ -18,9 +19,10 @@
    same source to the canonical Production interview agent.
 4. Verify web source, worker source/version and all five exact flags.
 5. The owner starts one ordinary Production interview from the real product.
-6. Confirm room admission, Director planned/admitted/delivery counters,
-   transcript settlement, feedback outcome and credit settlement without
-   recording transcript content in operational evidence.
+6. Confirm room admission reason is `admission_verified`, Director
+   planned/admitted/delivery counters, transcript settlement, feedback outcome
+   and credit settlement without recording transcript content in operational
+   evidence. Any other closed admission reason is a stop condition.
 
 ## Stop and rollback
 
