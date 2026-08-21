@@ -273,6 +273,7 @@ export function assertCurrentProductionProjectShadowDeployment({
       {
         encoding: "utf8",
         env: {
+          HOME: "/var/empty",
           NODE_ENV: "production",
           LIVEKIT_URL: credentials.url,
           LIVEKIT_API_KEY: credentials.apiKey,

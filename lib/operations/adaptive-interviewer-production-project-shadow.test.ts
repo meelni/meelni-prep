@@ -282,11 +282,13 @@ test("rechecks the current available deployment source before room admission", (
     "--json",
   ]);
   assert.deepEqual(Object.keys(call.options.env).sort(), [
+    "HOME",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
     "LIVEKIT_URL",
     "NODE_ENV",
   ]);
+  assert.equal(call.options.env.HOME, "/var/empty");
 
   for (const changed of [
     {
