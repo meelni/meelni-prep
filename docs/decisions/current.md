@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Isolate Production Shadow From The Customer Interview Runtime](2026-08-21-isolate-production-shadow-from-customer-runtime.md): Route admitted Shadow jobs into a dedicated synthetic voice/Director runner before ordinary transcript or lifecycle setup, and use a temporary edge-only Vercel bypass without weakening durable authority.
 - [Join Production Shadow Through An Owner-Only Web Canary](2026-08-20-join-production-shadow-through-owner-web-canary.md): Keep allocation and room authority in the guarded operator while the exact authenticated owner locally loads one private connection into the real Production Meelni voice UI, with no ordinary-session wiring or credential persistence.
 - [Activate Preview Shadow Inside Trusted Staging](2026-08-20-activate-preview-shadow-inside-trusted-staging.md): Keep the sensitive Preview database connection inside Vercel while retaining exact-SHA owner authentication and durable one-use activation.
 - [Run Preview-Shadow Semantics On The Existing Production LiveKit Project](2026-08-20-run-preview-shadow-on-existing-production-livekit-project.md): Keep the durable lane at Preview shadow/exposure none, use the paid Production project only as transport, require independent Shadow and Production deploy authority, and restore the shared worker explicitly.

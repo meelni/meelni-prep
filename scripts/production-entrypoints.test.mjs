@@ -82,6 +82,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       `MEELNI_PREVIEW_SHADOW_RUN_ID=${"b".repeat(64)}`,
       `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateSha}`,
       `MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=${previewShadowControlPlaneUrl}`,
+      `MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=${"v".repeat(32)}`,
       "",
     ].join("\n"),
     { mode: 0o600 }
@@ -90,7 +91,10 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     productionProjectShadowSecretsPath,
     [
       `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}`,
-      opikSecrets.trimEnd(),
+      opikSecrets
+        .replace("OPIK_TRACING_ENABLED=true", "OPIK_TRACING_ENABLED=false")
+        .replace("OPIK_CAPTURE_CONTENT=true", "OPIK_CAPTURE_CONTENT=false")
+        .trimEnd(),
       `OPENAI_API_KEY=${"o".repeat(25)}`,
       "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
       "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
@@ -98,6 +102,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       `MEELNI_PREVIEW_SHADOW_RUN_ID=${"b".repeat(64)}`,
       `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateSha}`,
       "MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow",
+      `MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=${"v".repeat(32)}`,
       "",
     ].join("\n"),
     { mode: 0o600 }

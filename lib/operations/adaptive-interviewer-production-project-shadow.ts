@@ -28,6 +28,8 @@ export const PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL =
   "https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow" as const;
 export const PRODUCTION_PROJECT_SHADOW_ACTION =
   PRODUCTION_ACTIONS.LIVEKIT_PRODUCTION_SHADOW_ROOM;
+export const PRODUCTION_PROJECT_SHADOW_SYNTHETIC_ROOM_VERSION =
+  "adaptive-interviewer-preview-shadow-synthetic-room.v1" as const;
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
@@ -121,16 +123,19 @@ export function buildProductionProjectShadowRuntimeSecrets({
   runId,
   candidateGitSha,
   controlPlaneUrl,
+  vercelBypassSecret,
 }: {
   ordinarySecrets: string;
   runId: string;
   candidateGitSha: string;
   controlPlaneUrl: string;
+  vercelBypassSecret: string;
 }): string {
   if (
     !SHA256.test(runId) ||
     !GIT_SHA.test(candidateGitSha) ||
-    controlPlaneUrl !== PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL
+    controlPlaneUrl !== PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL ||
+    !/^[A-Za-z0-9_-]{16,512}$/.test(vercelBypassSecret)
   ) {
     invalid();
   }
@@ -142,13 +147,25 @@ export function buildProductionProjectShadowRuntimeSecrets({
     expectedCandidateSha: undefined,
     expectedControlPlaneUrl: undefined,
   });
+  const shadowSafeOrdinarySecrets = ordinarySecrets
+    .trimEnd()
+    .split("\n")
+    .map((line) =>
+      line === "OPIK_TRACING_ENABLED=true"
+        ? "OPIK_TRACING_ENABLED=false"
+        : line === "OPIK_CAPTURE_CONTENT=true"
+          ? "OPIK_CAPTURE_CONTENT=false"
+          : line
+    )
+    .join("\n");
   const combined = [
-    ordinarySecrets.trimEnd(),
+    shadowSafeOrdinarySecrets,
     "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
     "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open",
     `MEELNI_PREVIEW_SHADOW_RUN_ID=${runId}`,
     `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateGitSha}`,
     `MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=${controlPlaneUrl}`,
+    `MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=${vercelBypassSecret}`,
     "",
   ].join("\n");
   assertLiveKitProductionRuntimeSecrets(combined, {
@@ -159,8 +176,42 @@ export function buildProductionProjectShadowRuntimeSecrets({
     includeShadowBootstrap: true,
     expectedCandidateSha: candidateGitSha,
     expectedControlPlaneUrl: controlPlaneUrl,
+    shadowEphemeralOnly: true,
+    expectedProtectionBypassSecret: vercelBypassSecret,
   });
   return combined;
+}
+
+export function buildProductionProjectShadowSyntheticRoomMetadata({
+  sessionBindingSha256,
+  round,
+  voiceCondition,
+  expiresAt,
+}: {
+  sessionBindingSha256: string;
+  round: string;
+  voiceCondition: string;
+  expiresAt: string;
+}) {
+  const parsedExpiry = new Date(expiresAt);
+  if (
+    !SHA256.test(sessionBindingSha256) ||
+    !ROUND.has(round as never) ||
+    !VOICE_CONDITION.has(voiceCondition as never) ||
+    expiresAt.length !== 24 ||
+    !Number.isFinite(parsedExpiry.getTime()) ||
+    parsedExpiry.toISOString() !== expiresAt
+  ) {
+    invalid();
+  }
+  return Object.freeze({
+    contract_version: PRODUCTION_PROJECT_SHADOW_SYNTHETIC_ROOM_VERSION,
+    topology: PRODUCTION_PROJECT_SHADOW_TOPOLOGY,
+    session_binding_sha256: sessionBindingSha256,
+    round,
+    voice_condition: voiceCondition,
+    expires_at: expiresAt,
+  });
 }
 
 export async function consumeProductionProjectShadowCellAuthorization({
