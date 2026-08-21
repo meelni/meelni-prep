@@ -37,6 +37,10 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     '[project]\nsubdomain = "meelni-ek4vaisp"\n[agent]\nid = "CA_yawKG67rCMG4"\n'
   );
   const productionSecretsPath = join(directory, "production-secrets.env");
+  const productionAdaptiveSecretsPath = join(
+    directory,
+    "production-adaptive-secrets.env"
+  );
   const productionProjectShadowSecretsPath = join(
     directory,
     "production-project-shadow-secrets.env"
@@ -72,6 +76,25 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     ["-C", repoRoot, "rev-parse", "HEAD"],
     { encoding: "utf8" }
   ).stdout.trim();
+  await writeFile(
+    productionAdaptiveSecretsPath,
+    [
+      (await readFile(productionSecretsPath, "utf8")).trimEnd(),
+      "MEELNI_ADAPTIVE_INTERVIEWER_STAGE=candidate_default",
+      "MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT=production",
+      "MEELNI_ADAPTIVE_INTERVIEWER_COHORT=canary",
+      "MEELNI_ADAPTIVE_INTERVIEWER_EXPOSURE=default",
+      "MEELNI_ADAPTIVE_INTERVIEWER_CONFIG_SHA256=21743eb810fed7d64c3564aa194e2f09ab75463e3318fbdc6f33936531ef6423",
+      `MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA=${candidateSha}`,
+      "MEELNI_INTERVIEW_BRIEF_V2_ENABLED=true",
+      "MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED=true",
+      "MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true",
+      "MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED=true",
+      "MEELNI_INTERVIEW_DIRECTOR_INFLUENCE_V1_ENABLED=true",
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
   const previewShadowControlPlaneUrl =
     "https://meelni-candidate-meelni.vercel.app/api/internal/preview-shadow";
   await writeFile(
@@ -108,6 +131,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     { mode: 0o600 }
   );
   await chmod(productionSecretsPath, 0o600);
+  await chmod(productionAdaptiveSecretsPath, 0o600);
   await chmod(productionDemoSecretsPath, 0o600);
   await chmod(previewShadowSecretsPath, 0o600);
   await chmod(productionProjectShadowSecretsPath, 0o600);
@@ -327,6 +351,33 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     }
     assert.doesNotMatch(production.stderr, /meelni-ek4vaisp|CA_yawKG67rCMG4/);
 
+    const productionAdaptive = spawnSync(
+      join(repoRoot, "agent/interview/deploy.sh"),
+      ["production-adaptive"],
+      {
+        cwd: join(repoRoot, "agent/interview"),
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG: productionConfigPath,
+          MEELNI_LIVEKIT_PRODUCTION_ADAPTIVE_SECRETS_FILE:
+            productionAdaptiveSecretsPath,
+          MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4",
+          MEELNI_PRODUCTION_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
+          MEELNI_ADAPTIVE_INTERVIEWER_CANDIDATE_SHA: candidateSha,
+        },
+      }
+    );
+    assert.notEqual(productionAdaptive.status, 0);
+    assert.match(
+      productionAdaptive.stderr,
+      /authorization_file_path_invalid|fixed system Node runtime|LiveKit CLI must support explicit source attributes/
+    );
+    assert.equal(
+      (await readFile(logPath, "utf8")).trim().split("\n").length,
+      callsAfterProduction.length
+    );
+
     const missingProductionSecret = spawnSync(
       join(repoRoot, "agent/interview/deploy.sh"),
       ["production"],
@@ -444,6 +495,15 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
       ],
     ],
     [
+      "scripts/vercel-adaptive-interviewer-production-launch.mjs",
+      [
+        "applyVercelAdaptiveProductionLaunch",
+        "loadVercelAdaptiveProductionLaunchConfig",
+        "prepareUnsignedProductionAction",
+        'ownerLaunchDecision: "GO"',
+      ],
+    ],
+    [
       "agent/interview/deploy.sh",
       [
         "livekit-production-interview-deploy",
@@ -452,6 +512,7 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
         "meelni.source_sha",
         "--no-default-attributes",
         "production-project-shadow",
+        "production-adaptive",
         "agent update-secrets",
         "--overwrite",
         "LiveKit CLI must support explicit source attributes",

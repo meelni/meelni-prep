@@ -48,6 +48,32 @@ export interface InterviewRoomQuestion {
   askedAt?: string | Date | null;
 }
 
+export interface AdaptiveInterviewerProductionAdmission {
+  adapter_id: "meelni_director_openai_responses";
+  adapter_version: "interview-director-adapter.openai-responses.v1";
+  attempt_reservation_nano_usd: 100000000;
+  candidate_git_sha: string;
+  cohort: "canary";
+  configuration_sha256: string;
+  contract_version: "adaptive-interviewer-production-admission.v1";
+  deadline_at: string;
+  director_deadline_ms: 750;
+  environment: "production";
+  exposure: "default";
+  maximum_attempts: 10;
+  model: "gpt-5.4-mini-2026-03-17";
+  provider: "openai-api";
+  recommendation_ttl_ms: 5000;
+  repository_rollout_configuration_sha256: string;
+  request_fingerprint: string;
+  room_name: string;
+  selected_candidate_configuration_sha256: string;
+  session_budget_nano_usd: 1000000000;
+  session_id: string;
+  stage: "candidate_default";
+  signature: { algorithm: "hmac-sha256"; value: string };
+}
+
 export interface InterviewRoomMetadata {
   contract_version: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
   session_id: string;
@@ -59,6 +85,7 @@ export interface InterviewRoomMetadata {
   config: InterviewRuntimeConfig;
   question: InterviewRoomQuestion | null;
   interview_brief?: InterviewBriefV2;
+  adaptive_interviewer?: AdaptiveInterviewerProductionAdmission;
 }
 
 export type InterviewRoomMetadataInput = Omit<
@@ -81,6 +108,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_deadline"
       | "invalid_round_type"
       | "invalid_interview_brief"
+      | "invalid_adaptive_interviewer"
   ) {
     super(`Invalid interview room metadata: ${code}`);
     this.name = "InterviewRoomMetadataError";
@@ -221,6 +249,16 @@ export function buildInterviewRoomMetadata(
   ) {
     throw new InterviewRoomMetadataError("invalid_interview_brief");
   }
+  if (
+    metadata.adaptive_interviewer !== undefined &&
+    !isAdaptiveInterviewerProductionAdmission(metadata.adaptive_interviewer, {
+      sessionId: metadata.session_id,
+      roomName: undefined,
+      deadlineAt: normalizedDeadline,
+    })
+  ) {
+    throw new InterviewRoomMetadataError("invalid_adaptive_interviewer");
+  }
 
   return {
     ...metadata,
@@ -232,6 +270,9 @@ export function buildInterviewRoomMetadata(
     config: normalizedConfig,
     question: normalizedQuestion,
     ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
+    ...(metadata.adaptive_interviewer
+      ? { adaptive_interviewer: metadata.adaptive_interviewer }
+      : {}),
   };
 }
 
@@ -292,6 +333,21 @@ export function parseInterviewRoomMetadata(
     })
       ? briefResolution.brief
       : undefined;
+  const adaptiveInterviewer = isAdaptiveInterviewerProductionAdmission(
+    parsed.adaptive_interviewer,
+    {
+      sessionId: parsed.session_id,
+      roomName: undefined,
+      deadlineAt: normalizedDeadline,
+    }
+  )
+    ? parsed.adaptive_interviewer
+    : parsed.adaptive_interviewer === undefined
+      ? undefined
+      : null;
+  if (adaptiveInterviewer === null) {
+    throw new InterviewRoomMetadataError("invalid_adaptive_interviewer");
+  }
 
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
@@ -311,7 +367,87 @@ export function parseInterviewRoomMetadata(
     config: normalizedConfig,
     question: normalizedQuestion,
     ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
+    ...(adaptiveInterviewer
+      ? { adaptive_interviewer: adaptiveInterviewer }
+      : {}),
   });
+}
+
+function isAdaptiveInterviewerProductionAdmission(
+  value: unknown,
+  expected: {
+    sessionId: string;
+    roomName: string | undefined;
+    deadlineAt: string | null;
+  }
+): value is AdaptiveInterviewerProductionAdmission {
+  if (!isRecord(value)) return false;
+  const keys = [
+    "adapter_id",
+    "adapter_version",
+    "attempt_reservation_nano_usd",
+    "candidate_git_sha",
+    "cohort",
+    "configuration_sha256",
+    "contract_version",
+    "deadline_at",
+    "director_deadline_ms",
+    "environment",
+    "exposure",
+    "maximum_attempts",
+    "model",
+    "provider",
+    "recommendation_ttl_ms",
+    "repository_rollout_configuration_sha256",
+    "request_fingerprint",
+    "room_name",
+    "selected_candidate_configuration_sha256",
+    "session_budget_nano_usd",
+    "session_id",
+    "stage",
+    "signature",
+  ];
+  if (Object.keys(value).sort().join("\0") !== [...keys].sort().join("\0"))
+    return false;
+  const signature = value.signature;
+  return (
+    value.contract_version === "adaptive-interviewer-production-admission.v1" &&
+    value.session_id === expected.sessionId &&
+    value.deadline_at === expected.deadlineAt &&
+    (expected.roomName === undefined ||
+      value.room_name === expected.roomName) &&
+    value.stage === "candidate_default" &&
+    value.environment === "production" &&
+    value.cohort === "canary" &&
+    value.exposure === "default" &&
+    value.adapter_id === "meelni_director_openai_responses" &&
+    value.adapter_version ===
+      "interview-director-adapter.openai-responses.v1" &&
+    value.provider === "openai-api" &&
+    value.model === "gpt-5.4-mini-2026-03-17" &&
+    value.maximum_attempts === 10 &&
+    value.attempt_reservation_nano_usd === 100000000 &&
+    value.session_budget_nano_usd === 1000000000 &&
+    value.director_deadline_ms === 750 &&
+    value.recommendation_ttl_ms === 5000 &&
+    typeof value.candidate_git_sha === "string" &&
+    /^[a-f0-9]{40}$/u.test(value.candidate_git_sha) &&
+    typeof value.configuration_sha256 === "string" &&
+    /^[a-f0-9]{64}$/u.test(value.configuration_sha256) &&
+    typeof value.repository_rollout_configuration_sha256 === "string" &&
+    /^[a-f0-9]{64}$/u.test(value.repository_rollout_configuration_sha256) &&
+    typeof value.selected_candidate_configuration_sha256 === "string" &&
+    /^[a-f0-9]{64}$/u.test(value.selected_candidate_configuration_sha256) &&
+    typeof value.request_fingerprint === "string" &&
+    /^[a-f0-9]{64}$/u.test(value.request_fingerprint) &&
+    typeof value.room_name === "string" &&
+    value.room_name.length <= 128 &&
+    isRecord(signature) &&
+    Object.keys(signature).sort().join("\0") === "algorithm\0value" &&
+    signature.algorithm === "hmac-sha256" &&
+    typeof signature.value === "string" &&
+    /^[a-f0-9]{64}$/u.test(signature.value)
+  );
 }
 
 function hasNonCanonicalBriefNumber(rawMetadata: string): boolean {

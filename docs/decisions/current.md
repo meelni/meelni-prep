@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Launch The Adaptive Interviewer For Production Customers](2026-08-21-launch-adaptive-interviewer-for-production-customers.md): Issue a signed session-bound Production admission before LiveKit room creation, construct the bounded Director only after exact verification, preserve controller/lifecycle/delivery authority, and retain an all-off deterministic rollback.
 - [Isolate Production Shadow From The Customer Interview Runtime](2026-08-21-isolate-production-shadow-from-customer-runtime.md): Route admitted Shadow jobs into a dedicated synthetic voice/Director runner before ordinary transcript or lifecycle setup, and use a temporary edge-only Vercel bypass without weakening durable authority.
 - [Join Production Shadow Through An Owner-Only Web Canary](2026-08-20-join-production-shadow-through-owner-web-canary.md): Keep allocation and room authority in the guarded operator while the exact authenticated owner locally loads one private connection into the real Production Meelni voice UI, with no ordinary-session wiring or credential persistence.
 - [Activate Preview Shadow Inside Trusted Staging](2026-08-20-activate-preview-shadow-inside-trusted-staging.md): Keep the sensitive Preview database connection inside Vercel while retaining exact-SHA owner authentication and durable one-use activation.
