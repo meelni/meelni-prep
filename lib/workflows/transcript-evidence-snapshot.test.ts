@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -11,6 +12,29 @@ import {
 } from "./transcript-evidence-snapshot";
 
 const cutoffAt = new Date("2026-08-07T20:00:00.000Z");
+const sav496Incident = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../packages/test-fixtures/runtime-settlement-sav496.json",
+      import.meta.url
+    ),
+    "utf8"
+  )
+) as {
+  contractVersion: string;
+  durationSeconds: number;
+  writerGeneration: number;
+  committedSequence: number;
+  lastObservedSequence: number;
+  totalTurns: number;
+  candidateTurns: number;
+  substantiveCandidateResponses: number;
+  scoreableCandidateResponses: number;
+  preservingInterviewerMarkers: number;
+  lateRuntimeSettledConflicts: number;
+  expectedUnresolvedSettlementState: string;
+  expectedFeedbackMode: string;
+};
 
 function validation(isValid = true): SessionValidation {
   return {
@@ -74,6 +98,59 @@ test("a healthy DB-proven prefix remains eligible as partial without settlement"
     "evidence_limited_only"
   );
   assert.equal(snapshot.writers[0]?.settlementState, "missing");
+});
+
+test("SAV-496 sanitized Production shape stays reviewable when terminal settlement is unresolved", () => {
+  assert.equal(
+    sav496Incident.contractVersion,
+    "sav-496-runtime-settlement-regression.v1"
+  );
+  assert.equal(sav496Incident.lateRuntimeSettledConflicts, 1);
+  const snapshot = buildTranscriptEvidenceSnapshot({
+    cutoffAt,
+    interruptions: Array.from(
+      { length: sav496Incident.preservingInterviewerMarkers },
+      () => ({
+        speaker: "interviewer" as const,
+        reason: "no_provider_confirmed_prefix" as const,
+      })
+    ),
+    writers: [
+      writer({
+        generation: sav496Incident.writerGeneration,
+        committedSequence: sav496Incident.committedSequence,
+        lastObservedSequence: sav496Incident.lastObservedSequence,
+        committedEventId: "synthetic-sequence-28",
+        settlementState: null,
+        settledAt: null,
+      }),
+    ],
+    baseValidation: {
+      tier: SessionTier.FULL,
+      isValid: true,
+      stats: {
+        totalTurns: sav496Incident.totalTurns,
+        userTurns: sav496Incident.candidateTurns,
+        totalWords: 1_191,
+        durationSeconds: sav496Incident.durationSeconds,
+        substantiveResponses: sav496Incident.substantiveCandidateResponses,
+        scoreableResponses: sav496Incident.scoreableCandidateResponses,
+      },
+      reasons: [],
+      recommendations: [],
+    },
+  });
+
+  assert.equal(snapshot.state, "partial");
+  assert.equal(snapshot.validation.isValid, true);
+  assert.equal(
+    snapshot.writers[0]?.settlementState,
+    sav496Incident.expectedUnresolvedSettlementState
+  );
+  assert.equal(
+    snapshot.validation.stats.feedbackModeConstraint,
+    sav496Incident.expectedFeedbackMode
+  );
 });
 
 test("a sequence gap fails closed even when the runtime reports settlement", () => {

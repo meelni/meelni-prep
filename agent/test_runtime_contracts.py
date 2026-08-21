@@ -2122,6 +2122,53 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_speech_settlement_awaits_the_fence_interruption_exactly_once(self):
+        calls = []
+
+        class Session:
+            user_state = "listening"
+            current_speech = None
+            input = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("input", enabled))
+            )
+            output = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("output", enabled))
+            )
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption(calls)
+
+            async def wait_for_idle(self):
+                calls.append(("idle",))
+
+        session = Session()
+        interruption = fence_session_for_runtime_settlement(
+            session,
+            cutoff_at=1782600002,
+            set_evidence_cutoff=lambda cutoff: calls.append(("cutoff", cutoff)),
+            begin_evidence_drain=lambda cutoff: calls.append(("drain", cutoff)),
+        )
+        result = await settle_session_speech(
+            session,
+            timeout_seconds=0.5,
+            interruption=interruption,
+        )
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            calls,
+            [
+                ("cutoff", 1782600002.0),
+                ("drain", 1782600002.0),
+                ("input", False),
+                ("output", False),
+                ("interrupt_all", True),
+                ("input", False),
+                ("output", False),
+                ("idle",),
+            ],
+        )
+
     async def test_model_thinking_without_current_speech_waits_for_idle(self):
         calls = []
 
@@ -3331,7 +3378,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         await queue.flush(0.5)
         self.assertEqual(settlement["settled_at"], equal_event["ended_at"])
 
-    async def test_sav_410_end_fence_rejects_late_turn_and_acks_over_hung_evidence_transport(self):
+    async def test_end_fence_does_not_close_ingest_ahead_of_hung_pre_cutoff_evidence(self):
         evidence_started = asyncio.Event()
         evidence_released = asyncio.Event()
         bodies = []
@@ -3399,7 +3446,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         queue.seal_and_enqueue_runtime_settlement(settlement)
         result = await queue.flush(0.02)
 
-        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertFalse(queue.runtime_settlement_complete)
         self.assertTrue(result.timed_out)
         self.assertEqual(
             calls,
@@ -3412,7 +3459,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             ["settlement" if "settlement" in body else "event" for body in bodies],
-            ["event", "settlement"],
+            ["event"],
         )
         self.assertNotIn(
             "writer-1:message-after-end",
@@ -3422,6 +3469,86 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         evidence_released.set()
         completed = await queue.flush(0.5)
         self.assertTrue(completed.settled)
+        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertEqual(
+            ["settlement" if "settlement" in body else "event" for body in bodies],
+            ["event", "settlement"],
+        )
+
+    async def test_retryable_pre_cutoff_evidence_retries_before_terminal_settlement(self):
+        bodies = []
+        event_attempts = 0
+
+        async def transport(_url, body, _headers):
+            nonlocal event_attempts
+            envelope = json.loads(body)
+            bodies.append("settlement" if "settlement" in envelope else "event")
+            if "event" in envelope:
+                event_attempts += 1
+                return IngestResponse(503 if event_attempts == 1 else 200)
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            retry_delay_seconds=0,
+        )
+        queue.enqueue_transcript(self.make_event(sequence=1))
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=1,
+                state="settled",
+                settled_at=1783650000,
+            )
+        )
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(bodies, ["event", "event", "settlement"])
+
+    async def test_permanent_evidence_failure_still_allows_degraded_settlement(self):
+        bodies = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            bodies.append("settlement" if "settlement" in envelope else "event")
+            return IngestResponse(409 if "event" in envelope else 200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.enqueue_transcript(self.make_event(sequence=1))
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=1,
+                state="degraded",
+                settled_at=1783650000,
+            )
+        )
+
+        result = await queue.flush(0.5)
+
+        self.assertFalse(result.settled)
+        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertEqual(bodies, ["event", "settlement"])
 
     async def test_hard_deadline_rejects_late_evidence_before_settlement_begins(self):
         async def transport(_url, _body, _headers):
@@ -3745,9 +3872,10 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.settled)
         self.assertEqual(
-            bodies[1],
+            bodies[0],
             {"sessionId": "session-1", "runtimeEvent": failure},
         )
+        self.assertIn("settlement", bodies[1])
         self.assertEqual(published, [])
 
     async def test_network_and_retryable_http_failures_retry_without_dropping(self):

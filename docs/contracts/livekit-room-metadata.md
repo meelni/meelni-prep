@@ -40,10 +40,11 @@ only by the authenticated durable start workflow after exact Production launch
 configuration resolves. It HMAC-binds the session, room, request fingerprint,
 deadline, candidate SHA, launch configuration, adapter identity and bounded
 attempt limits. It contains no credential, transcript, question, feedback or
-customer identity. The Python worker independently verifies it with the
-LiveKit shared secret before reading the Director provider credential or
-constructing a transport. Missing or rejected admission preserves the current
-deterministic interviewer.
+customer identity. The web and Python worker independently derive an
+admission-only key from the explicitly synchronized cross-service root before
+reading the Director provider credential or constructing a transport. The
+worker does not use its provider-injected LiveKit project credential. Missing
+or rejected admission preserves the current deterministic interviewer.
 
 The complete authority and rollback rules are in
 [`adaptive-interviewer-production-launch.md`](./adaptive-interviewer-production-launch.md).

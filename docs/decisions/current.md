@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Order Runtime Settlement Behind Transcript Evidence](2026-08-21-order-settlement-behind-transcript-evidence.md): Derive Production admission from the explicitly synchronized cross-service root, await one settlement interruption, and prevent terminal settlement from overtaking unresolved pre-cutoff evidence while preserving verified-prefix Coaching review.
 - [Launch The Adaptive Interviewer For Production Customers](2026-08-21-launch-adaptive-interviewer-for-production-customers.md): Issue a signed session-bound Production admission before LiveKit room creation, construct the bounded Director only after exact verification, preserve controller/lifecycle/delivery authority, and retain an all-off deterministic rollback.
 - [Isolate Production Shadow From The Customer Interview Runtime](2026-08-21-isolate-production-shadow-from-customer-runtime.md): Route admitted Shadow jobs into a dedicated synthetic voice/Director runner before ordinary transcript or lifecycle setup, and use a temporary edge-only Vercel bypass without weakening durable authority.
 - [Join Production Shadow Through An Owner-Only Web Canary](2026-08-20-join-production-shadow-through-owner-web-canary.md): Keep allocation and room authority in the guarded operator while the exact authenticated owner locally loads one private connection into the real Production Meelni voice UI, with no ordinary-session wiring or credential persistence.

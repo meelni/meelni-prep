@@ -40,6 +40,7 @@ ROLLOUT_CONFIG_SHA256 = (
     "ff50893d0bc9e3dea640e61323c79f4fe51381264ba98c6cec18f17b341cd042"
 )
 ADMISSION_DOMAIN = b"meelni.adaptive-interviewer.production-admission.v1\0"
+ADMISSION_KEY_CONTEXT = b"meelni/adaptive-interviewer-production-admission-key/v1"
 ATTEMPT_RESERVATION_NANO_USD = 100_000_000
 SESSION_BUDGET_NANO_USD = 1_000_000_000
 MAXIMUM_ATTEMPTS = 10
@@ -90,6 +91,27 @@ class ProductionDirectorRuntimeConstruction:
     reason: str
     adapter: "BudgetedProductionDirectorAdapter | None"
     limits: DirectorLimits
+
+
+class ProductionDirectorRuntimeUnavailable(DirectorError):
+    """Content-free construction failure with a closed operational reason."""
+
+    _REASONS = frozenset(
+        {
+            "admission_binding_invalid",
+            "admission_secret_missing",
+            "admission_signature_invalid",
+            "provider_api_key_missing",
+            "provider_sdk_unavailable",
+            "transport_construction_failed",
+        }
+    )
+
+    def __init__(self, reason: str):
+        self.reason = (
+            reason if reason in self._REASONS else "transport_construction_failed"
+        )
+        super().__init__("invalid_config")
 
 
 class ProductionDirectorSpendLedger:
@@ -192,7 +214,9 @@ def create_production_director_runtime(
         recommendation_ttl_ms=RECOMMENDATION_TTL_MS,
     )
     if admission is None:
-        return ProductionDirectorRuntimeConstruction("disabled", "admission_absent", None, limits)
+        return ProductionDirectorRuntimeConstruction(
+            "disabled", "admission_absent", None, limits
+        )
     try:
         _verify_admission(
             admission,
@@ -202,13 +226,22 @@ def create_production_director_runtime(
             expected_deadline_at=expected_deadline_at,
             now=now,
         )
-        api_key = env.get("OPENAI_API_KEY")
-        if not isinstance(api_key, str) or not api_key:
-            raise DirectorError("invalid_config")
-        try:
-            import openai
-        except ModuleNotFoundError:
-            raise DirectorError("invalid_config") from None
+    except ProductionDirectorRuntimeUnavailable as error:
+        return ProductionDirectorRuntimeConstruction(
+            "unavailable", error.reason, None, limits
+        )
+    api_key = env.get("OPENAI_API_KEY")
+    if not isinstance(api_key, str) or not api_key:
+        return ProductionDirectorRuntimeConstruction(
+            "unavailable", "provider_api_key_missing", None, limits
+        )
+    try:
+        import openai
+    except ModuleNotFoundError:
+        return ProductionDirectorRuntimeConstruction(
+            "unavailable", "provider_sdk_unavailable", None, limits
+        )
+    try:
         client = openai.AsyncOpenAI(
             api_key=api_key,
             base_url=OPENAI_RESPONSES_DIRECTOR_BASE_URL,
@@ -219,7 +252,7 @@ def create_production_director_runtime(
         )
     except Exception:
         return ProductionDirectorRuntimeConstruction(
-            "unavailable", "admission_or_transport_invalid", None, limits
+            "unavailable", "transport_construction_failed", None, limits
         )
     ledger = ProductionDirectorSpendLedger()
     return ProductionDirectorRuntimeConstruction(
@@ -240,7 +273,7 @@ def _verify_admission(
     now: datetime | None = None,
 ) -> None:
     if type(value) is not dict or frozenset(value) != _PAYLOAD_KEYS | {"signature"}:
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_binding_invalid")
     signature = value.get("signature")
     if (
         type(signature) is not dict
@@ -249,12 +282,12 @@ def _verify_admission(
         or type(signature.get("value")) is not str
         or _SHA64.fullmatch(signature["value"]) is None
     ):
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_signature_invalid")
     payload = {key: value[key] for key in sorted(_PAYLOAD_KEYS)}
     deadline_at = _parse_canonical_timestamp(payload["deadline_at"])
     current_time = now or datetime.now(timezone.utc)
     if current_time.tzinfo is None or current_time.utcoffset() is None:
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_binding_invalid")
     current_time = current_time.astimezone(timezone.utc)
     if (
         payload["contract_version"] != PRODUCTION_ADMISSION_VERSION
@@ -293,29 +326,36 @@ def _verify_admission(
         != payload["candidate_git_sha"]
         or any(env.get(name) != "true" for name in _FLAGS)
     ):
-        raise DirectorError("invalid_config")
-    secret = env.get("LIVEKIT_API_SECRET")
+        raise ProductionDirectorRuntimeUnavailable("admission_binding_invalid")
+    secret = env.get("MEELNI_TRANSCRIPT_INGEST_SECRET")
     if not isinstance(secret, str) or not secret:
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_secret_missing")
+    signing_key = hmac.new(
+        secret.encode("utf-8"), ADMISSION_KEY_CONTEXT, hashlib.sha256
+    ).digest()
     encoded = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
-    expected = hmac.new(secret.encode("utf-8"), ADMISSION_DOMAIN + encoded, hashlib.sha256).hexdigest()
+    expected = hmac.new(
+        signing_key, ADMISSION_DOMAIN + encoded, hashlib.sha256
+    ).hexdigest()
     if not hmac.compare_digest(expected, signature["value"]):
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_signature_invalid")
 
 
 def _parse_canonical_timestamp(value: object) -> datetime:
     if type(value) is not str or re.fullmatch(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", value
     ) is None:
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_binding_invalid")
     try:
         parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
             tzinfo=timezone.utc
         )
     except ValueError:
-        raise DirectorError("invalid_config") from None
+        raise ProductionDirectorRuntimeUnavailable(
+            "admission_binding_invalid"
+        ) from None
     if parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z") != value:
-        raise DirectorError("invalid_config")
+        raise ProductionDirectorRuntimeUnavailable("admission_binding_invalid")
     return parsed

@@ -38,6 +38,10 @@ NOW = datetime(2026, 8, 21, 20, 0, tzinfo=timezone.utc)
 class ProductionDirectorAdmissionTests(unittest.TestCase):
     def test_exact_admission_verifies_and_tampering_fails_closed(self):
         admission = signed_admission()
+        self.assertEqual(
+            admission["signature"]["value"],
+            "f0fabef7f113b0b0d5496377fdf3d1262fb5ba2d6f1284106f9552d1b57b3cd7",
+        )
         _verify_admission(
             admission,
             env=enabled_env(),
@@ -94,7 +98,60 @@ class ProductionDirectorAdmissionTests(unittest.TestCase):
             now=NOW,
         )
         self.assertEqual(result.status, "unavailable")
+        self.assertEqual(result.reason, "admission_binding_invalid")
         self.assertIsNone(result.adapter)
+
+    def test_admission_uses_explicit_cross_service_secret_not_worker_livekit_secret(self):
+        env = enabled_env()
+        env["LIVEKIT_API_SECRET"] = "provider-injected-different-secret"
+        _verify_admission(
+            signed_admission(),
+            env=env,
+            expected_session_id=SESSION,
+            expected_room_name=ROOM,
+            expected_deadline_at=DEADLINE,
+            now=NOW,
+        )
+
+        missing = enabled_env()
+        missing.pop("MEELNI_TRANSCRIPT_INGEST_SECRET")
+        result = create_production_director_runtime(
+            signed_admission(),
+            env=missing,
+            expected_session_id=SESSION,
+            expected_room_name=ROOM,
+            expected_deadline_at=DEADLINE,
+            now=NOW,
+        )
+        self.assertEqual(
+            (result.status, result.reason),
+            ("unavailable", "admission_secret_missing"),
+        )
+
+    def test_admission_and_transport_failures_have_closed_content_free_reasons(self):
+        tampered = {
+            **signed_admission(),
+            "signature": {"algorithm": "hmac-sha256", "value": "0" * 64},
+        }
+        signature = create_production_director_runtime(
+            tampered,
+            env=enabled_env(),
+            expected_session_id=SESSION,
+            expected_room_name=ROOM,
+            expected_deadline_at=DEADLINE,
+            now=NOW,
+        )
+        provider = create_production_director_runtime(
+            signed_admission(),
+            env=enabled_env(),
+            expected_session_id=SESSION,
+            expected_room_name=ROOM,
+            expected_deadline_at=DEADLINE,
+            now=NOW,
+        )
+        self.assertEqual(signature.reason, "admission_signature_invalid")
+        self.assertEqual(provider.reason, "provider_api_key_missing")
+        self.assertNotIn(SECRET, signature.reason + provider.reason)
 
     def test_ledger_reserves_before_attempt_and_stops_at_session_ceiling(self):
         ledger = ProductionDirectorSpendLedger()
@@ -170,15 +227,21 @@ def payload(*, deadline_at=DEADLINE):
 def signed_admission(*, deadline_at=DEADLINE):
     value = payload(deadline_at=deadline_at)
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    derived = hmac.new(
+        SECRET.encode(),
+        b"meelni/adaptive-interviewer-production-admission-key/v1",
+        hashlib.sha256,
+    ).digest()
     signature = hmac.new(
-        SECRET.encode(), ADMISSION_DOMAIN + encoded, hashlib.sha256
+        derived, ADMISSION_DOMAIN + encoded, hashlib.sha256
     ).hexdigest()
     return {**value, "signature": {"algorithm": "hmac-sha256", "value": signature}}
 
 
 def enabled_env():
     return {
-        "LIVEKIT_API_SECRET": SECRET,
+        "LIVEKIT_API_SECRET": "provider-injected-worker-secret",
+        "MEELNI_TRANSCRIPT_INGEST_SECRET": SECRET,
         "MEELNI_ADAPTIVE_INTERVIEWER_STAGE": "candidate_default",
         "MEELNI_ADAPTIVE_INTERVIEWER_ENVIRONMENT": "production",
         "MEELNI_ADAPTIVE_INTERVIEWER_COHORT": "canary",
