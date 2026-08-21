@@ -1074,6 +1074,92 @@ class InterviewDirectorShadowSession:
             self._emit_outcome("malformed", freshness="missing")
             return "malformed"
 
+    def observe_synthetic_transcript(
+        self,
+        transcript_event: Mapping[str, object],
+        *,
+        source_turn_id: str | None,
+    ) -> str:
+        """Observe one ephemeral Shadow turn without claiming persistence."""
+        if not self.enabled:
+            return "disabled"
+        finalized_available_at = self._monotonic()
+        state = self._read_state()
+        if state is None:
+            return "disabled"
+        try:
+            if set(transcript_event) != {
+                "contract_version",
+                "event_id",
+                "writer_id",
+                "writer_generation",
+                "sequence",
+                "session_id",
+                "room_name",
+                "speaker",
+                "text",
+                "is_final",
+                "delivery_state",
+                "started_at",
+                "ended_at",
+                "audio_duration_ms",
+                "section",
+            }:
+                raise DirectorError("invalid_observation")
+            event_id = transcript_event.get("event_id")
+            sequence = transcript_event.get("sequence")
+            text = transcript_event.get("text")
+            ended_at = transcript_event.get("ended_at")
+            writer_generation = transcript_event.get("writer_generation")
+            if (
+                transcript_event.get("contract_version") != 2
+                or transcript_event.get("is_final") is not True
+                or transcript_event.get("delivery_state")
+                not in ("delivered", "partially_delivered")
+                or transcript_event.get("session_id") != self.session_id
+                or transcript_event.get("writer_id")
+                != state["active_writer"]["writer_id"]
+                or writer_generation
+                != state["active_writer"]["writer_generation"]
+                or not _identifier(source_turn_id)
+                or not _identifier(event_id)
+                or type(sequence) is not int
+                or not isinstance(text, str)
+                or not isinstance(ended_at, str)
+                or type(writer_generation) is not int
+            ):
+                raise DirectorError("invalid_observation")
+            speaker = transcript_event.get("speaker")
+            observation = DirectorTurnObservation(
+                session_id=self.session_id,
+                writer_id=str(transcript_event["writer_id"]),
+                writer_generation=writer_generation,
+                turn_id=source_turn_id,
+                transcript_revision=str(event_id),
+                sequence=sequence,
+                speaker="candidate" if speaker == "user" else "interviewer",
+                finality="finalized",
+                text=text,
+                observed_at=ended_at,
+            )
+            observation.validate(self.config.limits)
+            if speaker == "user":
+                return self._observe_candidate(
+                    observation,
+                    state,
+                    finalized_available_at=finalized_available_at,
+                )
+            if speaker == "interviewer":
+                self._remember_final(observation)
+                return "observed"
+            raise DirectorError("invalid_observation")
+        except DirectorError:
+            self._emit_outcome("malformed", freshness="missing")
+            return "malformed"
+        except Exception:
+            self._emit_outcome("malformed", freshness="missing")
+            return "malformed"
+
     def record_delivered_move(self, delivery: DeliveredInterviewerMove) -> str:
         if not self.enabled or self._store is None:
             return "disabled"

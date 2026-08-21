@@ -6,6 +6,7 @@ import {
   PRODUCTION_PROJECT_SHADOW_AGENT_ID,
   assertCurrentProductionProjectShadowDeployment,
   buildProductionProjectShadowRuntimeSecrets,
+  buildProductionProjectShadowSyntheticRoomMetadata,
   consumeProductionProjectShadowCellAuthorization,
   productionProjectShadowCellAuthorizationInput,
 } from "./adaptive-interviewer-production-project-shadow";
@@ -34,6 +35,7 @@ const ORDINARY_SECRETS = [
   "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4",
   "",
 ].join("\n");
+const PROTECTION_BYPASS = "v".repeat(32);
 
 test("binds one Production-project Shadow cell to closed independent hashes", () => {
   const result = productionProjectShadowCellAuthorizationInput(BASE);
@@ -199,13 +201,14 @@ test("builds an exact complete Shadow secret replacement without exposing values
     runId: BASE.runId,
     candidateGitSha: BASE.candidateGitSha,
     controlPlaneUrl: BASE.controlPlaneUrl,
+    vercelBypassSecret: PROTECTION_BYPASS,
   });
-  assert.equal(combined.trimEnd().split("\n").length, 13);
-  assert.match(
-    combined,
-    /LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4/
-  );
+  assert.equal(combined.trimEnd().split("\n").length, 14);
+  assert.match(combined, /LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4/);
   assert.match(combined, /MEELNI_PREVIEW_SHADOW_EXECUTION=enabled/);
+  assert.match(combined, /OPIK_TRACING_ENABLED=false/);
+  assert.match(combined, /OPIK_CAPTURE_CONTENT=false/);
+  assert.match(combined, /MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=v{32}/);
   assert.match(
     combined,
     new RegExp(`MEELNI_PREVIEW_SHADOW_RUN_ID=${BASE.runId}`)
@@ -217,6 +220,7 @@ test("builds an exact complete Shadow secret replacement without exposing values
         runId: BASE.runId,
         candidateGitSha: BASE.candidateGitSha,
         controlPlaneUrl: BASE.controlPlaneUrl,
+        vercelBypassSecret: PROTECTION_BYPASS,
       }),
     /livekit_runtime_secrets_invalid/
   );
@@ -230,8 +234,38 @@ test("builds an exact complete Shadow secret replacement without exposing values
         runId: BASE.runId,
         candidateGitSha: BASE.candidateGitSha,
         controlPlaneUrl: BASE.controlPlaneUrl,
+        vercelBypassSecret: PROTECTION_BYPASS,
       }),
     /livekit_runtime_secrets_invalid/
+  );
+});
+
+test("builds only the closed synthetic room contract", () => {
+  assert.deepEqual(
+    buildProductionProjectShadowSyntheticRoomMetadata({
+      sessionBindingSha256: BASE.sessionBindingSha256,
+      round: BASE.round,
+      voiceCondition: BASE.voiceCondition,
+      expiresAt: BASE.expiresAt,
+    }),
+    {
+      contract_version: "adaptive-interviewer-preview-shadow-synthetic-room.v1",
+      topology: "production_project_shadow",
+      session_binding_sha256: BASE.sessionBindingSha256,
+      round: BASE.round,
+      voice_condition: BASE.voiceCondition,
+      expires_at: BASE.expiresAt,
+    }
+  );
+  assert.throws(
+    () =>
+      buildProductionProjectShadowSyntheticRoomMetadata({
+        sessionBindingSha256: BASE.sessionBindingSha256,
+        round: BASE.round,
+        voiceCondition: BASE.voiceCondition,
+        expiresAt: "not-a-time",
+      }),
+    /production_project_shadow_cell_invalid/
   );
 });
 

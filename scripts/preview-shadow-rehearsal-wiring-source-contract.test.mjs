@@ -30,6 +30,34 @@ test("Preview-shadow rehearsal wiring has only the isolated interview worker con
     ]),
     ["agent/interview/agent.py"]
   );
+  assert.deepEqual(
+    grep("shared.preview_shadow_voice_session", [
+      "agent/interview",
+      "agent/demo",
+      "agent/agent.py",
+    ]),
+    ["agent/interview/agent.py"]
+  );
+});
+
+test("synthetic Shadow voice cannot reach customer authority or persistence", () => {
+  const source = readFileSync(
+    "agent/shared/preview_shadow_voice_session.py",
+    "utf8"
+  );
+  for (const forbidden of [
+    "transcript_ingest",
+    "register_runtime_writer",
+    "read_runtime_lifecycle_snapshot",
+    "InterviewControllerAdapter",
+    "SessionScopedInterviewerTools",
+    "DirectorInfluenceGate",
+    "observe_persisted_transcript",
+  ]) {
+    assert.equal(source.includes(forbidden), false, forbidden);
+  }
+  assert.match(source, /observe_synthetic_transcript/);
+  assert.match(source, /publish_transcript_event/);
 });
 
 test("rehearsal workflow and Python bootstrap have no ambient provider or flag lookup", () => {
@@ -84,9 +112,11 @@ test("Production-project Shadow topology has no customer or package consumer", (
 });
 
 function grep(pattern, roots) {
-  const tracked = execFileSync("git", ["ls-files", "--", ...roots], {
-    encoding: "utf8",
-  })
+  const tracked = execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...roots],
+    { encoding: "utf8" }
+  )
     .trim()
     .split("\n")
     .filter(Boolean);
