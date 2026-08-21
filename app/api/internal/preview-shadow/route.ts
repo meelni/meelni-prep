@@ -16,6 +16,7 @@ import { createDurablePreviewShadowControlPlaneWorkflow } from "@/lib/workflows/
 import {
   createPreviewShadowActivationContext,
   createPreviewShadowActivationRequestWorkflow,
+  currentPreviewShadowActivationTime,
   isPreviewShadowActivationRequest,
   parsePreviewShadowActivationRequest,
   PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION,
@@ -95,7 +96,7 @@ function createActivationWorkflow(
       verify: (request) => authenticatePreviewShadowOwnerDecision(request),
     },
     ownerKeyRegistry: ownerKeyRegistry as PreviewShadowOwnerKeyRegistry,
-    clock: () => new Date(),
+    clock: currentPreviewShadowActivationTime,
   });
   return createPreviewShadowActivationRequestWorkflow({
     controlPlane,
