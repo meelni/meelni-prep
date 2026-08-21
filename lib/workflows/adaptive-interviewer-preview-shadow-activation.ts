@@ -14,6 +14,16 @@ export const PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION =
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 
+export function currentPreviewShadowActivationTime(
+  timestamp = Date.now()
+): Date {
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) invalid();
+  const wholeSecond = Math.floor(timestamp / 1_000) * 1_000;
+  const snapshot = new Date(wholeSecond);
+  if (!Number.isFinite(snapshot.getTime())) invalid();
+  return snapshot;
+}
+
 export interface PreviewShadowActivationReceipt {
   contract_version: typeof PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION;
   outcome: "activated" | "replayed";
