@@ -539,6 +539,43 @@ class InterviewDirectorSchemaAndStoreTests(unittest.TestCase):
 
 
 class InterviewDirectorRunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_persisted_observation_keeps_unknown_mapping_failures_closed(self):
+        class HostileMapping(dict):
+            def get(self, _key, _default=None):
+                raise RuntimeError("private-provider-body")
+
+        harness = DirectorHarness()
+        harness.session.start()
+        self.assertEqual(
+            harness.session.observe_persisted_transcript(
+                HostileMapping(harness.user_event()),
+                source_turn_id="turn-1",
+            ),
+            "malformed",
+        )
+        await harness.session.shutdown()
+
+    async def test_synthetic_final_uses_distinct_ephemeral_observation_contract(self):
+        harness = DirectorHarness()
+        harness.session.start()
+        event = {
+            **harness.user_event(),
+            "room_name": "preview-shadow-room",
+            "started_at": iso(-8),
+            "audio_duration_ms": 8_000,
+            "section": "product_sense",
+        }
+        self.assertEqual(
+            harness.session.observe_synthetic_transcript(
+                event,
+                source_turn_id="turn-1",
+            ),
+            "scheduled",
+        )
+        self.assertTrue(await harness.session.wait_idle())
+        self.assertIsNotNone(harness.session.store)
+        await harness.session.shutdown()
+
     async def test_finalized_turn_produces_typed_bounded_recommendation(self):
         harness = DirectorHarness()
         harness.session.start()

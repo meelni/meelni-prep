@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
-from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from shared.preview_shadow_runtime import (
@@ -20,6 +20,10 @@ PREVIEW_SHADOW_WORKER_REQUEST_VERSION = (
 )
 _MAXIMUM_REQUEST_BYTES = 64 * 1024
 _MAXIMUM_RESPONSE_BYTES = 4 * 1024
+_PROTECTION_BYPASS = re.compile(r"^[A-Za-z0-9_-]{16,512}$")
+_CONTROL_PLANE_ENDPOINT = (
+    "https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow"
+)
 
 
 class PreviewShadowControlPlaneClientError(Exception):
@@ -28,7 +32,11 @@ class PreviewShadowControlPlaneClientError(Exception):
 
 class PreviewShadowJsonPoster(Protocol):
     def __call__(
-        self, endpoint: str, payload: Mapping[str, object], timeout_seconds: float
+        self,
+        endpoint: str,
+        payload: Mapping[str, object],
+        timeout_seconds: float,
+        protection_bypass_secret: str,
     ) -> Mapping[str, object]: ...
 
 
@@ -36,6 +44,7 @@ class PreviewShadowJsonPoster(Protocol):
 class HttpDurableControlPlaneAdmissionVerifier:
     endpoint: str
     _worker_evidence_capability: str = field(repr=False, compare=False)
+    _protection_bypass_secret: str = field(repr=False, compare=False)
     _post_json: PreviewShadowJsonPoster = field(repr=False, compare=False)
     contract_version: str = PREVIEW_SHADOW_DURABLE_ADMISSION_VERIFIER_VERSION
 
@@ -44,11 +53,17 @@ class HttpDurableControlPlaneAdmissionVerifier:
         *,
         endpoint: str,
         worker_evidence_capability: str,
+        protection_bypass_secret: str,
         post_json: PreviewShadowJsonPoster = None,  # type: ignore[assignment]
     ) -> None:
         object.__setattr__(self, "endpoint", _canonical_endpoint(endpoint))
         object.__setattr__(
             self, "_worker_evidence_capability", worker_evidence_capability
+        )
+        object.__setattr__(
+            self,
+            "_protection_bypass_secret",
+            _canonical_bypass_secret(protection_bypass_secret),
         )
         object.__setattr__(self, "_post_json", post_json or _post_json)
         object.__setattr__(
@@ -76,6 +91,7 @@ class HttpDurableControlPlaneAdmissionVerifier:
                     },
                 },
                 5.0,
+                self._protection_bypass_secret,
             )
             return (
                 _exact_keys(
@@ -107,6 +123,7 @@ async def submit_preview_shadow_terminal_evidence(
     *,
     endpoint: str,
     submission: Mapping[str, object],
+    protection_bypass_secret: str,
     post_json: PreviewShadowJsonPoster = None,  # type: ignore[assignment]
 ) -> Mapping[str, object]:
     exact = _snapshot_submission(submission)
@@ -129,6 +146,7 @@ async def submit_preview_shadow_terminal_evidence(
                 _canonical_endpoint(endpoint),
                 payload,
                 5.0,
+                _canonical_bypass_secret(protection_bypass_secret),
             )
             break
         except Exception:
@@ -165,7 +183,10 @@ async def submit_preview_shadow_terminal_evidence(
 
 
 def _post_json(
-    endpoint: str, payload: Mapping[str, object], timeout_seconds: float
+    endpoint: str,
+    payload: Mapping[str, object],
+    timeout_seconds: float,
+    protection_bypass_secret: str,
 ) -> Mapping[str, object]:
     encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     if not encoded or len(encoded) > _MAXIMUM_REQUEST_BYTES:
@@ -174,7 +195,12 @@ def _post_json(
         endpoint,
         data=encoded,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-vercel-protection-bypass": _canonical_bypass_secret(
+                protection_bypass_secret
+            ),
+        },
     )
     with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
         if response.status != 200:
@@ -192,23 +218,14 @@ def _post_json(
 
 
 def _canonical_endpoint(value: str) -> str:
-    if type(value) is not str or len(value) > 2_048:
+    if type(value) is not str or value != _CONTROL_PLANE_ENDPOINT:
         raise PreviewShadowControlPlaneClientError("endpoint_invalid")
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        raise PreviewShadowControlPlaneClientError("endpoint_invalid") from None
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or parsed.path != "/api/internal/preview-shadow"
-        or parsed.port not in {None, 443}
-    ):
-        raise PreviewShadowControlPlaneClientError("endpoint_invalid")
+    return value
+
+
+def _canonical_bypass_secret(value: str) -> str:
+    if type(value) is not str or _PROTECTION_BYPASS.fullmatch(value) is None:
+        raise PreviewShadowControlPlaneClientError("protection_bypass_invalid")
     return value
 
 

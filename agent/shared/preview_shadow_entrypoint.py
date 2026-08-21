@@ -50,6 +50,9 @@ def create_preview_shadow_entrypoint_runtime(
         run_id = env.get("MEELNI_PREVIEW_SHADOW_RUN_ID")
         candidate = env.get("MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA")
         endpoint = env.get("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL")
+        protection_bypass_secret = env.get(
+            "MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"
+        )
         openai_key = env.get("OPENAI_API_KEY")
         room_match = _ROOM.fullmatch(room_name)
         if (
@@ -60,6 +63,7 @@ def create_preview_shadow_entrypoint_runtime(
             or type(candidate) is not str
             or not _GIT_SHA.fullmatch(candidate)
             or type(endpoint) is not str
+            or type(protection_bypass_secret) is not str
             or type(openai_key) is not str
             or len(openai_key) < 20
             or len(openai_key) > 4_096
@@ -72,6 +76,7 @@ def create_preview_shadow_entrypoint_runtime(
         verifier = HttpDurableControlPlaneAdmissionVerifier(
             endpoint=endpoint,
             worker_evidence_capability=capability,  # type: ignore[arg-type]
+            protection_bypass_secret=protection_bypass_secret,
             **({"post_json": post_json} if post_json is not None else {}),
         )
 

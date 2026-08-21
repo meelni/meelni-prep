@@ -63,10 +63,19 @@ A stale or changed deployment requires a fresh room action. LiveKit does not
 offer version-selective dispatch, so any concurrent human interview-worker
 deployment is forbidden for the duration of this one-cell operation.
 
-The worker authenticates durable admission before constructing the provider
-transport. It cannot speak, mutate controller authority, persist or publish a
-transcript, generate feedback, or affect customer output. Ordinary interview
+The worker authenticates durable admission before constructing any provider
+transport, delegates to the dedicated synthetic runner and returns before the
+ordinary interview runtime. It may speak to the owner and project final turns
+only into that private room's in-memory canary UI. It cannot construct customer
+controller/tools/influence, persist or publish a canonical/customer transcript,
+generate feedback, mutate credits or affect customer output. Ordinary interview
 metadata cannot enter the Shadow branch.
+
+The Deployment-Protected staging endpoint also requires the temporary
+`x-vercel-protection-bypass` header. This edge credential does not replace the
+signed activation, durable lease or worker capability. The exact Shadow worker
+snapshot disables Opik tracing/content, and the bypass is removed and revoked
+when the ordinary eight-key worker is restored.
 
 ## Evidence and stop
 
