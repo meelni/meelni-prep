@@ -371,7 +371,7 @@ function exactIntent(
     typeof candidate.candidateGitSha !== "string" ||
     !GIT_SHA.test(candidate.candidateGitSha) ||
     !Number.isSafeInteger(candidate.expectedRevision) ||
-    candidate.expectedRevision < 1 ||
+    candidate.expectedRevision < 0 ||
     typeof candidate.sessionBindingSha256 !== "string" ||
     !SHA256.test(candidate.sessionBindingSha256) ||
     typeof candidate.expiresAt !== "string" ||

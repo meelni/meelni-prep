@@ -658,7 +658,7 @@ async function prepareCell(input: {
     !ROUNDS.has(input.round as never) ||
     !CONDITIONS.has(input.voiceCondition as never) ||
     !Number.isSafeInteger(input.expectedRevision) ||
-    input.expectedRevision < 1
+    input.expectedRevision < 0
   ) {
     throw new Error("preview_shadow_operator_cell_invalid");
   }
@@ -748,6 +748,12 @@ async function stopRun(input: {
   reason: string;
   evidenceSha256: string;
 }) {
+  if (
+    !Number.isSafeInteger(input.expectedRevision) ||
+    input.expectedRevision < 0
+  ) {
+    throw new Error("preview_shadow_operator_activation_invalid");
+  }
   const repoRoot = await realpath(process.cwd());
   const activation = parseJson(
     await readPreviewShadowPrivateFile(input.activationPath, repoRoot),
@@ -756,9 +762,7 @@ async function stopRun(input: {
   if (
     activation.contract_version !== PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION ||
     !activation.run ||
-    activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot) ||
-    !Number.isSafeInteger(input.expectedRevision) ||
-    input.expectedRevision < 1
+    activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot)
   ) {
     throw new Error("preview_shadow_operator_activation_invalid");
   }
