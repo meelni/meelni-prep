@@ -1,0 +1,15 @@
+{
+  "contractVersion": "sav-496-runtime-settlement-regression.v1",
+  "durationSeconds": 496,
+  "writerGeneration": 1,
+  "committedSequence": 28,
+  "lastObservedSequence": 28,
+  "totalTurns": 25,
+  "candidateTurns": 10,
+  "substantiveCandidateResponses": 10,
+  "scoreableCandidateResponses": 3,
+  "preservingInterviewerMarkers": 3,
+  "lateRuntimeSettledConflicts": 1,
+  "expectedUnresolvedSettlementState": "missing",
+  "expectedFeedbackMode": "evidence_limited_only"
+}

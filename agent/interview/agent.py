@@ -801,6 +801,7 @@ async def entrypoint(ctx: JobContext):
     runtime_settlement_cutoff: float | None = None
     runtime_settlement_evidence_gate = RuntimeSettlementEvidenceGate()
     runtime_settlement_session_fenced = False
+    runtime_settlement_interruption: asyncio.Future[None] | None = None
     runtime_settlement_lock = asyncio.Lock()
     runtime_settlement_requests = RuntimeSettlementRequestDispatcher()
     server_settlement_tasks: set[asyncio.Task[object]] = set()
@@ -1413,6 +1414,7 @@ async def entrypoint(ctx: JobContext):
         result = await settle_session_speech(
             session,
             timeout_seconds=timeout_seconds,
+            interruption=runtime_settlement_interruption,
         )
         if result.settled:
             return True
@@ -1628,13 +1630,14 @@ async def entrypoint(ctx: JobContext):
 
         def install_local_fence() -> None:
             nonlocal fence_attempted
+            nonlocal runtime_settlement_interruption
             nonlocal runtime_settlement_session_fenced
             fence_attempted = True
             fence_started_at = time.monotonic()
             if runtime_settlement_session_fenced:
                 apply_evidence_cutoff(cutoff_timestamp)
             else:
-                fence_session_for_runtime_settlement(
+                runtime_settlement_interruption = fence_session_for_runtime_settlement(
                     session,
                     cutoff_at=cutoff_timestamp,
                     set_evidence_cutoff=apply_evidence_cutoff,

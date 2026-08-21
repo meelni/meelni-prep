@@ -6,6 +6,8 @@
 - [x] Freeze cutoff and stop all runtime input/output/generation at trusted End.
 - [x] Reject post-cutoff callbacks locally without treating web `409` as success.
 - [x] Preserve a prioritized settlement control acknowledgement over hung data.
+      Superseded by SAV-496 after Production proved the priority could close ingest
+      ahead of usable pre-cutoff evidence.
 - [x] Add sanitized targeting, identity-boundary, ordering, and control-lane tests.
 - [x] Run focused and broad local verification.
 - [ ] Publish a ready SAV-412 pull request and monitor hosted checks.

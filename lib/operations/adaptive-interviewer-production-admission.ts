@@ -15,6 +15,8 @@ export const ADAPTIVE_INTERVIEWER_ROLLOUT_CONFIG_SHA256 =
 
 const ADMISSION_DOMAIN =
   "meelni.adaptive-interviewer.production-admission.v1\0";
+const ADMISSION_KEY_CONTEXT =
+  "meelni/adaptive-interviewer-production-admission-key/v1";
 const SHA40 = /^[a-f0-9]{40}$/u;
 const SHA64 = /^[a-f0-9]{64}$/u;
 const SESSION_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -76,14 +78,14 @@ export function resolveProductionAdaptiveAdmissionConfig(
 
 export function createProductionAdaptiveAdmission(input: {
   config: ProductionAdaptiveAdmissionConfig;
-  livekitApiSecret: string;
+  crossServiceSecret: string;
   sessionId: string;
   roomName: string;
   requestFingerprint: string;
   deadlineAt: string;
 }): AdaptiveInterviewerProductionAdmission {
   if (
-    !input.livekitApiSecret ||
+    !input.crossServiceSecret ||
     !SESSION_TOKEN.test(input.sessionId) ||
     !SESSION_TOKEN.test(input.roomName) ||
     !SHA64.test(input.requestFingerprint) ||
@@ -120,7 +122,10 @@ export function createProductionAdaptiveAdmission(input: {
     session_id: input.sessionId,
     stage: "candidate_default" as const,
   };
-  const value = createHmac("sha256", input.livekitApiSecret)
+  const signingKey = createHmac("sha256", input.crossServiceSecret)
+    .update(ADMISSION_KEY_CONTEXT)
+    .digest();
+  const value = createHmac("sha256", signingKey)
     .update(ADMISSION_DOMAIN)
     .update(canonicalJson(payload))
     .digest("hex");

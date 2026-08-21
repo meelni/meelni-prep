@@ -1,9 +1,11 @@
 # Design
 
 The authenticated interview-start workflow is already durable and completes
-credit reservation before room creation. It will derive a closed admission from
-that committed start and HMAC-sign it with the LiveKit shared secret. The nested
-room-metadata contract carries no credential and is deterministic on retry.
+credit reservation before room creation. It derives a closed admission from
+that committed start and HMAC-signs it with the admission-only key derived from
+the synchronized cross-service root. The nested room-metadata contract carries
+no credential and is deterministic on retry. SAV-496 clarifies that the
+worker-injected LiveKit project credential is not this authority.
 
 The Python room parser preserves the admission only after strict structural
 validation. A Production runtime factory verifies its signature and exact

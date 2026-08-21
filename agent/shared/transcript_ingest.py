@@ -1537,11 +1537,19 @@ class TranscriptIngestQueue:
                 ]
                 if not pending:
                     return
-                # A degraded settlement is the control-plane acknowledgement that
-                # lets the web tier stop waiting when evidence transport is hung.
-                pending.sort(key=lambda item: item.kind != "runtime_settlement")
+                # Settlement is a terminal barrier. It may consume reserved
+                # capacity, but it cannot close the web ingest boundary ahead of
+                # unresolved pre-cutoff evidence.
+                pending.sort(key=lambda item: item.kind == "runtime_settlement")
                 retry = False
                 for item in pending:
+                    if item.kind == "runtime_settlement" and any(
+                        candidate.kind != "runtime_settlement"
+                        and candidate.state in {"pending", "persisted"}
+                        for candidate in self._items.values()
+                    ):
+                        retry = True
+                        continue
                     retry = await self._deliver(item) or retry
                 if retry and any(
                     item.state in {"pending", "persisted"}

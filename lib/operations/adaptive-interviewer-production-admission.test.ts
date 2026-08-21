@@ -30,7 +30,7 @@ test("exact all-five Production configuration signs deterministic session author
   if (resolution.status !== "enabled") return;
   const first = createProductionAdaptiveAdmission({
     config: resolution.config,
-    livekitApiSecret: "test-livekit-secret",
+    crossServiceSecret: "test-livekit-secret",
     sessionId: SESSION,
     roomName: ROOM,
     requestFingerprint: "b".repeat(64),
@@ -38,7 +38,7 @@ test("exact all-five Production configuration signs deterministic session author
   });
   const replay = createProductionAdaptiveAdmission({
     config: resolution.config,
-    livekitApiSecret: "test-livekit-secret",
+    crossServiceSecret: "test-livekit-secret",
     sessionId: SESSION,
     roomName: ROOM,
     requestFingerprint: "b".repeat(64),
@@ -52,9 +52,27 @@ test("exact all-five Production configuration signs deterministic session author
   assert.match(first.signature.value, /^[a-f0-9]{64}$/u);
   assert.equal(
     first.signature.value,
-    "fea3c0422300347b1aa7d96b236a0f4287169410ebb832356fbef59fa1926399"
+    "f0fabef7f113b0b0d5496377fdf3d1262fb5ba2d6f1284106f9552d1b57b3cd7"
   );
   assert.doesNotMatch(JSON.stringify(first), /test-livekit-secret/u);
+});
+
+test("admission key is domain-separated from direct use of the cross-service root", () => {
+  const resolution = resolveProductionAdaptiveAdmissionConfig(enabledEnv());
+  assert.equal(resolution.status, "enabled");
+  if (resolution.status !== "enabled") return;
+  const admission = createProductionAdaptiveAdmission({
+    config: resolution.config,
+    crossServiceSecret: "test-livekit-secret",
+    sessionId: SESSION,
+    roomName: ROOM,
+    requestFingerprint: "b".repeat(64),
+    deadlineAt: DEADLINE,
+  });
+  assert.notEqual(
+    admission.signature.value,
+    "fea3c0422300347b1aa7d96b236a0f4287169410ebb832356fbef59fa1926399"
+  );
 });
 
 test("every launch flag and exact candidate/config binding is required", () => {
