@@ -45,6 +45,10 @@ import {
 import { createDurablePreviewShadowControlPlaneWorkflow } from "../lib/workflows/adaptive-interviewer-preview-shadow-control-plane";
 import { createPreviewShadowRehearsalWorkflow } from "../lib/workflows/adaptive-interviewer-preview-shadow-rehearsal";
 import {
+  PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION,
+  PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION,
+} from "../lib/workflows/adaptive-interviewer-preview-shadow-activation";
+import {
   createLiveKitInterviewProvider,
   type LiveKitEnvironment,
 } from "@meelni/integrations";
@@ -56,8 +60,6 @@ const REGISTRY = join(
   "config",
   "adaptive-interviewer-preview-shadow-owner-keys.json"
 );
-const ACTIVATION_RECEIPT_VERSION =
-  "adaptive-interviewer-preview-shadow-operator-activation.v1";
 const CELL_INTENT_VERSION =
   "adaptive-interviewer-preview-shadow-operator-cell-intent.v1";
 const CELL_CONNECTION_VERSION =
@@ -91,6 +93,16 @@ export async function runPreviewShadowOperatorCli(
       envFile: required(options, "env-file"),
       outputPath: required(options, "output-path"),
       keyRegistryPath: options["key-registry-path"] ?? REGISTRY,
+    });
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (command === "prepare-staging-activation-request") {
+    assertOnly(options, ["packet-directory", "artifact-path", "output-path"]);
+    const result = await prepareStagingActivationRequest({
+      packetDirectory: required(options, "packet-directory"),
+      artifactPath: required(options, "artifact-path"),
+      outputPath: required(options, "output-path"),
     });
     stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
@@ -276,7 +288,7 @@ async function activate(input: {
       output,
       `${JSON.stringify(
         {
-          contract_version: ACTIVATION_RECEIPT_VERSION,
+          contract_version: PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION,
           outcome: activated.outcome,
           run: activated.run,
         },
@@ -288,6 +300,58 @@ async function activate(input: {
   } finally {
     await client.end();
   }
+}
+
+async function prepareStagingActivationRequest(input: {
+  packetDirectory: string;
+  artifactPath: string;
+  outputPath: string;
+}) {
+  const repoRoot = await realpath(process.cwd());
+  const packetDirectory = await assertPreviewShadowExternalDirectory(
+    input.packetDirectory,
+    repoRoot
+  );
+  const [authorizationText, artifactText, capabilityText] = await Promise.all([
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, "authorization.json"),
+      repoRoot
+    ),
+    readPreviewShadowPrivateFile(input.artifactPath, repoRoot),
+    readPreviewShadowPrivateFile(
+      join(packetDirectory, PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_FILE),
+      repoRoot
+    ),
+  ]);
+  const authorization = parseJson(
+    authorizationText,
+    "preview_shadow_operator_authorization_invalid"
+  );
+  const artifact = parseJson(
+    artifactText,
+    "preview_shadow_operator_artifact_invalid"
+  );
+  const output = await assertPreviewShadowExternalCreateTarget(
+    input.outputPath,
+    repoRoot
+  );
+  const request = `${JSON.stringify({
+    contract_version: PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION,
+    action: "activate",
+    payload: {
+      artifact,
+      authorization,
+      run_control_capability: capabilityText.trim(),
+    },
+  })}\n`;
+  if (Buffer.byteLength(request, "utf8") > 64 * 1_024) {
+    throw new Error("preview_shadow_operator_activation_request_invalid");
+  }
+  await writePrivateFileCreateOnly(output, request);
+  return {
+    result: "staging_activation_request_prepared",
+    candidate_git_sha: resolveCleanGitCandidate(repoRoot),
+  };
 }
 
 async function startCell(input: {
@@ -425,7 +489,7 @@ async function prepareProductionProjectRuntime(input: {
     "preview_shadow_operator_activation_invalid"
   ) as { contract_version?: string; run?: DurablePreviewShadowRun };
   if (
-    activation.contract_version !== ACTIVATION_RECEIPT_VERSION ||
+    activation.contract_version !== PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION ||
     !activation.run ||
     activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot)
   ) {
@@ -594,7 +658,7 @@ async function prepareCell(input: {
     "preview_shadow_operator_activation_invalid"
   ) as { contract_version?: string; run?: DurablePreviewShadowRun };
   if (
-    activation.contract_version !== ACTIVATION_RECEIPT_VERSION ||
+    activation.contract_version !== PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION ||
     !activation.run ||
     activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot)
   ) {
@@ -675,7 +739,7 @@ async function stopRun(input: {
     "preview_shadow_operator_activation_invalid"
   ) as { contract_version?: string; run?: DurablePreviewShadowRun };
   if (
-    activation.contract_version !== ACTIVATION_RECEIPT_VERSION ||
+    activation.contract_version !== PREVIEW_SHADOW_ACTIVATION_RECEIPT_VERSION ||
     !activation.run ||
     activation.run.candidate_git_sha !== resolveCleanGitCandidate(repoRoot) ||
     !Number.isSafeInteger(input.expectedRevision) ||
@@ -938,6 +1002,7 @@ function usage() {
     "Preview-shadow operator",
     "",
     "activate --packet-directory PATH --artifact-path PATH --env-file PATH --output-path PATH",
+    "prepare-staging-activation-request --packet-directory PATH --artifact-path PATH --output-path PATH",
     "start-cell --activation-path PATH --cell-directory PATH --env-file PATH --expected-revision N --expires-at ISO --room-metadata-path PATH --round ROUND --voice-condition CONDITION",
     "prepare-production-project-runtime --activation-path PATH --control-plane-url URL --ordinary-secrets-path PATH --output-path PATH",
     "prepare-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --expected-revision N --expires-at ISO --round ROUND --voice-condition CONDITION",

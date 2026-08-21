@@ -6,6 +6,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { ADAPTIVE_INTERVIEWER_PREVIEW_SHADOW_CONFIGURATION_SHA256 } from "@meelni/agent";
 import {
   assertPreviewShadowOwnerDecisionAuthenticated,
+  PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN,
   type AuthenticatedPreviewShadowOwnerDecision,
 } from "@/lib/security/adaptive-interviewer-preview-shadow-owner-decision";
 import * as schema from "./schema";
@@ -43,8 +44,6 @@ export const PREVIEW_SHADOW_TERMINATION_ACKNOWLEDGEMENT_VERSION =
 export const PREVIEW_SHADOW_TERMINATION_ACKNOWLEDGEMENT_DIGEST_VERSION =
   "adaptive-interviewer-preview-shadow-termination-acknowledgement-digest.v1" as const;
 
-const RUN_CONTROL_CAPABILITY_DOMAIN =
-  "adaptive-interviewer-preview-shadow-run-control-capability.v1";
 const WORKER_EVIDENCE_CAPABILITY_DOMAIN =
   "adaptive-interviewer-preview-shadow-worker-evidence-capability.v1";
 const TERMINATION_CAPABILITY_DOMAIN =
@@ -323,10 +322,7 @@ export async function verifyDurablePreviewShadowSessionLeaseAdmission(
   input: { lease: unknown; workerEvidenceCapability: string }
 ): Promise<DurablePreviewShadowSessionLease> {
   return sanitized(async () => {
-    const request = exactRecord(input, [
-      "lease",
-      "workerEvidenceCapability",
-    ]);
+    const request = exactRecord(input, ["lease", "workerEvidenceCapability"]);
     const leaseCandidate = request.lease;
     if (
       leaseCandidate === null ||
@@ -401,8 +397,12 @@ async function activate(
     unauthenticated();
   }
   const runControlCapabilitySha256 = capabilityHash(
-    RUN_CONTROL_CAPABILITY_DOMAIN,
+    PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN,
     request.runControlCapability
+  );
+  assertCapability(
+    authenticated.runControlCapabilitySha256,
+    runControlCapabilitySha256
   );
   const runId = digest(PREVIEW_SHADOW_RUN_DIGEST_VERSION, {
     authorization_id: authenticated.authorizationId,
@@ -541,7 +541,7 @@ async function allocateSessionLease(
     request.workerEvidenceCapability
   );
   const workerAsRunControlCapabilitySha256 = capabilityHash(
-    RUN_CONTROL_CAPABILITY_DOMAIN,
+    PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN,
     request.workerEvidenceCapability
   );
   const terminationAsWorkerCapabilitySha256 = capabilityHash(
@@ -549,7 +549,7 @@ async function allocateSessionLease(
     request.terminationCapability
   );
   const terminationAsRunControlCapabilitySha256 = capabilityHash(
-    RUN_CONTROL_CAPABILITY_DOMAIN,
+    PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN,
     request.terminationCapability
   );
   if (
@@ -1108,7 +1108,7 @@ async function recordCohortStopEvent(
   const event = parseCohortStopEvent(request.event);
   if (event.run_id !== request.runId) invalid();
   const capabilitySha256 = capabilityHash(
-    RUN_CONTROL_CAPABILITY_DOMAIN,
+    PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN,
     request.runControlCapability
   );
   return database.transaction(async (tx) => {
@@ -1145,7 +1145,9 @@ async function recordCohortStopEvent(
     await tx
       .update(leaseTable)
       .set({ state: "revoked", updatedAt: databaseNow })
-      .where(and(eq(leaseTable.runId, run.runId), eq(leaseTable.state, "open")));
+      .where(
+        and(eq(leaseTable.runId, run.runId), eq(leaseTable.state, "open"))
+      );
     const updated = await tx
       .update(runTable)
       .set({ stopped: true, revision: nextRevision, updatedAt: databaseNow })
@@ -1433,7 +1435,8 @@ function assertExactActivationReplay(
     run.authorizationContractVersion !==
       authenticated.authorization.contract_version ||
     run.authorizationId !== authenticated.authorizationId ||
-    run.authorizationNonce !== authenticated.authorization.authorization_nonce ||
+    run.authorizationNonce !==
+      authenticated.authorization.authorization_nonce ||
     run.ownerDecisionArtifactSha256 !== authenticated.artifactSha256 ||
     run.ownerDecisionReference !== authenticated.ownerDecisionReference ||
     run.ownerDecidedAt.getTime() !==

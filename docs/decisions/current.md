@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Activate Preview Shadow Inside Trusted Staging](2026-08-20-activate-preview-shadow-inside-trusted-staging.md): Keep the sensitive Preview database connection inside Vercel while retaining exact-SHA owner authentication and durable one-use activation.
 - [Run Preview-Shadow Semantics On The Existing Production LiveKit Project](2026-08-20-run-preview-shadow-on-existing-production-livekit-project.md): Keep the durable lane at Preview shadow/exposure none, use the paid Production project only as transport, require independent Shadow and Production deploy authority, and restore the shared worker explicitly.
 - [Execute Preview Shadow Through A One-Use Operator Boundary](2026-08-20-execute-preview-shadow-through-one-use-operator-boundary.md): Authenticate one exact merged candidate through a dedicated operator command, allocate before LiveKit, and keep the Preview worker silent and unreachable from ordinary interviews.
 - [Wire Preview Shadow Through Explicit Durable Admission](2026-08-20-wire-preview-shadow-rehearsal-through-explicit-admission.md): Allocate before room construction, carry the lease only in private agent-job metadata, and require injected durable admission and transport dependencies while ordinary Production remains unwired.
