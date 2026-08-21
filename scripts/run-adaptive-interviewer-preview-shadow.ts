@@ -63,7 +63,7 @@ const REGISTRY = join(
 const CELL_INTENT_VERSION =
   "adaptive-interviewer-preview-shadow-operator-cell-intent.v1";
 const CELL_CONNECTION_VERSION =
-  "adaptive-interviewer-preview-shadow-operator-cell-connection.v1";
+  "adaptive-interviewer-preview-shadow-operator-cell-connection.v2";
 const PREVIEW_LIVEKIT_URL = "wss://meelni-preview-dk7443ua.livekit.cloud";
 const PREVIEW_AGENT_NAME = "meelni-preview-interview";
 const ROUNDS = new Set(
@@ -406,10 +406,18 @@ async function startCell(input: {
         `${JSON.stringify(
           {
             contract_version: CELL_CONNECTION_VERSION,
+            topology: "preview_project_shadow",
             run_id: result.run.run_id,
             lease_id: result.lease_id,
+            candidate_git_sha: result.run.candidate_git_sha,
+            preview_shadow_configuration_sha256:
+              result.run.preview_shadow_configuration_sha256,
+            selected_candidate_configuration_sha256:
+              result.run.selected_candidate_configuration_sha256,
+            session_binding_sha256: binding,
             round: input.round,
             voice_condition: input.voiceCondition,
+            expires_at: input.expiresAt,
             room: result.room,
           },
           null,
@@ -603,8 +611,15 @@ async function startProductionProjectCell(input: {
             topology: "production_project_shadow",
             run_id: result.run.run_id,
             lease_id: result.lease_id,
+            candidate_git_sha: result.run.candidate_git_sha,
+            preview_shadow_configuration_sha256:
+              result.run.preview_shadow_configuration_sha256,
+            selected_candidate_configuration_sha256:
+              result.run.selected_candidate_configuration_sha256,
+            session_binding_sha256: binding,
             round: input.round,
             voice_condition: input.voiceCondition,
+            expires_at: input.expiresAt,
             room: result.room,
           },
           null,
