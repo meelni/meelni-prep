@@ -64,6 +64,19 @@ class PreviewShadowEntrypointTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertEqual(self.calls, [])
 
+    def test_ordinary_production_metadata_never_enters_shadow_even_when_enabled(self):
+        ordinary = json.dumps(
+            {
+                "session_id": "session_ordinary",
+                "candidate_identity": "candidate_ordinary",
+            },
+            separators=(",", ":"),
+        )
+        self.assertFalse(is_preview_shadow_job_metadata(""))
+        self.assertFalse(is_preview_shadow_job_metadata("{}"))
+        self.assertFalse(is_preview_shadow_job_metadata(ordinary))
+        self.assertEqual(self.calls, [])
+
     def test_http_admission_binds_exact_run_lease_and_revision(self):
         verifier = HttpDurableControlPlaneAdmissionVerifier(
             endpoint="https://staging.example.test/api/internal/preview-shadow",

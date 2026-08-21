@@ -15,6 +15,9 @@ test("Preview-shadow operator help is provider-free and content-free", async () 
   assert.equal(status, 0);
   assert.match(output, /Preview-shadow operator/);
   assert.match(output, /--packet-directory PATH/);
+  assert.match(output, /prepare-production-project-runtime/);
+  assert.match(output, /prepare-production-project-cell/);
+  assert.match(output, /start-production-project-cell/);
   assert.doesNotMatch(output, /token|capability\.txt|DATABASE_URL/);
 });
 
