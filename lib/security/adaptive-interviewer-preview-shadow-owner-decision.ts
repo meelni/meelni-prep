@@ -12,11 +12,13 @@ import {
 } from "@meelni/agent";
 
 export const PREVIEW_SHADOW_OWNER_DECISION_CONTRACT =
-  "meelni.adaptive-interviewer-preview-shadow-owner-decision.v1" as const;
+  "meelni.adaptive-interviewer-preview-shadow-owner-decision.v2" as const;
 export const PREVIEW_SHADOW_OWNER_KEY_REGISTRY_CONTRACT =
   "meelni.adaptive-interviewer-preview-shadow-owner-key-registry.v1" as const;
 export const PREVIEW_SHADOW_OWNER_DECISION_DIGEST_CONTRACT =
-  "meelni.adaptive-interviewer-preview-shadow-owner-decision-digest.v1" as const;
+  "meelni.adaptive-interviewer-preview-shadow-owner-decision-digest.v2" as const;
+export const PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN =
+  "adaptive-interviewer-preview-shadow-run-control-capability.v1" as const;
 export const PREVIEW_SHADOW_OWNER_ID = "saviii" as const;
 export const PREVIEW_SHADOW_OWNER_ROLE = "human_product_owner" as const;
 export const PREVIEW_SHADOW_OWNER_APPROVAL =
@@ -50,6 +52,7 @@ const PAYLOAD_KEYS = [
   "preview_influence_authorized",
   "preview_shadow_configuration_sha256",
   "production_authorized",
+  "run_control_capability_sha256",
   "selected_candidate_configuration_sha256",
   "signing_key_id",
   "target_cohort",
@@ -70,6 +73,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const KEY_ID = /^[A-Za-z0-9._-]{1,80}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const CAPABILITY = /^[A-Za-z0-9_-]{43}$/;
 const DECISION_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$/;
 
 export interface PreviewShadowOwnerDecisionPayload {
@@ -90,6 +94,7 @@ export interface PreviewShadowOwnerDecisionPayload {
   preview_influence_authorized: false;
   preview_shadow_configuration_sha256: string;
   production_authorized: false;
+  run_control_capability_sha256: string;
   selected_candidate_configuration_sha256: string;
   signing_key_id: string;
   target_cohort: "shadow";
@@ -139,6 +144,7 @@ export interface AuthenticatedPreviewShadowOwnerDecision {
   readonly ownerDecidedAt: string;
   readonly authorizationExpiresAt: string;
   readonly ownerSigningKeyId: string;
+  readonly runControlCapabilitySha256: string;
   readonly candidateGitSha: string;
   readonly previewShadowConfigurationSha256: string;
   readonly selectedCandidateConfigurationSha256: string;
@@ -179,12 +185,35 @@ export function previewShadowOwnerDecisionSignatureMessage(
   );
 }
 
+export function previewShadowRunControlCapabilitySha256(
+  value: unknown
+): string {
+  if (typeof value !== "string" || !CAPABILITY.test(value)) {
+    throw new Error("preview_shadow_run_control_capability_invalid");
+  }
+  let decoded: Buffer;
+  try {
+    decoded = Buffer.from(value, "base64url");
+  } catch {
+    throw new Error("preview_shadow_run_control_capability_invalid");
+  }
+  if (decoded.length !== 32 || decoded.toString("base64url") !== value) {
+    throw new Error("preview_shadow_run_control_capability_invalid");
+  }
+  return createHash("sha256")
+    .update(PREVIEW_SHADOW_RUN_CONTROL_CAPABILITY_DOMAIN)
+    .update("\0")
+    .update(decoded)
+    .digest("hex");
+}
+
 export function authenticatePreviewShadowOwnerDecision(input: {
   artifact: unknown;
   authorization: unknown;
   context: PreviewShadowActivationContext;
   keyRegistry: unknown;
   now: Date;
+  runControlCapability: unknown;
 }): AuthenticatedPreviewShadowOwnerDecision {
   const request = exactRecord(input, [
     "artifact",
@@ -192,9 +221,18 @@ export function authenticatePreviewShadowOwnerDecision(input: {
     "context",
     "keyRegistry",
     "now",
+    "runControlCapability",
   ]);
   const now = snapshotWholeSecondDate(request.now, invalidClock);
   const context = parseActivationContext(request.context);
+  let runControlCapabilitySha256: string;
+  try {
+    runControlCapabilitySha256 = previewShadowRunControlCapabilitySha256(
+      request.runControlCapability
+    );
+  } catch {
+    invalidBinding();
+  }
   let authorization: AdaptiveInterviewerPreviewShadowAuthorization;
   try {
     const authorizationSnapshot = snapshotBoundedAuthorizationRecord(
@@ -251,6 +289,7 @@ export function authenticatePreviewShadowOwnerDecision(input: {
     payload.preview_influence_authorized !== false ||
     payload.later_stage_authorized !== false ||
     payload.production_authorized !== false ||
+    payload.run_control_capability_sha256 !== runControlCapabilitySha256 ||
     payload.default_on_authorized !== false ||
     payload.launch_go_no_go_authorized !== false
   ) {
@@ -262,9 +301,7 @@ export function authenticatePreviewShadowOwnerDecision(input: {
     payload.authorization_expires_at,
     invalidArtifact
   );
-  if (
-    decidedAt.getTime() > now.getTime()
-  ) {
+  if (decidedAt.getTime() > now.getTime()) {
     invalidTime();
   }
   if (
@@ -325,6 +362,7 @@ export function authenticatePreviewShadowOwnerDecision(input: {
     ownerDecidedAt: payload.owner_decided_at,
     authorizationExpiresAt: payload.authorization_expires_at,
     ownerSigningKeyId: payload.signing_key_id,
+    runControlCapabilitySha256,
     candidateGitSha: context.candidateGitSha,
     previewShadowConfigurationSha256: context.previewShadowConfigurationSha256,
     selectedCandidateConfigurationSha256:
@@ -466,6 +504,7 @@ function parseOwnerDecisionPayload(
     !SHA256.test(payload.authorization_nonce as string) ||
     !GIT_SHA.test(payload.candidate_git_sha as string) ||
     !SHA256.test(payload.preview_shadow_configuration_sha256 as string) ||
+    !SHA256.test(payload.run_control_capability_sha256 as string) ||
     !SHA256.test(payload.selected_candidate_configuration_sha256 as string) ||
     payload.owner_id !== PREVIEW_SHADOW_OWNER_ID ||
     payload.owner_role !== PREVIEW_SHADOW_OWNER_ROLE ||
@@ -517,6 +556,8 @@ function assertOwnerDecisionPayloadPrimitiveBounds(
     payload.owner_direction_reference.length > 200 ||
     typeof payload.preview_shadow_configuration_sha256 !== "string" ||
     payload.preview_shadow_configuration_sha256.length !== 64 ||
+    typeof payload.run_control_capability_sha256 !== "string" ||
+    payload.run_control_capability_sha256.length !== 64 ||
     typeof payload.selected_candidate_configuration_sha256 !== "string" ||
     payload.selected_candidate_configuration_sha256.length !== 64 ||
     typeof payload.signing_key_id !== "string" ||
@@ -970,8 +1011,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
       if (contents[offset] !== ":") throw new Error("json_invalid");
       offset += 1;
       if (
-        entries.length >=
-        PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
+        entries.length >= PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
       ) {
         throw new Error("json_entry_count_invalid");
       }
@@ -995,8 +1035,7 @@ function parseJsonRejectingDuplicateKeys(contents: string): unknown {
     }
     while (true) {
       if (
-        values.length >=
-        PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
+        values.length >= PREVIEW_SHADOW_OWNER_DECISION_MAX_CONTAINER_ENTRIES
       ) {
         throw new Error("json_entry_count_invalid");
       }

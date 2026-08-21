@@ -9,8 +9,10 @@ Every command takes explicit absolute external file paths. No command
 searches the repository, home directory, environment, or provider for missing
 authority or credentials.
 
-`prepare` requires a clean exact candidate and creates two owner-only files:
-the closed SAV-479 authorization and the unsigned owner-decision payload.
+`prepare` requires a clean exact candidate and creates three owner-only files:
+the closed SAV-479 authorization, the unsigned v2 owner-decision payload, and
+the random run-control capability. The payload binds the domain-separated
+SHA-256 of that exact capability; the raw capability is never signed or logged.
 `sign` creates the closed Ed25519 artifact without overwriting an existing
 file. `verify` performs no database, LiveKit, OpenAI, Statsig, or Vercel call.
 
@@ -30,8 +32,9 @@ and therefore cannot be blocked on an unrelated LiveKit credential.
 
 The server request is at most 64 KiB, exact-shape parsed and never logged. The
 route returns the existing private activation receipt. Vercel deployment
-protection is defense in depth only; an unsigned or self-bound request remains
-unauthorized.
+protection is defense in depth only; an unsigned, v1, self-bound, or
+capability-substituted request remains unauthorized and cannot reach the
+durable CAS.
 
 `start-cell` requires one closed round/voice-condition pair from the fixed
 4x7 matrix, exact run revision, session binding, lease expiry, worker and

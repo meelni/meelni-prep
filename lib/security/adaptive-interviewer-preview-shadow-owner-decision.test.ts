@@ -21,6 +21,7 @@ import {
   assertPreviewShadowOwnerDecisionAuthenticated,
   parsePreviewShadowOwnerDecisionArtifactJson,
   previewShadowOwnerDecisionSignatureMessage,
+  previewShadowRunControlCapabilitySha256,
   authenticatePreviewShadowOwnerDecision,
   type PreviewShadowActivationContext,
   type PreviewShadowOwnerDecisionArtifact,
@@ -32,6 +33,7 @@ import {
 const CANDIDATE_SHA = "a".repeat(40);
 const KEY_ID = "owner-test-key";
 const NOW = new Date("2026-08-20T08:00:00.000Z");
+const RUN_CONTROL_CAPABILITY = Buffer.alloc(32, 7).toString("base64url");
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 
 function authorization(): AdaptiveInterviewerPreviewShadowAuthorization {
@@ -106,6 +108,9 @@ function payload(
     preview_shadow_configuration_sha256:
       candidateAuthorization.preview_shadow_configuration_sha256,
     production_authorized: false,
+    run_control_capability_sha256: previewShadowRunControlCapabilitySha256(
+      RUN_CONTROL_CAPABILITY
+    ),
     selected_candidate_configuration_sha256:
       candidateAuthorization.selected_candidate_configuration_sha256,
     signing_key_id: KEY_ID,
@@ -164,6 +169,7 @@ function verify(
     context: context(),
     keyRegistry: registry(),
     now: NOW,
+    runControlCapability: RUN_CONTROL_CAPABILITY,
     ...overrides,
   });
 }
@@ -197,6 +203,10 @@ test("rejects binding, signature, key, time, and cross-domain drift with closed 
       }),
     () =>
       verify({
+        runControlCapability: Buffer.alloc(32, 8).toString("base64url"),
+      }),
+    () =>
+      verify({
         artifact: artifact({
           ...payload(),
           authorization_nonce: "e".repeat(64),
@@ -209,6 +219,24 @@ test("rejects binding, signature, key, time, and cross-domain drift with closed 
           contract: "meelni.production-action-authorization.v1",
         },
       }),
+    () =>
+      verify({
+        artifact: {
+          ...artifact(),
+          contract:
+            "meelni.adaptive-interviewer-preview-shadow-owner-decision.v1",
+        },
+      }),
+    () => {
+      const { run_control_capability_sha256: _removed, ...legacyPayload } =
+        payload();
+      return verify({
+        artifact: {
+          ...artifact(),
+          payload: legacyPayload as PreviewShadowOwnerDecisionPayload,
+        },
+      });
+    },
     () =>
       verify({
         artifact: {
@@ -431,8 +459,7 @@ test("direct artifacts are bounded before registry parsing, dates, base64, or cr
     () =>
       previewShadowOwnerDecisionSignatureMessage({
         ...payload(),
-        preview_influence_authorized:
-          cyclicAuthority as unknown as false,
+        preview_influence_authorized: cyclicAuthority as unknown as false,
       }),
     /preview_shadow_owner_decision_artifact_invalid/
   );
