@@ -14,8 +14,11 @@ signed disable MUST remain available after expiry.
 ## Requirement: local private credential handling
 
 The browser MUST accept only the strict bounded v2 Production-project
-connection contract. It MUST keep the raw file and token in page memory only
-and MUST NOT upload, persist, log, analyze or place them in a URL.
+connection contract. Before constructing `LiveKitRoom`, it MUST bind the
+decoded JWT room grant, owner identity, expiry and microphone-only permissions
+to the same connection record; the LiveKit service remains responsible for
+signature authentication. It MUST keep the raw file and token in page memory
+only and MUST NOT upload, persist, log, analyze or place them in a URL.
 
 ## Requirement: no ordinary session authority
 

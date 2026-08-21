@@ -23,7 +23,9 @@ Production web configuration action is consumed
 2. Select the freshly created external `connection.json`. Do not paste its
    contents into chat, Linear, a shell argument, a URL or a tracked file.
 3. Confirm the page reports the expected round/voice condition and connects
-   to the interviewer.
+   to the interviewer. The page rejects a token unless its decoded LiveKit
+   room, owner identity, expiry and microphone-only grant match the same
+   private connection record; LiveKit independently verifies its signature.
 4. Exercise microphone mute/unmute, ordinary interview turn-taking,
    connection recovery and explicit disconnect. Director Shadow output is not
    displayed or spoken.
