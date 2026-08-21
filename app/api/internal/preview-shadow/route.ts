@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import ownerKeyRegistry from "@/config/adaptive-interviewer-preview-shadow-owner-keys.json";
+
 import { db } from "@/lib/db";
 import {
   createDurablePreviewShadowControlPlaneStore,
@@ -10,6 +12,18 @@ import {
   createPreviewShadowWorkerWorkflow,
   PREVIEW_SHADOW_WORKER_REQUEST_VERSION,
 } from "@/lib/workflows/adaptive-interviewer-preview-shadow-worker";
+import { createDurablePreviewShadowControlPlaneWorkflow } from "@/lib/workflows/adaptive-interviewer-preview-shadow-control-plane";
+import {
+  createPreviewShadowActivationContext,
+  createPreviewShadowActivationRequestWorkflow,
+  isPreviewShadowActivationRequest,
+  parsePreviewShadowActivationRequest,
+  PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION,
+} from "@/lib/workflows/adaptive-interviewer-preview-shadow-activation";
+import {
+  authenticatePreviewShadowOwnerDecision,
+  type PreviewShadowOwnerKeyRegistry,
+} from "@/lib/security/adaptive-interviewer-preview-shadow-owner-decision";
 
 const MAXIMUM_BODY_BYTES = 64 * 1_024;
 
@@ -37,14 +51,17 @@ export async function POST(request: Request) {
   } catch {
     return response({ error: "preview_shadow_worker_request_invalid" }, 400);
   }
-  const store = createDurablePreviewShadowControlPlaneStore(db);
-  const workflow = createPreviewShadowWorkerWorkflow({
-    store,
-    verifyAdmission: (candidate) =>
-      verifyDurablePreviewShadowSessionLeaseAdmission(db, candidate),
-  });
+  const activationRequest = isPreviewShadowActivationRequest(body);
   try {
-    const result = await workflow.handle(body);
+    if (activationRequest) parsePreviewShadowActivationRequest(body);
+    const store = createDurablePreviewShadowControlPlaneStore(db);
+    const result = activationRequest
+      ? await createActivationWorkflow(store).handle(body)
+      : await createPreviewShadowWorkerWorkflow({
+          store,
+          verifyAdmission: (candidate) =>
+            verifyDurablePreviewShadowSessionLeaseAdmission(db, candidate),
+        }).handle(body);
     return response(result, 200);
   } catch (error) {
     if (error instanceof PreviewShadowControlPlaneError) {
@@ -54,10 +71,36 @@ export async function POST(request: Request) {
           : error.code === "preview_shadow_control_plane_unavailable"
             ? 503
             : 409;
-      return response({ error: error.code }, status);
+      return response({ error: error.code }, status, activationRequest);
     }
-    return response({ error: "preview_shadow_worker_request_invalid" }, 400);
+    return response(
+      {
+        error: activationRequest
+          ? "preview_shadow_activation_request_invalid"
+          : "preview_shadow_worker_request_invalid",
+      },
+      400,
+      activationRequest
+    );
   }
+}
+
+function createActivationWorkflow(
+  store: ReturnType<typeof createDurablePreviewShadowControlPlaneStore>
+) {
+  const candidateGitSha = process.env.VERCEL_GIT_COMMIT_SHA ?? "";
+  const controlPlane = createDurablePreviewShadowControlPlaneWorkflow({
+    store,
+    ownerDecisionVerifier: {
+      verify: (request) => authenticatePreviewShadowOwnerDecision(request),
+    },
+    ownerKeyRegistry: ownerKeyRegistry as PreviewShadowOwnerKeyRegistry,
+    clock: () => new Date(),
+  });
+  return createPreviewShadowActivationRequestWorkflow({
+    controlPlane,
+    context: createPreviewShadowActivationContext(candidateGitSha),
+  });
 }
 
 function isTrustedPreviewShadowServer(
@@ -95,10 +138,12 @@ async function readBounded(request: Request): Promise<string | null> {
   }
 }
 
-function response(value: unknown, status: number) {
+function response(value: unknown, status: number, activation = false) {
   return NextResponse.json(
     {
-      contract_version: PREVIEW_SHADOW_WORKER_REQUEST_VERSION,
+      contract_version: activation
+        ? PREVIEW_SHADOW_ACTIVATION_REQUEST_VERSION
+        : PREVIEW_SHADOW_WORKER_REQUEST_VERSION,
       ...((value ?? {}) as Record<string, unknown>),
     },
     { status, headers: { "Cache-Control": "no-store" } }

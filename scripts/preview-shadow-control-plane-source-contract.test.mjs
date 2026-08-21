@@ -23,7 +23,9 @@ test("durable Preview-shadow authority is reachable only through the dedicated i
   assert.deepEqual(grep(STORE, forbiddenConsumers), [
     "app/api/internal/preview-shadow/route.ts",
   ]);
-  assert.deepEqual(grep(WORKFLOW, forbiddenConsumers), []);
+  assert.deepEqual(grep(WORKFLOW, forbiddenConsumers), [
+    "app/api/internal/preview-shadow/route.ts",
+  ]);
 
   const publicIndexes = grep(
     "adaptive-interviewer-preview-shadow-control-plane",
@@ -38,7 +40,7 @@ test("durable Preview-shadow authority is reachable only through the dedicated i
       "packages",
       "agent",
     ]),
-    []
+    ["app/api/internal/preview-shadow/route.ts"]
   );
 });
 
@@ -127,7 +129,7 @@ function grep(pattern, roots, globs = []) {
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...roots],
     {
-    encoding: "utf8",
+      encoding: "utf8",
     }
   )
     .trim()

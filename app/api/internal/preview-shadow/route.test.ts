@@ -51,6 +51,34 @@ describe("Preview-shadow worker route", () => {
     );
     expect(wrongMediaType.status).toBe(415);
   });
+
+  it("routes a closed activation envelope without weakening worker errors", async () => {
+    trustedStaging();
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "a".repeat(40));
+    const response = await POST(
+      new Request("https://example.invalid/api/internal/preview-shadow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_version:
+            "adaptive-interviewer-preview-shadow-activation-request.v1",
+          action: "activate",
+          payload: {
+            artifact: {},
+            authorization: {},
+            run_control_capability: "short",
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      contract_version:
+        "adaptive-interviewer-preview-shadow-activation-request.v1",
+      error: "preview_shadow_activation_request_invalid",
+    });
+  });
 });
 
 function trustedStaging() {

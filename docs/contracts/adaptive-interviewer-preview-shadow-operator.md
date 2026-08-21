@@ -17,13 +17,21 @@ file. `verify` performs no database, LiveKit, OpenAI, Statsig, or Vercel call.
 ## Execution
 
 `activate` requires explicit database configuration, signed artifact,
-authorization, key registry, and run-control capability. The durable CAS is
-the only consumer of the one-use authority. Activation validates only the
-canonical staging database/environment identity; it neither requires nor
-reads a LiveKit URL, worker name, API key or API secret. Preview and
+authorization, key registry, and run-control capability. When the sensitive
+Preview database connection cannot be exported, the provider-free operator may
+instead prepare a private closed activation request for the deployment-protected
+staging endpoint. The server binds it to its exact deployed Git SHA and the
+reviewed registry before calling the same durable workflow. The durable CAS is
+the only consumer of the one-use authority in either topology. Activation
+neither requires nor reads a LiveKit URL, worker name, API key or API secret. Preview and
 Production-project room commands retain their separate complete LiveKit
 identity checks. Durable stop uses the same staging-only environment boundary
 and therefore cannot be blocked on an unrelated LiveKit credential.
+
+The server request is at most 64 KiB, exact-shape parsed and never logged. The
+route returns the existing private activation receipt. Vercel deployment
+protection is defense in depth only; an unsigned or self-bound request remains
+unauthorized.
 
 `start-cell` requires one closed round/voice-condition pair from the fixed
 4x7 matrix, exact run revision, session binding, lease expiry, worker and
