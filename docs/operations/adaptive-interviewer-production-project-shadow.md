@@ -11,6 +11,10 @@ Status: repository design; commands remain non-executable until SAV-483 merges
    `CA_yawKG67rCMG4`, and current running version without printing secrets.
 4. Pull and verify the staging control-plane environment and the Production
    deploy environment through their canonical owner-authenticated paths.
+   When a separate Preview LiveKit project is unavailable, deploy staging with
+   the exact control-plane-only capability. Ordinary staging voice routes must
+   return `voice_unavailable_in_preview`; do not copy Production LiveKit
+   credentials into the staging web runtime.
 5. Prepare fresh external owner-only files. Never reuse SAV-482's
    Preview-project artifact or any consumed Production action.
 

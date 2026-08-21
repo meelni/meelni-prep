@@ -7,11 +7,12 @@ Meelni Preview and Production builds must fail before deployment when launch-cri
 
 ## Targets
 
-| Vercel lane        | System identity                                   | LiveKit capability                                           | Other provider contract    |
-| ------------------ | ------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| Generic PR Preview | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=preview` | Intentionally disabled                                       | Preview/test, unchanged    |
-| Trusted staging    | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=staging` | Enabled and strict against the isolated staging identity     | Preview/test, unchanged    |
-| Production         | `VERCEL_ENV=production`                           | Enabled and strict against the canonical Production identity | Production/live, unchanged |
+| Vercel lane                     | System identity                                   | LiveKit capability                                           | Other provider contract    |
+| ------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| Generic PR Preview              | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=preview` | Intentionally disabled                                       | Preview/test, unchanged    |
+| Trusted voice-capable staging   | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=staging` | Enabled and strict against the isolated staging identity     | Preview/test, unchanged    |
+| Shadow control-plane staging    | Exact canonical staging tuple plus both Shadow server markers | Intentionally disabled; durable internal control plane only  | Preview/test, unchanged    |
+| Production                      | `VERCEL_ENV=production`                           | Enabled and strict against the canonical Production identity | Production/live, unchanged |
 
 The `build` command invokes preflight immediately before Next.js and derives the Preview/Production provider tier only from `VERCEL=1` plus `VERCEL_ENV`. Vercel builds must also expose exact project ID `prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4` and Git repository `meelni/meelni-prep`; missing or copied-project identity fails. `VERCEL_TARGET_ENV` then distinguishes generic Preview from trusted staging for LiveKit only. An explicit CLI target cannot override a conflicting Vercel target. Local builds without the Vercel marker skip deploy-only checks; explicit local Preview preflight remains strict because partial/local identity never implies intentional disablement.
 
@@ -55,7 +56,17 @@ Inngest does not expose a safe read-only Event Key validation endpoint. An autho
 
 - Generic Vercel Preview is intentionally LiveKit-disabled only for the exact Vercel-owned tuple `VERCEL=1`, `VERCEL_ENV=preview`, and `VERCEL_TARGET_ENV=preview`. Preflight emits `SKIP livekit.configuration_and_project_access intentionally_disabled_for_generic_preview`, does not require LiveKit variables, does not construct the LiveKit reader, and makes no LiveKit request.
 - Missing, partial, contradictory, or application-owned identity cannot disable LiveKit. In particular, Production-shaped credentials cannot enable generic Preview, while a spoofed `MEELNI_*` switch cannot disable staging or Production.
-- Trusted staging (`VERCEL_TARGET_ENV=staging`) continues to apply the complete Preview identity/configuration and read-only reachability checks below. Production is unchanged.
+- Shadow control-plane staging is intentionally LiveKit-disabled only for the
+  complete tuple `VERCEL=1`, `VERCEL_ENV=preview`,
+  `VERCEL_TARGET_ENV=staging`, canonical Vercel project and Git repository,
+  `MEELNI_ENV_PULL_ENVIRONMENT=preview`,
+  `MEELNI_PREVIEW_SHADOW_REHEARSAL_SERVER=enabled`, and
+  `MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_ONLY=enabled`. Preflight emits
+  `SKIP livekit.configuration_and_project_access intentionally_disabled_for_preview_shadow_control_plane`,
+  constructs no reader and makes no LiveKit request.
+- Trusted staging without that complete tuple continues to apply the complete
+  Preview identity/configuration and read-only reachability checks below.
+  Production is unchanged.
 - API credentials, public/server websocket URLs, exact dispatch names, and all seven server-owned `MEELNI_INTERVIEW_*` settings are explicit.
 - Demo and interview dispatch names must be distinct. A shared name cannot satisfy demo readiness and fails before any room is created.
 - Public and server URLs match.
@@ -97,7 +108,12 @@ A prior draft required an exact-SHA Ed25519 receipt whose private key did not ex
 
 Missing, blank, quoted-empty, placeholder, malformed, mixed-mode, wrong-target, unreadable, or mismatched configuration fails the target preflight. Provider errors are redacted.
 
-Intentional generic-Preview LiveKit disablement is a typed skip, not a warning and not a provider failure. Every generic Preview voice entrypoint returns HTTP `503` with `error=voice_unavailable_in_preview`, an actionable message, and `retryable=false` before authentication, credit checks, durable mutation, LiveKit configuration loading, or provider I/O. LiveKit-backed background functions skip before database/provider work.
+Intentional LiveKit disablement is a typed skip, not a warning and not a
+provider failure. Generic Preview and Shadow control-plane staging voice
+entrypoints return HTTP `503` with `error=voice_unavailable_in_preview`, an
+actionable message, and `retryable=false` before authentication, credit checks,
+durable mutation, LiveKit configuration loading, or provider I/O. LiveKit-backed
+background functions skip before database/provider work.
 
 Stable codes:
 

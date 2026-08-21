@@ -13,13 +13,10 @@ import {
 import { PREVIEW_LIVEKIT_IDENTITY } from "@/lib/deployment/provider-identities";
 import { createStripeCatalogReader } from "@/lib/deployment/stripe-catalog-reader";
 import { createOpenAiModelReader } from "@/lib/deployment/openai-model-reader";
-import { resolveLiveKitDeploymentCapability } from "@meelni/integrations";
-
-export const CANONICAL_VERCEL_DEPLOYMENT_IDENTITY = {
-  projectId: "prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4",
-  repositoryOwner: "meelni",
-  repositorySlug: "meelni-prep",
-} as const;
+import {
+  CANONICAL_VERCEL_DEPLOYMENT_IDENTITY,
+  resolveLiveKitDeploymentCapability,
+} from "@meelni/integrations";
 
 void main().catch(() => {
   console.error(
