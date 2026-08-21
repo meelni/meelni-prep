@@ -248,7 +248,7 @@ or group/world-readable file.
 
 Run this provider-free preparation only after the reviewed change is merged and
 the authorized workstation is on that exact clean `main` commit. The helper
-validates the canonical Production config and owner-only one-variable secrets
+validates the canonical Production config and owner-only seven-variable secrets
 file, computes the same configuration and target fingerprints as the guarded
 deploy wrapper, and writes only the external unsigned payload:
 
@@ -286,8 +286,10 @@ Then set `MEELNI_PRODUCTION_ACTION_AUTHORIZATION` to that artifact path and run
 provider calls and do not consume the artifact; the deploy wrapper consumes it
 immediately before invoking `lk`.
 
-The interview secrets file contains exactly these names, one per line, with no
-comments or blank lines:
+The interview secrets file is an exact replacement set. It contains exactly
+these names, one per line, with no comments or blank lines. The wrapper uses
+LiveKit's overwrite operation before deployment so stale Shadow bootstrap keys
+cannot survive rollback:
 
 ```dotenv
 MEELNI_TRANSCRIPT_INGEST_SECRET=<existing-production-secret>
@@ -296,6 +298,7 @@ OPIK_API_KEY=<secret>
 OPIK_WORKSPACE=savi-singh
 OPIK_PROJECT_NAME=meelni
 OPIK_CAPTURE_CONTENT=true
+OPENAI_API_KEY=<existing-production-provider-secret>
 ```
 
 ### Prepare a demo-agent deployment

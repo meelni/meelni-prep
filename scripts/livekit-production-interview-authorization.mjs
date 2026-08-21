@@ -27,6 +27,7 @@ export async function runLiveKitProductionInterviewAuthorizationCli({
     return 0;
   }
   const options = parseOptions(rawOptions);
+  const mode = options.mode ?? "production";
   const expectedCandidateSha = required(options, "expected-candidate-sha");
   if (!/^[a-f0-9]{40}$/.test(expectedCandidateSha)) {
     throw new Error("livekit_production_candidate_invalid");
@@ -41,6 +42,8 @@ export async function runLiveKitProductionInterviewAuthorizationCli({
   const input = await resolveLiveKitProductionInterviewAuthorizationInput({
     configFile: required(options, "config-file"),
     secretsFile: required(options, "secrets-file"),
+    mode,
+    expectedCandidateSha,
     repoRoot: root,
   });
 
@@ -48,6 +51,7 @@ export async function runLiveKitProductionInterviewAuthorizationCli({
     assertNoUnknownOptions(options, [
       "config-file",
       "expected-candidate-sha",
+      "mode",
       "output-path",
       "secrets-file",
       "ttl-minutes",
@@ -74,6 +78,7 @@ export async function runLiveKitProductionInterviewAuthorizationCli({
       "artifact-path",
       "config-file",
       "expected-candidate-sha",
+      "mode",
       "secrets-file",
     ]);
     await verify({
@@ -132,8 +137,8 @@ function usage() {
     "LiveKit Production interview authorization preparation (provider-free)",
     "",
     "Commands:",
-    "  prepare --expected-candidate-sha SHA --config-file PATH --secrets-file PATH --output-path PATH [--ttl-minutes 15]",
-    "  verify --expected-candidate-sha SHA --config-file PATH --secrets-file PATH --artifact-path PATH",
+    "  prepare --expected-candidate-sha SHA --config-file PATH --secrets-file PATH --output-path PATH [--mode production|production-project-shadow] [--ttl-minutes 15]",
+    "  verify --expected-candidate-sha SHA --config-file PATH --secrets-file PATH --artifact-path PATH [--mode production|production-project-shadow]",
     "",
   ].join("\n");
 }
