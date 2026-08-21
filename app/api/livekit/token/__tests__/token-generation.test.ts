@@ -62,6 +62,19 @@ describe("POST /api/livekit/token", () => {
     expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
+  it("refuses Shadow control-plane staging before auth, session reads, or token provider work", async () => {
+    stubControlPlaneOnlyStaging();
+
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(previewUnavailableBody());
+    expect(mocks.createClient).not.toHaveBeenCalled();
+    expect(mocks.resolveReactivationAccess).not.toHaveBeenCalled();
+    expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
   it("rejects token issuance while relaunch access is disabled", async () => {
     const user = {
       id: "authenticated-user",
@@ -264,6 +277,18 @@ function stubGenericPreview() {
   vi.stubEnv("VERCEL", "1");
   vi.stubEnv("VERCEL_ENV", "preview");
   vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}
+
+function stubControlPlaneOnlyStaging() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "staging");
+  vi.stubEnv("VERCEL_PROJECT_ID", "prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4");
+  vi.stubEnv("VERCEL_GIT_REPO_OWNER", "meelni");
+  vi.stubEnv("VERCEL_GIT_REPO_SLUG", "meelni-prep");
+  vi.stubEnv("MEELNI_ENV_PULL_ENVIRONMENT", "preview");
+  vi.stubEnv("MEELNI_PREVIEW_SHADOW_REHEARSAL_SERVER", "enabled");
+  vi.stubEnv("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_ONLY", "enabled");
 }
 
 function previewUnavailableBody() {

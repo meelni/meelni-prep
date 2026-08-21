@@ -113,7 +113,9 @@ export interface DeploymentPreflightResult {
 export interface DeploymentPreflightSkip {
   area: "livekit";
   check: "livekit.configuration_and_project_access";
-  reason: "intentionally_disabled_for_generic_preview";
+  reason:
+    | "intentionally_disabled_for_generic_preview"
+    | "intentionally_disabled_for_preview_shadow_control_plane";
 }
 
 type Environment = Record<string, string | undefined>;
@@ -180,7 +182,10 @@ export async function runDeploymentPreflight({
     skippedChecks.push({
       area: "livekit",
       check: "livekit.configuration_and_project_access",
-      reason: "intentionally_disabled_for_generic_preview",
+      reason:
+        liveKitCapability.lane === "generic_preview"
+          ? "intentionally_disabled_for_generic_preview"
+          : "intentionally_disabled_for_preview_shadow_control_plane",
     });
   } else {
     validateLiveKitEnvironment({
