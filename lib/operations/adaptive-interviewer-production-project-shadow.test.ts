@@ -115,9 +115,10 @@ test("rejects malformed, extra, accessor and unsafe cell inputs before hashing",
   );
 });
 
-test("consumes room authority only through fixed root-owned Node", async () => {
+test("consumes room authority only through a canonical root-owned executable", async () => {
   const expected = productionProjectShadowCellAuthorizationInput(BASE);
   const authorizationId = `ora_${"1".repeat(32)}`;
+  const rootOwnedExecutable = "/usr/bin/true";
   type Invocation = {
     file: string;
     args: string[];
@@ -128,6 +129,7 @@ test("consumes room authority only through fixed root-owned Node", async () => {
     authorizationPath: "/private/tmp/production-room-authorization.json",
     expected,
     repoRoot: process.cwd(),
+    nodePath: rootOwnedExecutable,
     execute: ((
       file: string,
       args: string[],
@@ -147,7 +149,7 @@ test("consumes room authority only through fixed root-owned Node", async () => {
   assert.equal(receipt.authorizationId, authorizationId);
   const call = invocation as Invocation | undefined;
   assert.ok(call);
-  assert.equal(call.file, "/usr/local/bin/node");
+  assert.equal(call.file, rootOwnedExecutable);
   assert.match(call.args[0], /consume-production-action-authorization\.mjs$/);
   assert.deepEqual(call.args.slice(1), [
     "--action",
