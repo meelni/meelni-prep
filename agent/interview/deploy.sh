@@ -121,7 +121,12 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
         remember("MEELNI_TRANSCRIPT_INGEST_SECRET", value)
         next
       }
-      $0 ~ /^OPIK_TRACING_ENABLED=true$/ { remember("OPIK_TRACING_ENABLED", "true"); next }
+      shadow_mode != "true" && $0 == "OPIK_TRACING_ENABLED=true" {
+        remember("OPIK_TRACING_ENABLED", "true"); next
+      }
+      shadow_mode == "true" && $0 == "OPIK_TRACING_ENABLED=false" {
+        remember("OPIK_TRACING_ENABLED", "false"); next
+      }
       $0 ~ /^OPIK_API_KEY=[A-Za-z0-9._-]+$/ {
         value = $0
         sub(/^OPIK_API_KEY=/, "", value)
@@ -130,7 +135,12 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
       }
       $0 ~ /^OPIK_WORKSPACE=savi-singh$/ { remember("OPIK_WORKSPACE", "savi-singh"); next }
       $0 ~ /^OPIK_PROJECT_NAME=meelni$/ { remember("OPIK_PROJECT_NAME", "meelni"); next }
-      $0 ~ /^OPIK_CAPTURE_CONTENT=true$/ { remember("OPIK_CAPTURE_CONTENT", "true"); next }
+      shadow_mode != "true" && $0 == "OPIK_CAPTURE_CONTENT=true" {
+        remember("OPIK_CAPTURE_CONTENT", "true"); next
+      }
+      shadow_mode == "true" && $0 == "OPIK_CAPTURE_CONTENT=false" {
+        remember("OPIK_CAPTURE_CONTENT", "false"); next
+      }
       $0 ~ /^OPENAI_API_KEY=[A-Za-z0-9._-]+$/ {
         value = $0
         sub(/^OPENAI_API_KEY=/, "", value)
@@ -161,15 +171,22 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
         sub(/^MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=/, "", value)
         remember("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL", value); next
       }
+      shadow_mode == "true" && $0 ~ /^MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=[A-Za-z0-9_-]+$/ {
+        value = $0
+        sub(/^MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=/, "", value)
+        remember("MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET", value); next
+      }
       { invalid = 1 }
       END {
-        expected_lines = shadow_mode == "true" ? 13 : 8
+        expected_lines = shadow_mode == "true" ? 14 : 8
         shadow_valid = shadow_mode != "true" ||
           (values["MEELNI_PREVIEW_SHADOW_EXECUTION"] == "enabled" &&
            values["MEELNI_PREVIEW_SHADOW_KILL_SWITCH"] == "open" &&
            length(values["MEELNI_PREVIEW_SHADOW_RUN_ID"]) == 64 &&
            values["MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA"] == candidate_sha &&
-           values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url)
+           values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url &&
+           length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) >= 16 &&
+           length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) <= 512)
         exit !(NR == expected_lines && invalid != 1 && shadow_valid &&
           length(values["MEELNI_TRANSCRIPT_INGEST_SECRET"]) >= 32 &&
           length(values["OPIK_API_KEY"]) >= 20 &&
@@ -177,10 +194,10 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
           length(values["OPENAI_API_KEY"]) >= 20 &&
           length(values["OPENAI_API_KEY"]) <= 4096 &&
           values["LIVEKIT_INTERVIEW_AGENT_NAME"] == "CA_yawKG67rCMG4" &&
-          values["OPIK_TRACING_ENABLED"] == "true" &&
+          values["OPIK_TRACING_ENABLED"] == (shadow_mode == "true" ? "false" : "true") &&
           values["OPIK_WORKSPACE"] == "savi-singh" &&
           values["OPIK_PROJECT_NAME"] == "meelni" &&
-          values["OPIK_CAPTURE_CONTENT"] == "true")
+          values["OPIK_CAPTURE_CONTENT"] == (shadow_mode == "true" ? "false" : "true"))
       }
     ' "$secrets_snapshot"; then
     echo "$environment LiveKit runtime secrets file is invalid." >&2
@@ -227,14 +244,21 @@ if [[ "$preview_shadow_deploy" == "true" && "$production_project_shadow" != "tru
         sub(/^MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=/, "", value)
         remember("MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL", value); next
       }
+      $0 ~ /^MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=[A-Za-z0-9_-]+$/ {
+        value = $0
+        sub(/^MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=/, "", value)
+        remember("MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET", value); next
+      }
       { invalid = 1 }
       END {
-        exit !(NR == 5 && invalid != 1 &&
+        exit !(NR == 6 && invalid != 1 &&
           values["MEELNI_PREVIEW_SHADOW_EXECUTION"] == "enabled" &&
           values["MEELNI_PREVIEW_SHADOW_KILL_SWITCH"] == "open" &&
           length(values["MEELNI_PREVIEW_SHADOW_RUN_ID"]) == 64 &&
           values["MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA"] == candidate_sha &&
-          values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url)
+          values["MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL"] == control_plane_url &&
+          length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) >= 16 &&
+          length(values["MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET"]) <= 512)
       }
     ' "$secrets_snapshot"; then
     echo "Preview-shadow LiveKit runtime secrets file is invalid." >&2

@@ -41,13 +41,16 @@ Status: repository design; commands remain non-executable until SAV-483 merges
 8. Record sanitized spend/lifecycle/source evidence. Stop on any hard gate.
 9. Rehearse stop and replace secrets with the ordinary eight-key runtime before
    redeploying the all-off worker through a fresh Production action. Prove the
-   rollback source and health. The durable stop event uses only staging
-   database/environment identity and requires no LiveKit credential.
+   rollback source and health. Revoke the temporary Vercel Automation Bypass
+   immediately after terminal reconciliation or a hard stop. The durable stop
+   event uses only staging database/environment identity and requires no
+   LiveKit credential.
 
 ## Guarded command surfaces
 
 After activation, build the exact owner-only replacement runtime without
-printing its contents:
+printing its contents. The bypass file is an external mode-`0600` file
+containing only the temporary Vercel Automation Bypass value:
 
 ```bash
 npm run interviewer:preview-shadow:operator -- \
@@ -55,6 +58,7 @@ npm run interviewer:preview-shadow:operator -- \
   --activation-path "$MEELNI_PREVIEW_SHADOW_ACTIVATION_PATH" \
   --control-plane-url "https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow" \
   --ordinary-secrets-path "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_SECRETS_FILE" \
+  --vercel-bypass-secret-path "$MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET_FILE" \
   --output-path "$MEELNI_LIVEKIT_PRODUCTION_PROJECT_SHADOW_SECRETS_FILE"
 ```
 

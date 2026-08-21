@@ -26,6 +26,7 @@ import {
   PRODUCTION_PROJECT_SHADOW_LIVEKIT_URL,
   assertCurrentProductionProjectShadowDeployment,
   buildProductionProjectShadowRuntimeSecrets,
+  buildProductionProjectShadowSyntheticRoomMetadata,
   consumeProductionProjectShadowCellAuthorization,
   productionProjectShadowCellAuthorizationInput,
 } from "../lib/operations/adaptive-interviewer-production-project-shadow";
@@ -136,12 +137,14 @@ export async function runPreviewShadowOperatorCli(
       "activation-path",
       "control-plane-url",
       "ordinary-secrets-path",
+      "vercel-bypass-secret-path",
       "output-path",
     ]);
     const result = await prepareProductionProjectRuntime({
       activationPath: required(options, "activation-path"),
       controlPlaneUrl: required(options, "control-plane-url"),
       ordinarySecretsPath: required(options, "ordinary-secrets-path"),
+      vercelBypassSecretPath: required(options, "vercel-bypass-secret-path"),
       outputPath: required(options, "output-path"),
     });
     stdout.write(`${JSON.stringify(result)}\n`);
@@ -181,7 +184,6 @@ export async function runPreviewShadowOperatorCli(
       "expected-revision",
       "expires-at",
       "production-authorization-path",
-      "room-metadata-path",
       "round",
       "voice-condition",
     ]);
@@ -197,7 +199,6 @@ export async function runPreviewShadowOperatorCli(
         options,
         "production-authorization-path"
       ),
-      roomMetadataPath: required(options, "room-metadata-path"),
       round: required(options, "round"),
       voiceCondition: required(options, "voice-condition"),
     });
@@ -486,6 +487,7 @@ async function prepareProductionProjectRuntime(input: {
   activationPath: string;
   controlPlaneUrl: string;
   ordinarySecretsPath: string;
+  vercelBypassSecretPath: string;
   outputPath: string;
 }) {
   if (input.controlPlaneUrl !== PRODUCTION_PROJECT_SHADOW_CONTROL_PLANE_URL) {
@@ -507,11 +509,15 @@ async function prepareProductionProjectRuntime(input: {
     input.ordinarySecretsPath,
     repoRoot
   );
+  const vercelBypassSecret = (
+    await readPreviewShadowPrivateFile(input.vercelBypassSecretPath, repoRoot)
+  ).trim();
   const combined = buildProductionProjectShadowRuntimeSecrets({
     ordinarySecrets,
     runId: activation.run.run_id,
     candidateGitSha: activation.run.candidate_git_sha,
     controlPlaneUrl: input.controlPlaneUrl,
+    vercelBypassSecret,
   });
   const output = await assertPreviewShadowExternalCreateTarget(
     input.outputPath,
@@ -534,7 +540,6 @@ async function startProductionProjectCell(input: {
   expectedRevision: number;
   expiresAt: string;
   productionAuthorizationPath: string;
-  roomMetadataPath: string;
   round: string;
   voiceCondition: string;
 }) {
@@ -551,10 +556,12 @@ async function startProductionProjectCell(input: {
     controlPlaneUrl: input.controlPlaneUrl,
     deploymentVersion: input.deploymentVersion,
   });
-  const metadata = parseJson(
-    await readPreviewShadowPrivateFile(input.roomMetadataPath, repoRoot),
-    "preview_shadow_operator_room_metadata_invalid"
-  );
+  const metadata = buildProductionProjectShadowSyntheticRoomMetadata({
+    sessionBindingSha256: binding,
+    round: input.round,
+    voiceCondition: input.voiceCondition,
+    expiresAt: canonicalTimestamp(input.expiresAt),
+  });
   const environment = await loadProductionProjectShadowEnvironment(
     input.envFile,
     repoRoot
@@ -1023,9 +1030,9 @@ function usage() {
     "activate --packet-directory PATH --artifact-path PATH --env-file PATH --output-path PATH",
     "prepare-staging-activation-request --packet-directory PATH --artifact-path PATH --output-path PATH",
     "start-cell --activation-path PATH --cell-directory PATH --env-file PATH --expected-revision N --expires-at ISO --room-metadata-path PATH --round ROUND --voice-condition CONDITION",
-    "prepare-production-project-runtime --activation-path PATH --control-plane-url URL --ordinary-secrets-path PATH --output-path PATH",
+    "prepare-production-project-runtime --activation-path PATH --control-plane-url URL --ordinary-secrets-path PATH --vercel-bypass-secret-path PATH --output-path PATH",
     "prepare-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --expected-revision N --expires-at ISO --round ROUND --voice-condition CONDITION",
-    "start-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --env-file PATH --expected-revision N --expires-at ISO --production-authorization-path PATH --room-metadata-path PATH --round ROUND --voice-condition CONDITION",
+    "start-production-project-cell --activation-path PATH --cell-directory PATH --control-plane-url URL --deployment-version VERSION --env-file PATH --expected-revision N --expires-at ISO --production-authorization-path PATH --round ROUND --voice-condition CONDITION",
     "stop --activation-path PATH --packet-directory PATH --env-file PATH --expected-revision N --reason REASON --evidence-sha256 HASH",
     "",
   ].join("\n");

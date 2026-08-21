@@ -189,12 +189,16 @@ test("binds the Production-project Shadow deploy to the closed combined runtime"
   const value = await fixture();
   const candidateSha = "d".repeat(40);
   const shadowSecrets = [
-    value.secrets.trimEnd(),
+    value.secrets
+      .replace("OPIK_TRACING_ENABLED=true", "OPIK_TRACING_ENABLED=false")
+      .replace("OPIK_CAPTURE_CONTENT=true", "OPIK_CAPTURE_CONTENT=false")
+      .trimEnd(),
     "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled",
     "MEELNI_PREVIEW_SHADOW_KILL_SWITCH=open",
     `MEELNI_PREVIEW_SHADOW_RUN_ID=${"e".repeat(64)}`,
     `MEELNI_PREVIEW_SHADOW_CANDIDATE_SHA=${candidateSha}`,
     "MEELNI_PREVIEW_SHADOW_CONTROL_PLANE_URL=https://meelni-env-staging-meelni.vercel.app/api/internal/preview-shadow",
+    `MEELNI_PREVIEW_SHADOW_VERCEL_BYPASS_SECRET=${"v".repeat(32)}`,
     "",
   ].join("\n");
   try {
