@@ -75,7 +75,7 @@ admitted lease. One live cell must settle and reconcile before another cell is
 eligible. Any hard stop fences allocation first. Cleanup uses the existing
 bounded, coalesced settle/shutdown contract.
 
-Rollback replaces the complete secret set with the ordinary seven-key
+Rollback replaces the complete secret set with the ordinary eight-key
 Production runtime and redeploys the ordinary worker with no Shadow bootstrap
 variables through a fresh one-use Production action. A successful stop event
 or expired run is not by itself proof that the shared worker configuration was

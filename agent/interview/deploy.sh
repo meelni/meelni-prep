@@ -137,6 +137,9 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
         remember("OPENAI_API_KEY", value)
         next
       }
+      $0 == "LIVEKIT_INTERVIEW_AGENT_NAME=CA_yawKG67rCMG4" {
+        remember("LIVEKIT_INTERVIEW_AGENT_NAME", "CA_yawKG67rCMG4"); next
+      }
       shadow_mode == "true" && $0 == "MEELNI_PREVIEW_SHADOW_EXECUTION=enabled" {
         remember("MEELNI_PREVIEW_SHADOW_EXECUTION", "enabled"); next
       }
@@ -160,7 +163,7 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
       }
       { invalid = 1 }
       END {
-        expected_lines = shadow_mode == "true" ? 12 : 7
+        expected_lines = shadow_mode == "true" ? 13 : 8
         shadow_valid = shadow_mode != "true" ||
           (values["MEELNI_PREVIEW_SHADOW_EXECUTION"] == "enabled" &&
            values["MEELNI_PREVIEW_SHADOW_KILL_SWITCH"] == "open" &&
@@ -173,6 +176,7 @@ if [[ "$environment" == "production" || "$production_project_shadow" == "true" ]
           length(values["OPIK_API_KEY"]) <= 4096 &&
           length(values["OPENAI_API_KEY"]) >= 20 &&
           length(values["OPENAI_API_KEY"]) <= 4096 &&
+          values["LIVEKIT_INTERVIEW_AGENT_NAME"] == "CA_yawKG67rCMG4" &&
           values["OPIK_TRACING_ENABLED"] == "true" &&
           values["OPIK_WORKSPACE"] == "savi-singh" &&
           values["OPIK_PROJECT_NAME"] == "meelni" &&

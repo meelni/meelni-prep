@@ -39,7 +39,7 @@ Status: repository design; commands remain non-executable until SAV-483 merges
 7. Allocate and start exactly one explicit synthetic cell. Reconcile one
    terminal receipt or stop-incomplete incident.
 8. Record sanitized spend/lifecycle/source evidence. Stop on any hard gate.
-9. Rehearse stop and replace secrets with the ordinary seven-key runtime before
+9. Rehearse stop and replace secrets with the ordinary eight-key runtime before
    redeploying the all-off worker through a fresh Production action. Prove the
    rollback source and health. The durable stop event uses only staging
    database/environment identity and requires no LiveKit credential.

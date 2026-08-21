@@ -92,15 +92,19 @@ if [[ "$environment" == "production" ]]; then
       $0 ~ /^OPIK_WORKSPACE=savi-singh$/ { remember("OPIK_WORKSPACE", "savi-singh"); next }
       $0 ~ /^OPIK_PROJECT_NAME=meelni$/ { remember("OPIK_PROJECT_NAME", "meelni"); next }
       $0 ~ /^OPIK_CAPTURE_CONTENT=true$/ { remember("OPIK_CAPTURE_CONTENT", "true"); next }
+      $0 == "LIVEKIT_DEMO_AGENT_NAME=CA_t3sKQEihMQ7x" {
+        remember("LIVEKIT_DEMO_AGENT_NAME", "CA_t3sKQEihMQ7x"); next
+      }
       { invalid = 1 }
       END {
-        exit !(NR == 5 && invalid != 1 &&
+        exit !(NR == 6 && invalid != 1 &&
           length(values["OPIK_API_KEY"]) >= 20 &&
           length(values["OPIK_API_KEY"]) <= 4096 &&
           values["OPIK_TRACING_ENABLED"] == "true" &&
           values["OPIK_WORKSPACE"] == "savi-singh" &&
           values["OPIK_PROJECT_NAME"] == "meelni" &&
-          values["OPIK_CAPTURE_CONTENT"] == "true")
+          values["OPIK_CAPTURE_CONTENT"] == "true" &&
+          values["LIVEKIT_DEMO_AGENT_NAME"] == "CA_t3sKQEihMQ7x")
       }
     ' "$secrets_snapshot"; then
     echo "Production LiveKit demo runtime secrets file is invalid." >&2
