@@ -378,9 +378,9 @@ const validatedTurns = turns.map(turn => TranscriptTurnSchema.parse(turn));
 - Analytics data integrity compromised
 
 **Remediation**:
-1. Use separate `POSTHOG_SERVER_KEY` environment variable
-2. Update `.env.example`
-3. Restrict client key permissions in PostHog dashboard
+1. Use the PostHog project token for browser and server event ingestion
+2. Keep personal API keys out of runtime configuration and tracked files
+3. Update `.env.example` and validate the project-token prefix
 
 **Priority**: P2
 

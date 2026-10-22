@@ -98,7 +98,7 @@ This will open your browser to authorize the CLI.
 Start the webhook forwarder in a **new terminal window**:
 
 ```bash
-cd /Users/REDACTED/conductor/meelni-prep/.conductor/mogadishu
+cd <repo>
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 

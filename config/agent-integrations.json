@@ -283,7 +283,6 @@
       "cli": [],
       "env": [
         "NEXT_PUBLIC_POSTHOG_KEY",
-        "POSTHOG_SERVER_KEY",
         "NEXT_PUBLIC_POSTHOG_HOST",
         "ANALYTICS_PSEUDONYM_KEY"
       ],

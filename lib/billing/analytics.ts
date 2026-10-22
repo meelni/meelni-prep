@@ -88,9 +88,7 @@ async function trackBillingEvent(
   event: string,
   input: BillingCreditEventInput
 ): Promise<void> {
-  if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-    return;
-  }
+  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   if (!process.env.ANALYTICS_PSEUDONYM_KEY) return;
 
   await deliverBillingAnalytics(event, input, {

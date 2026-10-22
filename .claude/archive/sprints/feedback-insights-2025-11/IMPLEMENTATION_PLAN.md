@@ -312,7 +312,7 @@ useEffect(() => {
 - Recommended fixes with priority
 - Test cases for validation
 
-**Deliverable**: `/Users/REDACTED/conductor/meelni-prep/.conductor/managua/.claude/QA_REPORT.md`
+**Deliverable**: `<repo>/.claude/QA_REPORT.md`
 
 ---
 

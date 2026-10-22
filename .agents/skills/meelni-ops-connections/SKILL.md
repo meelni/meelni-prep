@@ -5,16 +5,19 @@ description: Use when working on Meelni operational integrations, external servi
 
 # Meelni Ops Connections
 
-Use this skill before changing Meelni external systems. It records stable account/project anchors and creates an operational memory loop: when an agent has to investigate a new provider/MCP connection, it captures the working path here before finishing.
+Use this skill before changing Meelni external systems. Because the repository
+is public, it records safe discovery procedures and guardrails rather than
+personal identities, provider resource IDs, account numbers, or workstation
+paths.
 
 ## Quick Anchors
 
-| System | Canonical target                                                                            |
-| ------ | ------------------------------------------------------------------------------------------- |
-| Vercel | Project `meelni/meelni`; use `npx vercel@55.0.0` device-flow login                          |
-| Stripe | Account `acct_1SSreECdoT5hfbsF`; use Stripe CLI or Stripe MCP depending on read/write needs |
-| Linear | Use the product project/work tracked under `SAV-*` unless the user says otherwise           |
-| Repo   | `/Users/REDACTED/Desktop/Github/meelni-prep` for the Milni/Meelni product app                   |
+| System | Canonical target                                                                  |
+| ------ | --------------------------------------------------------------------------------- |
+| Vercel | Resolve the authenticated `meelni` team project before every operation            |
+| Stripe | Resolve and verify the intended test/live account before every operation          |
+| Linear | Use the product project/work tracked under `SAV-*` unless the user says otherwise |
+| Repo   | Resolve the current Git worktree root; never store a developer home path here     |
 
 ## Workflow
 
@@ -24,8 +27,14 @@ Use this skill before changing Meelni external systems. It records stable accoun
    - `stripe-best-practices` for Stripe design, billing, webhooks, API version, and security decisions.
    - Vercel skills such as `vercel:env-vars`, `vercel:payments`, or `vercel:deployments-cicd` for platform details.
    - `linear:linear` for issue/project work.
-4. Never paste secrets into chat, Linear, docs, or tracked files. Write only env variable names, target environments, IDs that are safe to share, and redacted summaries.
-5. When adding a new MCP/provider, extend `config/agent-integrations.json` and `references/connections.md` with the decision boundary, canonical target, auth command, verification command, safe write path, production guardrails, and cleanup notes.
+4. Never paste secrets or private operational identifiers into chat, Linear,
+   docs, or tracked files. Write only environment-variable names, target
+   environment labels, authenticated discovery commands, and redacted summaries.
+5. When adding a new MCP/provider, extend `config/agent-integrations.json` and
+   `references/connections.md` with the decision boundary, auth command,
+   verification command, safe write path, production guardrails, and cleanup
+   notes. Keep exact account and resource identifiers in provider-controlled
+   configuration rather than this repository.
 6. Before finalizing any external-system investigation, run the capture check in `references/connections.md`. If the agent learned a reusable connection/auth/env/deployment detail that was missing or wrong, update the catalog and this skill in the same turn.
 
 ## Common Mistakes

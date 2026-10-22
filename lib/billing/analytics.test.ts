@@ -9,10 +9,8 @@ import {
 } from "./analytics";
 
 test("billing analytics entry points expose awaitable delivery", async () => {
-  const serverKey = process.env.POSTHOG_SERVER_KEY;
   const publicKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   const pseudonymKey = process.env.ANALYTICS_PSEUDONYM_KEY;
-  delete process.env.POSTHOG_SERVER_KEY;
   delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
   delete process.env.ANALYTICS_PSEUDONYM_KEY;
   try {
@@ -23,7 +21,6 @@ test("billing analytics entry points expose awaitable delivery", async () => {
     assert.equal(typeof delivery.then, "function");
     await delivery;
   } finally {
-    if (serverKey !== undefined) process.env.POSTHOG_SERVER_KEY = serverKey;
     if (publicKey !== undefined)
       process.env.NEXT_PUBLIC_POSTHOG_KEY = publicKey;
     if (pseudonymKey !== undefined) {

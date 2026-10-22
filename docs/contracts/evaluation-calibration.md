@@ -445,7 +445,10 @@ authority. Ambient GitHub host/config, proxy, custom-CA, or TLS override
 variables fail before every authority request, and neither their values nor the
 token can enter errors or calibration reports.
 The paid command starts through an executable POSIX launcher that uses `env
--i` and the absolute fnm Node 22.22.0 runtime without either provider token.
+-i` and a privately supplied absolute Node 22.22.0 runtime path without either
+provider token. The owner supplies that path through
+`MEELNI_CALIBRATION_NODE_BIN`; the launcher consumes and unsets it before the
+bootstrap starts, then verifies the existing pinned digest and Developer ID.
 For a future authorized run, the product owner must provide the same exact
 40-character reviewed commit through
 `MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT`. Before executing the bootstrap,

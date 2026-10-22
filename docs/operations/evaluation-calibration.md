@@ -316,8 +316,10 @@ future exact owner authorization.
 
 A future authorized invocation must export
 `MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT` as the exact owner-approved merged
-commit alongside the separately required paid-run acknowledgement. The launcher
-consumes and unsets that value before bootstrap. It runs system Git with an
+commit, set `MEELNI_CALIBRATION_NODE_BIN` to the private absolute path of the
+pinned Node 22.22.0 executable, and provide the separately required paid-run
+acknowledgement. The launcher consumes and unsets both values before bootstrap.
+It runs system Git with an
 empty environment and `GIT_NO_REPLACE_OBJECTS=1`, requires actual `HEAD` to
 match, and compares the raw working bytes of the launcher, bootstrap, startup
 verifier, manifest, bundle, and package lock to the corresponding blobs in that

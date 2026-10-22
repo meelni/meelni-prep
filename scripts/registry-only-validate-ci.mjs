@@ -7,11 +7,14 @@ import {
   validatePullRequestDeclaration,
 } from "./check-stacked-pr.mjs";
 import { githubApi, resolveRegisteredStack } from "./check-stacked-pr-ci.mjs";
+import { findSensitiveContentInText } from "./verify-public-repository.mjs";
 
 export const REGISTRY_PATH = ".github/stacked-prs.json";
 export const REQUIRED_VALIDATE_CHECK_NAME = "Validate";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const JSON_STRING_TOKEN_PATTERN =
+  /"(?:\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|[^"\\\u0000-\u001f])*"/g;
 const MAX_PAGES = 30;
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const TRUSTED_PUBLISHER_EVENTS = new Set([
@@ -22,6 +25,21 @@ const TRUSTED_PUBLISHER_EVENTS = new Set([
 
 function fail(code) {
   throw new Error(code);
+}
+
+function assertNoSensitiveJsonStringTokens(content) {
+  JSON_STRING_TOKEN_PATTERN.lastIndex = 0;
+  for (const match of content.matchAll(JSON_STRING_TOKEN_PATTERN)) {
+    let decoded;
+    try {
+      decoded = JSON.parse(match[0]);
+    } catch {
+      fail("registry_validate_manifest_json_string_invalid");
+    }
+    if (findSensitiveContentInText(decoded, REGISTRY_PATH).length > 0) {
+      fail("registry_validate_manifest_sensitive_content");
+    }
+  }
 }
 
 function parsePositiveInteger(value, code) {
@@ -416,7 +434,17 @@ export async function verifyProposedRegistryManifest({
   fetchImpl,
   resolveStack = resolveRegisteredStack,
 } = {}) {
+  if (findSensitiveContentInText(manifestContent, REGISTRY_PATH).length > 0) {
+    fail("registry_validate_manifest_sensitive_content");
+  }
+  assertNoSensitiveJsonStringTokens(manifestContent);
   const manifest = parseStackManifest(manifestContent);
+  if (
+    findSensitiveContentInText(JSON.stringify(manifest), REGISTRY_PATH).length >
+    0
+  ) {
+    fail("registry_validate_manifest_sensitive_content");
+  }
   const binding = classification.binding;
   if (manifest.repository !== binding.repository.fullName) {
     fail("registry_validate_manifest_repository_mismatch");

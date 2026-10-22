@@ -44,7 +44,7 @@
 **Start Here**:
 ```bash
 # Ticket P1-001: Database Schema Updates
-cd /Users/REDACTED/conductor/meelni-prep/.conductor/vancouver
+cd <repo>
 # Review: IMPLEMENTATION_TICKETS.md lines 10-120
 # Agent Type: Developer (Backend)
 # Blocking: ALL other tickets
