@@ -21,7 +21,9 @@ import {
 let serverPostHog: PostHog | null = null;
 
 export function resolveServerPostHogProjectKey(
-  environment: NodeJS.ProcessEnv = process.env
+  environment: Readonly<{ NEXT_PUBLIC_POSTHOG_KEY?: string }> = {
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+  }
 ): string | null {
   const projectKey = environment.NEXT_PUBLIC_POSTHOG_KEY?.trim();
   return projectKey?.startsWith("phc_") ? projectKey : null;
