@@ -20,9 +20,17 @@ import {
 
 let serverPostHog: PostHog | null = null;
 
+export function resolveServerPostHogProjectKey(
+  environment: Readonly<{ NEXT_PUBLIC_POSTHOG_KEY?: string }> = {
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+  }
+): string | null {
+  const projectKey = environment.NEXT_PUBLIC_POSTHOG_KEY?.trim();
+  return projectKey?.startsWith("phc_") ? projectKey : null;
+}
+
 export function getServerPostHog(): PostHog | null {
-  const apiKey =
-    process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const apiKey = resolveServerPostHogProjectKey();
   const host =
     process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 

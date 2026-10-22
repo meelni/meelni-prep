@@ -212,8 +212,11 @@ test("the default check runs linting, formatting, type checks, and quality gates
   }
 });
 
-test("security quality gate checks Semgrep through the uvx wrapper", () => {
-  assert.equal(scripts["quality:security"], "node scripts/run-semgrep.mjs");
+test("security quality gate checks Semgrep and the public repository surface", () => {
+  assert.equal(
+    scripts["quality:security"],
+    "node scripts/run-semgrep.mjs && npm run verify:public-repository"
+  );
 });
 
 test("live calibration cannot enter through credential-inheriting npm", () => {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildServerCapturePayload,
   buildServerIdentifyPayload,
+  resolveServerPostHogProjectKey,
 } from "./posthog-server";
 
 test("server capture payloads redact Checkout IDs in billing and nested properties", () => {
@@ -46,4 +47,25 @@ test("server identify payloads use the same recursive privacy boundary", () => {
     /cs_live_|server_identity_secret/
   );
   assert.match(JSON.stringify(payload), /CHECKOUT_SESSION_REDACTED/);
+});
+
+test("server event capture accepts only the PostHog project key", () => {
+  assert.equal(
+    resolveServerPostHogProjectKey({ NEXT_PUBLIC_POSTHOG_KEY: "phc_project" }),
+    "phc_project"
+  );
+  assert.equal(
+    resolveServerPostHogProjectKey({
+      NEXT_PUBLIC_POSTHOG_KEY: " phc_trimmed ",
+    }),
+    "phc_trimmed"
+  );
+});
+
+test("server event capture rejects personal API keys", () => {
+  assert.equal(
+    resolveServerPostHogProjectKey({ NEXT_PUBLIC_POSTHOG_KEY: "phx_personal" }),
+    null
+  );
+  assert.equal(resolveServerPostHogProjectKey({}), null);
 });

@@ -100,8 +100,9 @@ test("preserved quoted secrets round-trip without exposing comment syntax", () =
 });
 
 test("true multiline private keys are preserved byte-for-byte", () => {
-  const rawPrivateKey =
-    '"-----BEGIN PRIVATE KEY-----\nline-one\nline-two\n-----END PRIVATE KEY-----"';
+  const privateKeyHeader = `${"-".repeat(5)}BEGIN PRIVATE KEY${"-".repeat(5)}`;
+  const privateKeyFooter = `${"-".repeat(5)}END PRIVATE KEY${"-".repeat(5)}`;
+  const rawPrivateKey = `"${privateKeyHeader}\nline-one\nline-two\n${privateKeyFooter}"`;
   const previousText = `${scopedEnv(previewRef)}GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${rawPrivateKey}\n`;
   const env = buildRefreshedEnv({
     defaults: {},

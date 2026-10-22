@@ -513,6 +513,96 @@ test("trusted publisher rejects a registry path backed by a symlink", async () =
   assert.match(result.error, /registry_validate_manifest_object_invalid/);
 });
 
+test("trusted publisher rejects sensitive content without echoing it", async () => {
+  const secret = `${["phx", "_"].join("")}${"Z".repeat(40)}`;
+  const proposedManifest = `${JSON.stringify({
+    version: 2,
+    repository: REPOSITORY,
+    stacks: [],
+    note: secret,
+  })}\n`;
+  const fixture = apiFixture({ proposedManifest });
+
+  const result = await publishRegistryOnlyValidate({
+    eventContent: JSON.stringify(event()),
+    env: env("pull_request_target"),
+    api: fixture.api,
+  });
+
+  assert.equal(result.status, "failure_published");
+  assert.match(result.error, /registry_validate_manifest_sensitive_content/);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  const completion = fixture.calls.find(
+    (call) => call.path === "/check-runs/901"
+  );
+  assert.equal(completion.body.conclusion, "failure");
+  assert.equal(JSON.stringify(completion.body).includes(secret), false);
+});
+
+test("trusted publisher scans decoded JSON strings without echoing them", async () => {
+  const secret = `${["phx", "_"].join("")}${"Y".repeat(40)}`;
+  const escapedSecret = [...secret]
+    .map(
+      (character) =>
+        `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`
+    )
+    .join("");
+  const proposedManifest =
+    `{"version":2,"repository":"${REPOSITORY}","stacks":[],` +
+    `"note":"${escapedSecret}"}\n`;
+  assert.equal(proposedManifest.includes(secret), false);
+  const fixture = apiFixture({ proposedManifest });
+
+  const result = await publishRegistryOnlyValidate({
+    eventContent: JSON.stringify(event()),
+    env: env("pull_request_target"),
+    api: fixture.api,
+  });
+
+  assert.equal(result.status, "failure_published");
+  assert.match(result.error, /registry_validate_manifest_sensitive_content/);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  const completion = fixture.calls.find(
+    (call) => call.path === "/check-runs/901"
+  );
+  assert.equal(completion.body.conclusion, "failure");
+  assert.equal(JSON.stringify(completion.body).includes(secret), false);
+});
+
+test("trusted publisher scans overwritten duplicate JSON strings", async () => {
+  const secret = `${["phx", "_"].join("")}${"X".repeat(40)}`;
+  const escapedSecret = [...secret]
+    .map(
+      (character) =>
+        `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`
+    )
+    .join("");
+  const proposedManifest =
+    `{"version":2,"repository":"${REPOSITORY}","stacks":[],` +
+    `"note":"${escapedSecret}","note":"safe"}\n`;
+  assert.equal(proposedManifest.includes(secret), false);
+  assert.equal(
+    JSON.stringify(JSON.parse(proposedManifest)).includes(secret),
+    false
+  );
+  const fixture = apiFixture({ proposedManifest });
+
+  const result = await publishRegistryOnlyValidate({
+    eventContent: JSON.stringify(event()),
+    env: env("pull_request_target"),
+    api: fixture.api,
+  });
+
+  assert.equal(result.status, "failure_published");
+  assert.match(result.error, /registry_validate_manifest_sensitive_content/);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  const completion = fixture.calls.find(
+    (call) => call.path === "/check-runs/901"
+  );
+  assert.equal(completion.body.conclusion, "failure");
+  assert.equal(JSON.stringify(completion.body).includes(secret), false);
+});
+
 test("real Git symlink mode cannot pass trusted registry validation", async (t) => {
   const repo = mkdtempSync(join(tmpdir(), "meelni-registry-symlink-"));
   t.after(() => rmSync(repo, { recursive: true, force: true }));

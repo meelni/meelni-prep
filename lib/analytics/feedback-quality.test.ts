@@ -33,9 +33,9 @@ test("practice analytics accepts only the closed v2 review outcome", () => {
 });
 
 test("deletion intent suppresses both post-commit quality events", async () => {
-  const previousServerKey = process.env.POSTHOG_SERVER_KEY;
+  const previousProjectKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   const previousPseudonymKey = process.env.ANALYTICS_PSEUDONYM_KEY;
-  process.env.POSTHOG_SERVER_KEY = "synthetic-posthog-key";
+  process.env.NEXT_PUBLIC_POSTHOG_KEY = "phc_synthetic";
   process.env.ANALYTICS_PSEUDONYM_KEY = "s".repeat(32);
   const delivered: string[] = [];
   const deps: FeedbackQualityAnalyticsDependencies = {
@@ -73,8 +73,11 @@ test("deletion intent suppresses both post-commit quality events", async () => {
     );
     assert.deepEqual(delivered, []);
   } finally {
-    if (previousServerKey === undefined) delete process.env.POSTHOG_SERVER_KEY;
-    else process.env.POSTHOG_SERVER_KEY = previousServerKey;
+    if (previousProjectKey === undefined) {
+      delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_POSTHOG_KEY = previousProjectKey;
+    }
     if (previousPseudonymKey === undefined) {
       delete process.env.ANALYTICS_PSEUDONYM_KEY;
     } else {

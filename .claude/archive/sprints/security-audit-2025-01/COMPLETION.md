@@ -81,7 +81,10 @@
 - **Description**: Separated client and server analytics keys
 - **User Impact**: Better security for server-side analytics
 - **Location**: `lib/analytics/posthog-server.ts:16-33`
-- **Implementation**: POSTHOG_SERVER_KEY for server, warnings for missing keys
+- **Superseded implementation**: This historical audit recommended a separate
+  server key. Current code correctly uses the public PostHog project token for
+  both browser and server event ingestion; personal API keys are not capture
+  credentials.
 
 **8. Request Body Limits (`next.config.ts`)**
 - **Description**: Configured body size limits for server actions
@@ -158,9 +161,10 @@
    - Trade-off: Requires CSP update when adding new services
 
 4. **PostHog Key Separation**
-   - Why: Server-side tracking should use separate, more privileged key
-   - Impact: Better security for analytics
-   - Trade-off: Requires setting POSTHOG_SERVER_KEY environment variable
+   - Historical rationale: Server-side tracking was assumed to require a
+     separate privileged key.
+   - Current correction: PostHog event capture uses the project token; a
+     personal API key must not be configured for runtime capture.
 
 **Technical Choices:**
 - Chose react-markdown over dangerouslySetInnerHTML for XSS prevention
@@ -209,9 +213,9 @@
    - **Prevention**: Validate all user-controlled data
 
 3. **PostHog Key Misuse**
-   - **Root Cause**: Using client key for server-side tracking
-   - **Fix**: Separated keys with POSTHOG_SERVER_KEY
-   - **Prevention**: Document key separation in setup guide
+   - **Historical root cause claim**: Using a project key for server capture
+   - **Current correction**: Project keys are the supported event-ingestion
+     credential. Personal API keys are reserved for private management tooling.
 
 4. **Missing Request Body Limits**
    - **Root Cause**: No configured limits on request size
@@ -305,7 +309,7 @@
 - ✅ XSS prevention verified
 - ✅ Environment variables validated
 - ✅ No secrets in code or git
-- 📋 Set POSTHOG_SERVER_KEY before launch
+- ✅ Use `NEXT_PUBLIC_POSTHOG_KEY` for consented browser and server capture
 - 📋 Set NEXT_PUBLIC_APP_URL to production domain
 - 📋 Run npm run validate:env before deployment
 
@@ -472,7 +476,7 @@
 ### Follow-up Tasks
 
 **Before Production Launch:**
-- [ ] Set POSTHOG_SERVER_KEY environment variable
+- [ ] Verify the PostHog project key is configured without any personal API key
 - [ ] Set NEXT_PUBLIC_APP_URL to production domain
 - [ ] Run npm run validate:env on production
 - [ ] Configure error monitoring (Sentry)
@@ -553,7 +557,7 @@
 **Ready for Deployment**: ✅ Yes (all security fixes complete)
 
 **Pre-Deployment Steps:**
-1. Set POSTHOG_SERVER_KEY environment variable
+1. Verify `NEXT_PUBLIC_POSTHOG_KEY` contains the PostHog project token
 2. Set NEXT_PUBLIC_APP_URL to production domain
 3. Run `npm run validate:env` to verify all variables
 4. Review security headers in production

@@ -79,6 +79,9 @@ jobs:
       - name: Validate changed documentation
         run: node scripts/classify-ci-changes.mjs --validate-docs
 
+      - name: Verify public repository hygiene
+        run: npm run verify:public-repository
+
       - name: Validate repository skills
         run: npm run validate:skills
 

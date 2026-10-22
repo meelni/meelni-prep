@@ -10,7 +10,7 @@ set -eu
 umask 077
 
 NODE_VERSION="22.22.0"
-NODE_BIN="/Users/REDACTED/.local/share/fnm/node-versions/v${NODE_VERSION}/installation/bin/node"
+NODE_BIN=""
 NODE_SHA256="913b144fdb40638b1acef7974ab3c33fbd527cc0974cb5da467ab1e6ac51b4d4"
 SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && /bin/pwd -P)"
 SCRIPT_DIR=$(/bin/realpath "$SCRIPT_DIR")
@@ -179,6 +179,8 @@ attest_file "$MANIFEST"
 attest_file "$PACKAGE_LOCK"
 [ -z "${GITHUB_TOKEN-}" ] || fail "calibration_live_launcher_ambient_github_token_rejected"
 [ -z "${OPENAI_API_KEY-}" ] || fail "calibration_live_launcher_ambient_openai_key_rejected"
+production_node_bin=${MEELNI_CALIBRATION_NODE_BIN-}
+unset MEELNI_CALIBRATION_NODE_BIN
 
 test_mode=${MEELNI_CALIBRATION_LAUNCHER_TEST_MODE-}
 credential_fd=${MEELNI_CALIBRATION_TEST_CREDENTIAL_FD-}
@@ -206,6 +208,17 @@ if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_overr
     test_runtime=$(/bin/realpath "$test_runtime") || fail "calibration_live_launcher_test_runtime_invalid"
     attest_file "$test_runtime"
   fi
+  [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
+fi
+
+if [ "$test_mode" = "1" ]; then
+  [ -z "$production_node_bin" ] || \
+    fail "calibration_live_launcher_production_node_in_test_rejected"
+else
+  [ -n "$production_node_bin" ] || \
+    fail "calibration_live_launcher_node_missing"
+  NODE_BIN=$(/bin/realpath "$production_node_bin") || \
+    fail "calibration_live_launcher_node_missing"
   [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 fi
 

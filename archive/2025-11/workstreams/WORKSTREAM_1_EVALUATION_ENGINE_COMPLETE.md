@@ -355,7 +355,7 @@ feedback table:
 
 ### 1. Start Development Server
 ```bash
-cd /Users/REDACTED/conductor/meelni-prep/.conductor/dubai
+cd <repo>
 npm run dev
 ```
 

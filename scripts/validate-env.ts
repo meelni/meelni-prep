@@ -115,12 +115,6 @@ const envVars: EnvVarConfig[] = [
     pattern: /^phc_/,
   },
   {
-    name: "POSTHOG_SERVER_KEY",
-    required: false,
-    description: "PostHog server-side tracking key",
-    pattern: /^phx_/,
-  },
-  {
     name: "NEXT_PUBLIC_POSTHOG_HOST",
     required: false,
     description: "PostHog host URL",
@@ -240,18 +234,8 @@ function validateEnvironment(): ValidationResult {
       );
     }
 
-    // Warn if using client PostHog key for server-side tracking
     if (
       process.env.NEXT_PUBLIC_POSTHOG_KEY &&
-      !process.env.POSTHOG_SERVER_KEY
-    ) {
-      warnings.push(
-        "⚠️  Using client PostHog key for server-side tracking. Set POSTHOG_SERVER_KEY for production."
-      );
-    }
-
-    if (
-      (process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY) &&
       !process.env.ANALYTICS_PSEUDONYM_KEY
     ) {
       warnings.push(

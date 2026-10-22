@@ -82,9 +82,7 @@ async function deliverFeedbackQualityAnalytics(
   userId: string,
   deps: FeedbackQualityAnalyticsDependencies
 ): Promise<void> {
-  if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-    return;
-  }
+  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   if (!process.env.ANALYTICS_PSEUDONYM_KEY) return;
   try {
     const [consent, deletionPending] = await Promise.all([

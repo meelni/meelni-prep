@@ -2,6 +2,16 @@
 
 Meelni's production build must not expose internal visual test pages, copied developer documentation, placeholder support identities, or placeholder repository links. The relaunch feature gate remains default-off independently of these checks.
 
+The Git repository itself is also a public surface. The current tracked tree --
+including code, documentation, archives, fixtures, and generated text -- must
+not contain provider credentials, private-key material, Supabase service-role
+tokens, or developer home-directory paths. Public client identifiers and
+clearly non-functional placeholders remain allowed where the application
+contract requires them. Published Git history is a separate surface: if a
+credential ever entered a public commit, revoke or rotate it immediately, then
+coordinate any history rewrite across every affected public ref. A clean current
+checkout does not make a historical credential safe again.
+
 ## Forbidden surfaces
 
 - Any `/test-*` or `/test/*` app route.
@@ -13,6 +23,13 @@ Internal engineering docs remain in `docs/`; they are repository memory, not a p
 
 ## Automated checks
 
+- `npm run verify:public-repository` enumerates every text file in the current
+  tracked checkout and rejects known privileged credential formats, private-key headers, Supabase
+  service-role JWTs, and personal macOS home-directory paths. Failure output
+  contains only the finding type and location; it never echoes the matched
+  value. This command is part of `quality:security`, so ordinary static CI
+  cannot pass with a newly committed match. It does not inspect reachable Git
+  history; historical purge verification is a separate incident-response step.
 - `npm run verify:public-source` enumerates app pages and every directly served file under `public/`. Only reviewed files in the explicit allowlist are accepted; all other static files fail closed. Source files are scanned for inherited placeholder markers.
 - `npm run build` runs Next.js production compilation and then checks `.next/server/app-paths-manifest.json` for forbidden routes.
 - `npm run verify:public-production` starts the compiled app on localhost, validates the emitted robots and sitemap documents, and recursively crawls every sitemap URL plus every same-origin, page-like GET link it discovers from the public seeds. Reachable `/contact` and `/terms` pages are explicit non-indexable QA seeds outside the sitemap and must emit neither a canonical nor social promotion. `/privacy` is an indexable sitemap route and must emit canonical and social metadata. Every indexed sitemap route must expose at least one Open Graph or Twitter image. The verifier resolves those canonical-host image URLs through the local artifact and requires HTTP 200 without a final-host escape; it applies the same availability check to extension-bearing same-origin assets. The crawler excludes `/_next`, `/api`, static asset extensions, and protected `/auth`, `/dashboard`, `/feedback`, `/interview`, and `/setup` pages. Every excluded protected link must match a compiled build-manifest route. It verifies `noindex` over HTTP on provider-independent API, auth, feedback, and checkout-result responses; when local public Supabase variables are absent, the verifier supplies inert loopback values so unauthenticated middleware can run without a real project or credential. Dashboard/interview/setup middleware headers are covered by the indexing contract and require configured-provider verification on a deployed target. Redirects are inspected manually; off-origin redirects fail before any off-origin request. The check fails on non-success responses, unknown or forbidden routes, missing metadata assets, non-canonical sitemap entries, invented sitemap freshness, an incomplete robots policy, or the 250-page safety cap.

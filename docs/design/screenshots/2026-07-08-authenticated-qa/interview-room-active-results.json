@@ -4,7 +4,7 @@
     "status": 200,
     "finalUrl": "/interview?sessionId=7b464305-948d-42c5-889f-f030c7db33bd&token=%5Bredacted%5D&url=wss%3A%2F%2Fmeelni-ek4vaisp.livekit.cloud",
     "overflowX": false,
-    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-interview-room-active.png",
+    "screenshot": "docs/design/screenshots/2026-07-08-authenticated-qa/desktop-interview-room-active.png",
     "unexpectedConsoleErrors": [],
     "knownRuntimeMessages": [
       "Loading the script 'https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://us.i.posthog.com https://cdn.livekit.cloud\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.",
@@ -24,7 +24,7 @@
     "status": 200,
     "finalUrl": "/interview?sessionId=7b464305-948d-42c5-889f-f030c7db33bd&token=%5Bredacted%5D&url=wss%3A%2F%2Fmeelni-ek4vaisp.livekit.cloud",
     "overflowX": false,
-    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-interview-room-active.png",
+    "screenshot": "docs/design/screenshots/2026-07-08-authenticated-qa/mobile-interview-room-active.png",
     "unexpectedConsoleErrors": [],
     "knownRuntimeMessages": [
       "Loading the script 'https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://us.i.posthog.com https://cdn.livekit.cloud\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.",
